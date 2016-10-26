@@ -44,7 +44,6 @@
     <aopalliance-bundle-version>1.0_6</aopalliance-bundle-version>
     <apacheds-version>2.0.0-M23</apacheds-version>
     <apache-drill-version>1.8.0</apache-drill-version>
-    <apache-drill-bundle-version>1.8.0</apache-drill-bundle-version>
     <apache-gora-version>0.6.1</apache-gora-version>
     <apache-mime4j-version>0.7.2</apache-mime4j-version>
     <aries-blueprint-api-version>1.0.1</aries-blueprint-api-version>
@@ -459,7 +458,7 @@
     <olingo2-gson-version>2.4</olingo2-gson-version>
     <ognl-version>3.1.10</ognl-version>
     <ognl-bundle-version>3.1.10_1</ognl-bundle-version>
-    <oncrpc-version>1.1.2</oncrpc-version>
+    <oncrpc-version>1.1.3</oncrpc-version>
     <openejb-version>4.7.4</openejb-version>
     <openhft-affinity-version>3.0.6</openhft-affinity-version>
     <openhft-compiler-version>2.2.5</openhft-compiler-version>
@@ -471,10 +470,10 @@
     <oro-bundle-version>2.0.8_6</oro-bundle-version>
     <oscache-bundle-version>2.4_5</oscache-bundle-version>
     <osgi-version>4.3.1</osgi-version>
-    <paho-version>1.0.2</paho-version>
+    <paho-version>1.1.0</paho-version>
     <paranamer-bundle-version>2.8_1</paranamer-bundle-version>
     <pax-cdi-version>1.0.0.RC1</pax-cdi-version>
-    <pax-exam-version>4.9.1</pax-exam-version>
+    <pax-exam-version>4.9.2</pax-exam-version>
     <pax-tiny-bundle-version>1.3.2</pax-tiny-bundle-version>
     <pax-logging-version>1.8.6</pax-logging-version>
     <pdfbox-version>1.8.12</pdfbox-version>

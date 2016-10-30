@@ -83,11 +83,19 @@
         * [Pipes and Filter](pipes-and-filters.adoc)
     * Messaging Channels
         * [Point to Point Channel](point-to-point-channel.adoc)
+        * [Publish Subscribe Channel](publish-subscribe-channel.adoc)
+        * [Dead Letter Channel](dead-letter-channel.adoc)
+        * [Guaranteed Delivery](guaranteed-delivery.adoc)
+        * [Message Bus](message-bus.adoc)
     * Message Construction
         * [Correlation Identifier](correlation-identifier.adoc)
         * [Event Message](event-message.adoc)
         * [Return Address](return-address.adoc)
         * [Request Reply](request-reply.adoc)
+    * Message Routing
+        * [Content Based Router](content-based-router.adoc)
+        * [Message Filter](message-filter.adoc)
+        * [Dynamic Router](dynamic-router.adoc)
 
 * Community
     * FAQ

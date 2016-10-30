@@ -147,6 +147,7 @@
     <consul-client-version>0.12.7</consul-client-version>
     <consul-client-bundle-version>0.12.7_1</consul-client-bundle-version>
     <cobertura-maven-plugin-version>2.7</cobertura-maven-plugin-version>
+    <curator-version>2.11.0</curator-version>
     <cxf-version>3.1.7</cxf-version>
     <cxf-version-range>[3.0,4.0)</cxf-version-range>
     <cxf-xjc-plugin-version>3.0.5</cxf-xjc-plugin-version>
@@ -246,7 +247,7 @@
     <hazelcast-version>3.7.2</hazelcast-version>
     <hbase-version>1.2.1</hbase-version>
     <hessian-version>4.0.38</hessian-version>
-    <hibernate-validator-version>5.3.0.Final</hibernate-validator-version>
+    <hibernate-validator-version>5.3.1.Final</hibernate-validator-version>
     <!-- Spring 3.2.x and 4.0.x still stick to JPA 2.0. Hibernate 4.3.x upgraded to JPA 2.1. -->
     <hibernate-version>4.2.20.Final</hibernate-version>
     <hk2-version>2.3.0</hk2-version>
@@ -308,7 +309,7 @@
     <jboss-javaee-6-version>1.0.0.Final</jboss-javaee-6-version>
     <jboss-logging-version>3.3.0.Final</jboss-logging-version>
     <jboss-marshalling-version>1.4.10.Final</jboss-marshalling-version>
-    <jboss-xnio-version>3.4.0.Final</jboss-xnio-version>
+    <jboss-xnio-version>3.4.1.Final</jboss-xnio-version>
     <jcache-bundle-version>1.0.0_1</jcache-bundle-version>
     <jclouds-version>1.9.2</jclouds-version>
     <!-- jclouds must use this guava version -->
@@ -379,8 +380,8 @@
     <karaf4-version>4.0.7</karaf4-version>
     <kie-version>6.4.0.Final</kie-version>
     <krati-version>0.4.9</krati-version>
-    <kubernetes-client-version>1.4.14</kubernetes-client-version>
-    <kubernetes-model-version>1.0.59</kubernetes-model-version>
+    <kubernetes-client-version>1.4.16</kubernetes-client-version>
+    <kubernetes-model-version>1.0.61</kubernetes-model-version>
     <kxml2-bundle-version>2.3.0_3</kxml2-bundle-version>
     <leveldbjni-version>1.8</leveldbjni-version>
     <libphonenumber-version>7.6.0</libphonenumber-version>
@@ -465,7 +466,7 @@
     <openhft-lang-version>6.8.2</openhft-lang-version>
     <openjpa-version>2.4.1</openjpa-version>
     <openshift-java-client-version>2.7.0.Final</openshift-java-client-version>
-    <openshift-client-version>1.4.14</openshift-client-version>
+    <openshift-client-version>1.4.16</openshift-client-version>
     <optaplanner-version>6.4.0.Final</optaplanner-version>
     <oro-bundle-version>2.0.8_6</oro-bundle-version>
     <oscache-bundle-version>2.4_5</oscache-bundle-version>
@@ -596,7 +597,7 @@
     <tinybundles-version>2.1.1</tinybundles-version>
     <twitter4j-bundle-version>4.0.5_1</twitter4j-bundle-version>
     <twitter4j-version>4.0.5</twitter4j-version>
-    <undertow-version>1.4.3.Final</undertow-version>
+    <undertow-version>1.4.4.Final</undertow-version>
     <univocity-parsers-version>2.2.2</univocity-parsers-version>
     <unix-socket-factory-version>2015-01-27T15-02-14</unix-socket-factory-version>
     <unix-socket-factory-bundle-version>1.0.0</unix-socket-factory-bundle-version>

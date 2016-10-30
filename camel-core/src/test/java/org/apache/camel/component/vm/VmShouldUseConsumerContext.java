@@ -14,48 +14,41 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.camel.spring.boot.duplicatedrouteid;
+package org.apache.camel.component.vm;
 
-import org.apache.camel.RoutesBuilder;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.spring.boot.CamelSpringBootInitializationException;
-import org.junit.Assert;
-import org.junit.Test;
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.Bean;
 
-public class DuplicatedRouteIdTest extends Assert {
+public class VmShouldUseConsumerContext extends AbstractVmTestSupport {
 
-    @Test(expected = CamelSpringBootInitializationException.class)
-    public void shouldDetectDuplicatedRouteId() {
-        new SpringApplication(DuplicatedRouteIdTestConfiguration.class).run();
+    public void testConsumerContext() throws Exception {
+        getMockEndpoint("mock:result").expectedBodiesReceived("Hello World");
+
+        String out = template2.requestBody("direct:start", "Hello World", String.class);
+        assertEquals("Hello World", out);
+
+        assertMockEndpointsSatisfied();
     }
 
-}
-
-@SpringBootApplication
-class DuplicatedRouteIdTestConfiguration {
-
-    @Bean
-    RoutesBuilder firstRoute() {
+    @Override
+    protected RouteBuilder createRouteBuilder() throws Exception {
         return new RouteBuilder() {
             @Override
             public void configure() throws Exception {
-                from("seda:first").routeId("foo").to("mock:first");
+                // using "toD" instead of "to" make use of the exchange context to resolve the direct endpoint at route execution.
+                // if the exchange context is not the excepted one, the toD will fail
+                from("vm:test").toD("direct:process");
+                from("direct:process").to("mock:result");
             }
         };
     }
 
-    @Bean
-    RoutesBuilder secondRoute() {
+    @Override
+    protected RouteBuilder createRouteBuilderForSecondContext() throws Exception {
         return new RouteBuilder() {
             @Override
             public void configure() throws Exception {
-                from("seda:second").routeId("foo").to("mock:second");
+                from("direct:start").to("vm:test");
             }
         };
     }
-
-
 }

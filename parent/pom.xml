@@ -294,7 +294,7 @@
     <java-apns-version>1.0.0.Beta6</java-apns-version>
     <java-ewah-version>0.7.9</java-ewah-version>
     <jna-version>4.2.1</jna-version>
-    <jnats-version>0.7.0</jnats-version>
+    <jnats-version>0.7.1</jnats-version>
     <javacc-maven-plugin-version>2.6</javacc-maven-plugin-version>
     <javacrumbs-version>0.22</javacrumbs-version>
     <javassist-bundle-version>3.12.1.GA_3</javassist-bundle-version>
@@ -599,7 +599,7 @@
     <twitter4j-bundle-version>4.0.5_1</twitter4j-bundle-version>
     <twitter4j-version>4.0.5</twitter4j-version>
     <undertow-version>1.4.4.Final</undertow-version>
-    <univocity-parsers-version>2.2.2</univocity-parsers-version>
+    <univocity-parsers-version>2.2.3</univocity-parsers-version>
     <unix-socket-factory-version>2015-01-27T15-02-14</unix-socket-factory-version>
     <unix-socket-factory-bundle-version>1.0.0</unix-socket-factory-bundle-version>
     <urlrewritefilter-version>4.0.4</urlrewritefilter-version>
@@ -613,6 +613,7 @@
     <weld1-version>1.1.28.Final</weld1-version>
     <weld2-version>2.4.0.Final</weld2-version>
     <werken-xpath-bundle-version>0.9.4_5</werken-xpath-bundle-version>
+    <wiremock-version>2.1.12</wiremock-version>
     <woodstox-version>4.4.1</woodstox-version>
     <ws-commons-util-bundle-version>1.0.2_2</ws-commons-util-bundle-version>
     <wsdl4j-bundle-version>1.6.2_6</wsdl4j-bundle-version>
@@ -812,6 +813,11 @@
       </dependency>
       <dependency>
         <groupId>org.apache.camel</groupId>
+        <artifactId>camel-bonita</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.camel</groupId>
         <artifactId>camel-boon</artifactId>
         <version>${project.version}</version>
       </dependency>
@@ -949,6 +955,11 @@
       <dependency>
         <groupId>org.apache.camel</groupId>
         <artifactId>camel-dropbox</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.camel</groupId>
+        <artifactId>camel-drill</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
@@ -2055,6 +2066,11 @@
       </dependency>
       <dependency>
         <groupId>org.apache.camel</groupId>
+        <artifactId>camel-bonita-starter</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.camel</groupId>
         <artifactId>camel-boon-starter</artifactId>
         <version>${project.version}</version>
       </dependency>
@@ -2181,6 +2197,11 @@
       <dependency>
         <groupId>org.apache.camel</groupId>
         <artifactId>camel-dropbox-starter</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.camel</groupId>
+        <artifactId>camel-drill-starter</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

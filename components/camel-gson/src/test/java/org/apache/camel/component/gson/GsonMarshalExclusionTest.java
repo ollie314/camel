@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,8 +24,11 @@ import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.gson.annotation.ExcludeAge;
 import org.apache.camel.component.gson.annotation.ExcludeWeight;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class GsonMarshalExclusionTest extends CamelTestSupport {
 
@@ -41,7 +44,9 @@ public class GsonMarshalExclusionTest extends CamelTestSupport {
 
         Object marshalled = template.requestBody("direct:inPojoExcludeWeight", in);
         String marshalledAsString = context.getTypeConverter().convertTo(String.class, marshalled);
-        assertEquals("{\"age\":30,\"height\":190}", marshalledAsString);
+        assertTrue(marshalledAsString.contains("\"height\":190"));
+        assertTrue(marshalledAsString.contains("\"age\":30"));
+        assertFalse(marshalledAsString.contains("\"weight\":70"));
 
         template.sendBody("direct:backPojoExcludeWeight", marshalled);
 
@@ -60,7 +65,9 @@ public class GsonMarshalExclusionTest extends CamelTestSupport {
 
         Object marshalled = template.requestBody("direct:inPojoExcludeAge", in);
         String marshalledAsString = context.getTypeConverter().convertTo(String.class, marshalled);
-        assertEquals("{\"height\":190,\"weight\":70}", marshalledAsString);
+        assertTrue(marshalledAsString.contains("\"height\":190"));
+        assertTrue(marshalledAsString.contains("\"weight\":70"));
+        assertFalse(marshalledAsString.contains("\"age\":30"));
 
         template.sendBody("direct:backPojoExcludeAge", marshalled);
 
@@ -102,20 +109,20 @@ public class GsonMarshalExclusionTest extends CamelTestSupport {
     //END SNIPPET: strategy
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
 
             @Override
-            public void configure() throws Exception {
+            public void configure() {
 
                 GsonDataFormat weightExclusionFormat = new GsonDataFormat(TestPojoExclusion.class);
-                weightExclusionFormat.setExclusionStrategies(Arrays.<ExclusionStrategy>asList(new WeightExclusionStrategy()));
+                weightExclusionFormat.setExclusionStrategies(Arrays.<ExclusionStrategy> asList(new WeightExclusionStrategy()));
                 from("direct:inPojoExcludeWeight").marshal(weightExclusionFormat);
                 from("direct:backPojoExcludeWeight").unmarshal(weightExclusionFormat).to("mock:reversePojoExcludeWeight");
 
                 //START SNIPPET: format
                 GsonDataFormat ageExclusionFormat = new GsonDataFormat(TestPojoExclusion.class);
-                ageExclusionFormat.setExclusionStrategies(Arrays.<ExclusionStrategy>asList(new AgeExclusionStrategy()));
+                ageExclusionFormat.setExclusionStrategies(Arrays.<ExclusionStrategy> asList(new AgeExclusionStrategy()));
                 from("direct:inPojoExcludeAge").marshal(ageExclusionFormat);
                 //END SNIPPET: format
                 from("direct:backPojoExcludeAge").unmarshal(ageExclusionFormat).to("mock:reversePojoExcludeAge");

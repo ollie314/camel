@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,17 +16,54 @@
  */
 package org.apache.camel.component.hazelcast;
 
+import com.hazelcast.core.Hazelcast;
+import com.hazelcast.core.HazelcastInstance;
+import org.apache.camel.CamelContext;
 import org.apache.camel.EndpointInject;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.infra.common.TestEntityNameGenerator;
+import org.apache.camel.test.infra.hazelcast.services.HazelcastService;
+import org.apache.camel.test.infra.hazelcast.services.HazelcastServiceFactory;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class HazelcastSedaTransferExchangeTest extends CamelTestSupport {
 
-    @EndpointInject(uri = "mock:result")
+    @RegisterExtension
+    public static HazelcastService hazelcastService = HazelcastServiceFactory.createService();
+
+    @RegisterExtension
+    public static TestEntityNameGenerator nameGenerator = new TestEntityNameGenerator();
+
+    @EndpointInject("mock:result")
     private MockEndpoint mock;
+
+    private HazelcastInstance hazelcastInstance;
+
+    @BeforeAll
+    public void beforeAll() {
+        hazelcastInstance = Hazelcast.newHazelcastInstance(hazelcastService.createConfiguration(null, 0, null, "seda"));
+    }
+
+    @AfterEach
+    public void afterEach() {
+        mock.reset();
+    }
+
+    @AfterAll
+    public void afterAll() {
+        if (hazelcastInstance != null) {
+            hazelcastInstance.shutdown();
+        }
+    }
 
     @Test
     public void testExchangeTransferEnabled() throws InterruptedException {
@@ -41,37 +78,42 @@ public class HazelcastSedaTransferExchangeTest extends CamelTestSupport {
 
         template.send("direct:foobar", exchange);
 
-        assertMockEndpointsSatisfied();
-        mock.reset();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
-    @Test(expected = AssertionError.class)
+    @Test
     public void testExchangeTransferDisabled() throws InterruptedException {
         mock.expectedMessageCount(1);
         mock.expectedBodiesReceived("test");
-        mock.expectedHeaderReceived("test", "");
+        mock.expectedNoHeaderReceived();
 
         Exchange exchange = createExchangeWithBody("test");
-        exchange.getIn().setHeader("test", "fail...");
+        exchange.getIn().setHeader("test", "Not propagated");
 
         template.send("direct:foo", exchange);
 
-        assertMockEndpointsSatisfied();
-        mock.reset();
+        MockEndpoint.assertIsSatisfied(context);
+    }
+
+    @Override
+    protected CamelContext createCamelContext() throws Exception {
+        CamelContext context = super.createCamelContext();
+        HazelcastCamelTestHelper.registerHazelcastComponents(context, hazelcastInstance);
+        return context;
     }
 
     @Override
     protected RouteBuilder createRouteBuilder() throws Exception {
+
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("direct:foo").to("hazelcast:seda:foo");
+            public void configure() {
+                from("direct:foo").to("hazelcast-seda:foo");
 
-                from("direct:foobar").to("hazelcast:seda:foo?transferExchange=true");
+                from("direct:foobar").to("hazelcast-seda:foo?transferExchange=true");
 
-                from("hazelcast:seda:foo").to("mock:result");
+                from("hazelcast-seda:foo").to("mock:result");
             }
         };
     }
-
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,8 +19,12 @@ package org.apache.camel.component.jmx;
 import java.util.Hashtable;
 import java.util.Map;
 
+import javax.management.MalformedObjectNameException;
+
 import org.apache.camel.component.jmx.beans.ISimpleMXBean;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 /**
  * Tests that the objectName is created with the hashtable of objectProperties
@@ -28,7 +32,11 @@ import org.junit.Test;
 public class JMXObjectPropertiesTest extends SimpleBeanFixture {
 
     @Test
-    public void testObjectProperties() throws Exception {
+    public void testObjectProperties() {
+        assertDoesNotThrow(() -> doTestObjectProperties());
+    }
+
+    private void doTestObjectProperties() throws MalformedObjectNameException, InterruptedException {
         ISimpleMXBean bean = getSimpleMXBean();
         bean.touch();
         getMockFixture().waitForMessages();
@@ -41,9 +49,9 @@ public class JMXObjectPropertiesTest extends SimpleBeanFixture {
 
     @Override
     protected void initRegistry() {
-        Map<String, String> ht = new Hashtable<String, String>();
+        Map<String, String> ht = new Hashtable<>();
         ht.put("name", "simpleBean");
-        getRegistry().put("myTable", ht);
+        getRegistry().bind("myTable", ht);
     }
 
 }

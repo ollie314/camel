@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,25 +16,25 @@
  */
 package org.apache.camel.maven;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class CamelSpringNamespaceTest {
 
     private CamelSpringNamespace camelSpringNamespace = new CamelSpringNamespace();
 
     @Test
-    public void testSchemaNamespace() throws Exception {
+    public void testSchemaNamespace() {
         assertEquals(Constants.XML_SCHEMA_NAMESPACE_URI,
                 camelSpringNamespace.getNamespaceURI(Constants.XML_SCHEMA_NAMESPACE_PREFIX));
         assertNull(camelSpringNamespace.getNamespaceURI("unregisterdPrefix"));
     }
 
     @Test
-    public void testGetPrefix() throws Exception {
+    public void testGetPrefix() {
         try {
             camelSpringNamespace.getPrefix(Constants.XML_SCHEMA_NAMESPACE_URI);
             fail("UnsupportedOperationException expected");
@@ -44,7 +44,7 @@ public class CamelSpringNamespaceTest {
     }
 
     @Test
-    public void testGetPrefixes() throws Exception {
+    public void testGetPrefixes() {
         try {
             camelSpringNamespace.getPrefixes(Constants.XML_SCHEMA_NAMESPACE_URI);
             fail("UnsupportedOperationException expected");

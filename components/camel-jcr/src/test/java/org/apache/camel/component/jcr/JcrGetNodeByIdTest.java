@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,6 +17,7 @@
 package org.apache.camel.component.jcr;
 
 import javax.jcr.Node;
+import javax.jcr.RepositoryException;
 import javax.jcr.Session;
 import javax.jcr.Value;
 import javax.jcr.ValueFactory;
@@ -25,32 +26,27 @@ import org.apache.camel.EndpointInject;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class JcrGetNodeByIdTest extends JcrRouteTestSupport {
     public static final String CONTENT = "content is here";
     public static final Boolean APPROVED = true;
     private String identifier;
 
-    @EndpointInject(uri = "mock:result")
+    @EndpointInject("mock:result")
     private MockEndpoint result;
 
     @Override
-    @Before
-    public void setUp() throws Exception {
-        super.setUp();
-
+    public void doPreSetup() throws RepositoryException {
         Session session = openSession();
         Node node = session.getRootNode().addNode("home").addNode("test");
         node.setProperty("content.approved", APPROVED);
         node.setProperty("my.contents.property", CONTENT);
-        
-        
+
         ValueFactory valFact = session.getValueFactory();
-        Value[] vals = new Value[] {valFact.createValue("value-1"), valFact.createValue("value-2")};
+        Value[] vals = new Value[] { valFact.createValue("value-1"), valFact.createValue("value-2") };
         node.setProperty("my.multi.valued", vals);
-        
+
         identifier = node.getIdentifier();
 
         session.save();
@@ -65,14 +61,14 @@ public class JcrGetNodeByIdTest extends JcrRouteTestSupport {
 
         Exchange exchange = createExchangeWithBody(identifier);
         template.send("direct:a", exchange);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: jcr-get-node
                 from("direct:a")
                         .setHeader(JcrConstants.JCR_OPERATION, constant(JcrConstants.JCR_GET_BY_ID))
@@ -84,4 +80,3 @@ public class JcrGetNodeByIdTest extends JcrRouteTestSupport {
     }
 
 }
-

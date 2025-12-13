@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,174 +16,171 @@
  */
 package org.apache.camel.component.kubernetes.producer;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
-import io.fabric8.kubernetes.api.model.PersistentVolume;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaimBuilder;
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaimListBuilder;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaimSpec;
-import io.fabric8.kubernetes.api.model.Quantity;
-import io.fabric8.kubernetes.api.model.ResourceRequirements;
-
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaimSpecBuilder;
+import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.NamespacedKubernetesClient;
+import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient;
+import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer;
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.kubernetes.KubernetesConstants;
 import org.apache.camel.component.kubernetes.KubernetesTestSupport;
-import org.apache.camel.util.ObjectHelper;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class KubernetesPersistentVolumesClaimsProducerTest extends
-        KubernetesTestSupport {
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-    @Test
-    public void listTest() throws Exception {
-        if (ObjectHelper.isEmpty(authToken)) {
-            return;
-        }
-        List<PersistentVolumeClaim> result = template.requestBody(
-                "direct:list", "", List.class);
+@EnableKubernetesMockClient
+public class KubernetesPersistentVolumesClaimsProducerTest extends KubernetesTestSupport {
 
-        assertTrue(result.size() == 0);
+    KubernetesMockServer server;
+    NamespacedKubernetesClient client;
+
+    @BindToRegistry("kubernetesClient")
+    public KubernetesClient getClient() {
+        return client;
     }
 
     @Test
-    public void listByLabelsTest() throws Exception {
-        if (ObjectHelper.isEmpty(authToken)) {
-            return;
-        }
-        Exchange ex = template.request("direct:listByLabels", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                        "default");
-                Map<String, String> labels = new HashMap<String, String>();
-                labels.put("component", "elasticsearch");
-                exchange.getIn()
-                        .setHeader(
-                                KubernetesConstants.KUBERNETES_PERSISTENT_VOLUMES_CLAIMS_LABELS,
-                                labels);
-            }
-        });
+    void listTest() {
+        server.expect().withPath("/api/v1/persistentvolumeclaims")
+                .andReturn(200,
+                        new PersistentVolumeClaimListBuilder().addNewItem().and().addNewItem().and().addNewItem().and().build())
+                .once();
+        server.expect().withPath("/api/v1/namespaces/test/persistentvolumeclaims")
+                .andReturn(200, new PersistentVolumeClaimListBuilder().addNewItem().and().addNewItem().and().build())
+                .once();
+        List<?> result = template.requestBody("direct:list", "", List.class);
+        assertEquals(3, result.size());
 
-        List<PersistentVolume> result = ex.getOut().getBody(List.class);
+        Exchange ex = template.request("direct:list",
+                exchange -> exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test"));
+        assertEquals(2, ex.getMessage().getBody(List.class).size());
     }
 
     @Test
-    public void createListAndDeletePersistentVolumeClaim() throws Exception {
-        if (ObjectHelper.isEmpty(authToken)) {
-            return;
-        }
-        Exchange ex = template.request("direct:create", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                        "default");
-                exchange.getIn()
-                        .setHeader(
-                                KubernetesConstants.KUBERNETES_PERSISTENT_VOLUME_CLAIM_NAME,
-                                "test");
-                Map<String, String> labels = new HashMap<String, String>();
-                labels.put("this", "rocks");
-                exchange.getIn()
-                        .setHeader(
-                                KubernetesConstants.KUBERNETES_PERSISTENT_VOLUMES_CLAIMS_LABELS,
-                                labels);
-                PersistentVolumeClaimSpec pvcSpec = new PersistentVolumeClaimSpec();
-                ResourceRequirements rr = new ResourceRequirements();
-                Map<String, Quantity> mp = new HashMap<String, Quantity>();
-                mp.put("storage", new Quantity("100"));
-                rr.setLimits(mp);
-                Map<String, Quantity> req = new HashMap<String, Quantity>();
-                req.put("storage", new Quantity("100"));
-                rr.setRequests(req);
-                pvcSpec.setResources(rr);
-                pvcSpec.setVolumeName("vol001");
-                List<String> access = new ArrayList<String>();
-                access.add("ReadWriteOnce");
-                pvcSpec.setAccessModes(access);
-                exchange.getIn()
-                        .setHeader(
-                                KubernetesConstants.KUBERNETES_PERSISTENT_VOLUME_CLAIM_SPEC,
-                                pvcSpec);
-            }
+    void listByLabelsTest() throws Exception {
+        Map<String, String> labels = Map.of(
+                "key1", "value1",
+                "key2", "value2");
+
+        String urlEncodedLabels = toUrlEncoded(labels.entrySet().stream().map(e -> e.getKey() + "=" + e.getValue())
+                .collect(Collectors.joining(",")));
+
+        server.expect().withPath("/api/v1/persistentvolumeclaims?labelSelector=" + urlEncodedLabels)
+                .andReturn(200,
+                        new PersistentVolumeClaimListBuilder().addNewItem().and().addNewItem().and().addNewItem().and().build())
+                .once();
+        server.expect().withPath("/api/v1/namespaces/test/persistentvolumeclaims?labelSelector=" + urlEncodedLabels)
+                .andReturn(200, new PersistentVolumeClaimListBuilder().addNewItem().and().addNewItem().and().build())
+                .once();
+        Exchange ex = template.request("direct:listByLabels", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_PERSISTENT_VOLUMES_CLAIMS_LABELS, labels);
         });
 
-        PersistentVolumeClaim pvc = ex.getOut().getBody(
-                PersistentVolumeClaim.class);
+        assertEquals(3, ex.getMessage().getBody(List.class).size());
 
-        assertEquals(pvc.getMetadata().getName(), "test");
-
-        ex = template.request("direct:listByLabels", new Processor() {
-
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                        "default");
-                Map<String, String> labels = new HashMap<String, String>();
-                labels.put("this", "rocks");
-                exchange.getIn()
-                        .setHeader(
-                                KubernetesConstants.KUBERNETES_PERSISTENT_VOLUMES_CLAIMS_LABELS,
-                                labels);
-            }
+        ex = template.request("direct:listByLabels", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_PERSISTENT_VOLUMES_CLAIMS_LABELS, labels);
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
         });
 
-        List<PersistentVolumeClaim> result = ex.getOut().getBody(List.class);
+        assertEquals(2, ex.getMessage().getBody(List.class).size());
+    }
 
-        boolean pvcExists = false;
-        Iterator<PersistentVolumeClaim> it = result.iterator();
-        while (it.hasNext()) {
-            PersistentVolumeClaim pvcLocal = it.next();
-            if ("test".equalsIgnoreCase(pvcLocal.getMetadata().getName())) {
-                pvcExists = true;
-            }
-        }
+    @Test
+    void createPersistentVolumeClaim() {
+        Map<String, String> labels = Map.of("my.label.key", "my.label.value");
+        PersistentVolumeClaimSpec spec = new PersistentVolumeClaimSpecBuilder().withVolumeName("SomeVolumeName").build();
+        PersistentVolumeClaim vc1 = new PersistentVolumeClaimBuilder().withNewMetadata().withName("vc1").withNamespace("test")
+                .withLabels(labels).and()
+                .withSpec(spec).build();
+        server.expect().post().withPath("/api/v1/namespaces/test/persistentvolumeclaims").andReturn(200, vc1).once();
 
-        assertTrue(pvcExists);
-
-        ex = template.request("direct:delete", new Processor() {
-
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                        "default");
-                exchange.getIn()
-                        .setHeader(
-                                KubernetesConstants.KUBERNETES_PERSISTENT_VOLUME_CLAIM_NAME,
-                                "test");
-            }
+        Exchange ex = template.request("direct:create", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_PERSISTENT_VOLUMES_CLAIMS_LABELS, labels);
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_PERSISTENT_VOLUME_CLAIM_NAME, "vc1");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_PERSISTENT_VOLUME_CLAIM_SPEC, spec);
         });
 
-        boolean pvcDeleted = ex.getOut().getBody(Boolean.class);
+        PersistentVolumeClaim result = ex.getMessage().getBody(PersistentVolumeClaim.class);
+
+        assertEquals("test", result.getMetadata().getNamespace());
+        assertEquals("vc1", result.getMetadata().getName());
+        assertEquals(labels, result.getMetadata().getLabels());
+        assertEquals("SomeVolumeName", result.getSpec().getVolumeName());
+    }
+
+    @Test
+    void updatePersistentVolumeClaim() {
+        Map<String, String> labels = Map.of("my.label.key", "my.label.value");
+        PersistentVolumeClaimSpec spec = new PersistentVolumeClaimSpecBuilder().withVolumeName("SomeVolumeName").build();
+        PersistentVolumeClaim vc1 = new PersistentVolumeClaimBuilder().withNewMetadata().withName("vc1").withNamespace("test")
+                .withLabels(labels).and()
+                .withSpec(spec).build();
+        server.expect().get().withPath("/api/v1/namespaces/test/persistentvolumeclaims/vc1")
+                .andReturn(200, new PersistentVolumeClaimBuilder().withNewMetadata().withName("vc1").withNamespace("test")
+                        .endMetadata().build())
+                .once();
+        server.expect().put().withPath("/api/v1/namespaces/test/persistentvolumeclaims/vc1").andReturn(200, vc1).once();
+
+        Exchange ex = template.request("direct:update", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_PERSISTENT_VOLUMES_CLAIMS_LABELS, labels);
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_PERSISTENT_VOLUME_CLAIM_NAME, "vc1");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_PERSISTENT_VOLUME_CLAIM_SPEC, spec);
+        });
+
+        PersistentVolumeClaim result = ex.getMessage().getBody(PersistentVolumeClaim.class);
+
+        assertEquals("test", result.getMetadata().getNamespace());
+        assertEquals("vc1", result.getMetadata().getName());
+        assertEquals(labels, result.getMetadata().getLabels());
+        assertEquals("SomeVolumeName", result.getSpec().getVolumeName());
+    }
+
+    @Test
+    void deletePersistentVolumeClaim() {
+        ObjectMeta meta = new ObjectMeta();
+        meta.setName("pvc1");
+        server.expect().withPath("/api/v1/namespaces/test/persistentvolumeclaims/pvc1")
+                .andReturn(200, new PersistentVolumeClaimBuilder().withMetadata(meta).build()).once();
+        Exchange ex = template.request("direct:delete", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_PERSISTENT_VOLUME_CLAIM_NAME, "pvc1");
+        });
+
+        boolean pvcDeleted = ex.getMessage().getBody(Boolean.class);
 
         assertTrue(pvcDeleted);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("direct:list")
-                        .toF("kubernetes://%s?oauthToken=%s&category=persistentVolumesClaims&operation=listPersistentVolumesClaims",
-                                host, authToken);
-                from("direct:listByLabels")
-                        .toF("kubernetes://%s?oauthToken=%s&category=persistentVolumesClaims&operation=listPersistentVolumesClaimsByLabels",
-                                host, authToken);
-                from("direct:create")
-                        .toF("kubernetes://%s?oauthToken=%s&category=persistentVolumesClaims&operation=createPersistentVolumeClaim",
-                                host, authToken);
-                from("direct:delete")
-                        .toF("kubernetes://%s?oauthToken=%s&category=persistentVolumesClaims&operation=deletePersistentVolumeClaim",
-                                host, authToken);
+            public void configure() {
+                from("direct:list").to(
+                        "kubernetes-persistent-volumes-claims:///?kubernetesClient=#kubernetesClient&operation=listPersistentVolumesClaims");
+                from("direct:listByLabels").to(
+                        "kubernetes-persistent-volumes-claims:///?kubernetesClient=#kubernetesClient&operation=listPersistentVolumesClaimsByLabels");
+                from("direct:create").to(
+                        "kubernetes-persistent-volumes-claims:///?kubernetesClient=#kubernetesClient&operation=createPersistentVolumeClaim");
+                from("direct:update").to(
+                        "kubernetes-persistent-volumes-claims:///?kubernetesClient=#kubernetesClient&operation=updatePersistentVolumeClaim");
+                from("direct:delete").to(
+                        "kubernetes-persistent-volumes-claims:///?kubernetesClient=#kubernetesClient&operation=deletePersistentVolumeClaim");
             }
         };
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,295 +16,223 @@
  */
 package org.apache.camel.component.kubernetes.producer;
 
-import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
-import io.fabric8.kubernetes.api.model.PodTemplateSpec;
-import io.fabric8.kubernetes.api.model.PodTemplateSpecBuilder;
 import io.fabric8.kubernetes.api.model.ReplicationController;
+import io.fabric8.kubernetes.api.model.ReplicationControllerBuilder;
+import io.fabric8.kubernetes.api.model.ReplicationControllerListBuilder;
 import io.fabric8.kubernetes.api.model.ReplicationControllerSpec;
-
+import io.fabric8.kubernetes.api.model.ReplicationControllerSpecBuilder;
+import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.NamespacedKubernetesClient;
+import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient;
+import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer;
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.kubernetes.KubernetesConstants;
 import org.apache.camel.component.kubernetes.KubernetesTestSupport;
-import org.apache.camel.util.ObjectHelper;
-import org.junit.Test;
+import org.awaitility.Awaitility;
+import org.junit.jupiter.api.Test;
 
-public class KubernetesReplicationControllersProducerTest extends
-        KubernetesTestSupport {
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-    @Test
-    public void listTest() throws Exception {
-        if (ObjectHelper.isEmpty(authToken)) {
-            return;
-        }
-        List<ReplicationController> result = template.requestBody(
-                "direct:list", "", List.class);
+@EnableKubernetesMockClient
+public class KubernetesReplicationControllersProducerTest extends KubernetesTestSupport {
 
-        boolean fabric8Exists = false;
+    KubernetesMockServer server;
+    NamespacedKubernetesClient client;
 
-        Iterator<ReplicationController> it = result.iterator();
-        while (it.hasNext()) {
-            ReplicationController rc = it.next();
-            if ("fabric8".equalsIgnoreCase(rc.getMetadata().getName())) {
-                fabric8Exists = true;
-            }
-        }
-
-        assertTrue(fabric8Exists);
+    @BindToRegistry("kubernetesClient")
+    public KubernetesClient getClient() {
+        return client;
     }
 
     @Test
-    public void listByLabelsTest() throws Exception {
-        if (ObjectHelper.isEmpty(authToken)) {
-            return;
-        }
-        Exchange ex = template.request("direct:listByLabels", new Processor() {
+    void listTest() {
+        server.expect().withPath("/api/v1/replicationcontrollers")
+                .andReturn(200,
+                        new ReplicationControllerListBuilder().addNewItem().and().addNewItem().and().addNewItem().and().build())
+                .once();
+        server.expect().withPath("/api/v1/namespaces/test/replicationcontrollers")
+                .andReturn(200, new ReplicationControllerListBuilder().addNewItem().and().addNewItem().and().build())
+                .once();
+        List<?> result = template.requestBody("direct:list", "", List.class);
+        assertEquals(3, result.size());
 
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                        "default");
-                Map<String, String> labels = new HashMap<String, String>();
-                labels.put("component", "elasticsearch");
-                exchange.getIn()
-                        .setHeader(
-                                KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLERS_LABELS,
-                                labels);
-            }
+        Exchange ex = template.request("direct:list",
+                exchange -> exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test"));
+        assertEquals(2, ex.getMessage().getBody(List.class).size());
+    }
+
+    @Test
+    void listByLabelsTest() throws Exception {
+        Map<String, String> labels = Map.of(
+                "key1", "value1",
+                "key2", "value2");
+
+        String urlEncodedLabels = toUrlEncoded(labels.entrySet().stream().map(e -> e.getKey() + "=" + e.getValue())
+                .collect(Collectors.joining(",")));
+
+        server.expect().withPath("/api/v1/replicationcontrollers?labelSelector=" + urlEncodedLabels)
+                .andReturn(200,
+                        new ReplicationControllerListBuilder().addNewItem().and().addNewItem().and().addNewItem().and().build())
+                .once();
+        server.expect().withPath("/api/v1/namespaces/test/replicationcontrollers?labelSelector=" + urlEncodedLabels)
+                .andReturn(200, new ReplicationControllerListBuilder().addNewItem().and().addNewItem().and().build())
+                .once();
+        Exchange ex = template.request("direct:listByLabels",
+                exchange -> exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLERS_LABELS, labels));
+
+        assertEquals(3, ex.getMessage().getBody(List.class).size());
+
+        ex = template.request("direct:listByLabels", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLERS_LABELS, labels);
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
         });
 
-        List<ReplicationController> result = ex.getOut().getBody(List.class);
-
-        boolean rcExists = false;
-        Iterator<ReplicationController> it = result.iterator();
-        while (it.hasNext()) {
-            ReplicationController rc = it.next();
-            if ("elasticsearch".equalsIgnoreCase(rc.getMetadata().getName())) {
-                rcExists = true;
-            }
-        }
-
-        assertFalse(rcExists);
+        assertEquals(2, ex.getMessage().getBody(List.class).size());
     }
 
     @Test
-    public void getReplicationControllerTest() throws Exception {
-        if (ObjectHelper.isEmpty(authToken)) {
-            return;
-        }
-        Exchange ex = template.request("direct:getReplicationController",
-                new Processor() {
+    void getReplicationControllerTest() {
+        ReplicationController rc1
+                = new ReplicationControllerBuilder().withNewMetadata().withName("rc1").withNamespace("test").and().build();
 
-                    @Override
-                    public void process(Exchange exchange) throws Exception {
-                        exchange.getIn().setHeader(
-                                KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                                "default");
-                        exchange.getIn()
-                                .setHeader(
-                                        KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLER_NAME,
-                                        "elasticsearch");
-                    }
-                });
+        server.expect().withPath("/api/v1/namespaces/test/replicationcontrollers/rc1").andReturn(200, rc1).once();
+        Exchange ex = template.request("direct:getReplicationController", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLER_NAME, "rc1");
+        });
 
-        ReplicationController result = ex.getOut().getBody(
-                ReplicationController.class);
+        ReplicationController result = ex.getMessage().getBody(ReplicationController.class);
 
-        assertNull(result);
+        assertNotNull(result);
     }
 
     @Test
-    public void createAndDeleteReplicationController() throws Exception {
-        if (ObjectHelper.isEmpty(authToken)) {
-            return;
-        }
-        Exchange ex = template.request("direct:createReplicationController",
-                new Processor() {
+    void createReplicationController() {
+        Map<String, String> labels = Map.of("my.label.key", "my.label.value");
+        ReplicationControllerSpec spec = new ReplicationControllerSpecBuilder().withReplicas(13).build();
+        ReplicationController rc1 = new ReplicationControllerBuilder().withNewMetadata().withName("rc1").withNamespace("test")
+                .withLabels(labels).and()
+                .withSpec(spec).build();
+        server.expect().post().withPath("/api/v1/namespaces/test/replicationcontrollers").andReturn(200, rc1).once();
 
-                    @Override
-                    public void process(Exchange exchange) throws Exception {
-                        exchange.getIn().setHeader(
-                                KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                                "default");
-                        exchange.getIn()
-                                .setHeader(
-                                        KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLER_NAME,
-                                        "test");
-                        Map<String, String> labels = new HashMap<String, String>();
-                        labels.put("this", "rocks");
-                        exchange.getIn()
-                                .setHeader(
-                                        KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLERS_LABELS,
-                                        labels);
-                        ReplicationControllerSpec rcSpec = new ReplicationControllerSpec();
-                        rcSpec.setReplicas(2);
-                        PodTemplateSpecBuilder builder = new PodTemplateSpecBuilder();
-                        PodTemplateSpec t = builder.withNewMetadata()
-                                .withName("nginx-template")
-                                .addToLabels("server", "nginx").endMetadata()
-                                .withNewSpec().addNewContainer()
-                                .withName("wildfly").withImage("jboss/wildfly")
-                                .addNewPort().withContainerPort(80).endPort()
-                                .endContainer().endSpec().build();
-                        rcSpec.setTemplate(t);
-                        Map<String, String> selectorMap = new HashMap<String, String>();
-                        selectorMap.put("server", "nginx");
-                        rcSpec.setSelector(selectorMap);
-                        exchange.getIn()
-                                .setHeader(
-                                        KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLER_SPEC,
-                                        rcSpec);
-                    }
-                });
+        Exchange ex = template.request("direct:createReplicationController", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLERS_LABELS, labels);
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLER_NAME, "rc1");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLER_SPEC, spec);
+        });
 
-        ReplicationController rc = ex.getOut().getBody(
-                ReplicationController.class);
+        ReplicationController result = ex.getMessage().getBody(ReplicationController.class);
 
-        assertEquals(rc.getMetadata().getName(), "test");
+        assertEquals("test", result.getMetadata().getNamespace());
+        assertEquals("rc1", result.getMetadata().getName());
+        assertEquals(labels, result.getMetadata().getLabels());
+        assertEquals(13, result.getSpec().getReplicas());
+    }
 
-        ex = template.request("direct:deleteReplicationController",
-                new Processor() {
+    @Test
+    void updateReplicationController() {
+        Map<String, String> labels = Map.of("my.label.key", "my.label.value");
+        ReplicationControllerSpec spec = new ReplicationControllerSpecBuilder().withReplicas(13).build();
+        ReplicationController rc1 = new ReplicationControllerBuilder().withNewMetadata().withName("rc1").withNamespace("test")
+                .withLabels(labels).and()
+                .withSpec(spec).build();
+        server.expect().get().withPath("/api/v1/namespaces/test/replicationcontrollers/rc1")
+                .andReturn(200, new ReplicationControllerBuilder().withNewMetadata().withName("rc1").withNamespace("test")
+                        .endMetadata().build())
+                .once();
+        server.expect().put().withPath("/api/v1/namespaces/test/replicationcontrollers/rc1").andReturn(200, rc1).once();
 
-                    @Override
-                    public void process(Exchange exchange) throws Exception {
-                        exchange.getIn().setHeader(
-                                KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                                "default");
-                        exchange.getIn()
-                                .setHeader(
-                                        KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLER_NAME,
-                                        "test");
-                    }
-                });
+        Exchange ex = template.request("direct:updateReplicationController", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLERS_LABELS, labels);
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLER_NAME, "rc1");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLER_SPEC, spec);
+        });
 
-        boolean rcDeleted = ex.getOut().getBody(Boolean.class);
+        ReplicationController result = ex.getMessage().getBody(ReplicationController.class);
+
+        assertEquals("test", result.getMetadata().getNamespace());
+        assertEquals("rc1", result.getMetadata().getName());
+        assertEquals(labels, result.getMetadata().getLabels());
+        assertEquals(13, result.getSpec().getReplicas());
+    }
+
+    @Test
+    void deleteReplicationController() {
+        server.expect().withPath("/api/v1/namespaces/test/replicationcontrollers/repl1")
+                .andReturn(200, new ReplicationControllerBuilder().withNewMetadata().withName("repl1")
+                        .withResourceVersion("1").endMetadata().withNewSpec().withReplicas(0).endSpec().withNewStatus()
+                        .withReplicas(1).endStatus().build())
+                .once();
+
+        server.expect().withPath("/api/v1/namespaces/test/replicationcontrollers/repl1")
+                .andReturn(200, new ReplicationControllerBuilder().withNewMetadata().withName("repl1")
+                        .withResourceVersion("1").endMetadata().withNewSpec().withReplicas(0).endSpec().withNewStatus()
+                        .withReplicas(0).endStatus().build())
+                .times(5);
+
+        Exchange ex = template.request("direct:deleteReplicationController", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLER_NAME, "repl1");
+        });
+
+        boolean rcDeleted = ex.getMessage().getBody(Boolean.class);
 
         assertTrue(rcDeleted);
     }
-    
+
     @Test
-    public void createScaleAndDeleteReplicationController() throws Exception {
-        if (ObjectHelper.isEmpty(authToken)) {
-            return;
-        }
-        Exchange ex = template.request("direct:createReplicationController",
-                new Processor() {
+    void scaleReplicationController() {
+        server.expect().withPath("/api/v1/namespaces/test/replicationcontrollers/repl1")
+                .andReturn(200, new ReplicationControllerBuilder().withNewMetadata().withName("repl1")
+                        .withResourceVersion("1").endMetadata().withNewSpec().withReplicas(5).endSpec().withNewStatus()
+                        .withReplicas(5).endStatus().build())
+                .once();
 
-                    @Override
-                    public void process(Exchange exchange) throws Exception {
-                        exchange.getIn().setHeader(
-                                KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                                "default");
-                        exchange.getIn()
-                                .setHeader(
-                                        KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLER_NAME,
-                                        "test");
-                        Map<String, String> labels = new HashMap<String, String>();
-                        labels.put("this", "rocks");
-                        exchange.getIn()
-                                .setHeader(
-                                        KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLERS_LABELS,
-                                        labels);
-                        ReplicationControllerSpec rcSpec = new ReplicationControllerSpec();
-                        rcSpec.setReplicas(1);
-                        PodTemplateSpecBuilder builder = new PodTemplateSpecBuilder();
-                        PodTemplateSpec t = builder.withNewMetadata()
-                                .withName("nginx-template")
-                                .addToLabels("server", "nginx").endMetadata()
-                                .withNewSpec().addNewContainer()
-                                .withName("wildfly").withImage("jboss/wildfly")
-                                .addNewPort().withContainerPort(80).endPort()
-                                .endContainer().endSpec().build();
-                        rcSpec.setTemplate(t);
-                        Map<String, String> selectorMap = new HashMap<String, String>();
-                        selectorMap.put("server", "nginx");
-                        rcSpec.setSelector(selectorMap);
-                        exchange.getIn()
-                                .setHeader(
-                                        KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLER_SPEC,
-                                        rcSpec);
-                    }
-                });
+        server.expect().withPath("/api/v1/namespaces/test/replicationcontrollers/repl1/scale")
+                .andReturn(200, new ReplicationControllerBuilder().withNewMetadata().withName("repl1")
+                        .withResourceVersion("1").endMetadata().withNewSpec().withReplicas(5).endSpec().withNewStatus()
+                        .withReplicas(5).endStatus().build())
+                .always();
+        Exchange ex = template.request("direct:scaleReplicationController", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLER_NAME, "repl1");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLER_REPLICAS, 1);
+        });
 
-        ReplicationController rc = ex.getOut().getBody(
-                ReplicationController.class);
-
-        assertEquals(rc.getMetadata().getName(), "test");
-        
-        ex = template.request("direct:scaleReplicationController",
-                new Processor() {
-
-                    @Override
-                    public void process(Exchange exchange) throws Exception {
-                        exchange.getIn().setHeader(
-                                KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                                "default");
-                        exchange.getIn()
-                                .setHeader(
-                                        KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLER_NAME,
-                                        "test");
-                        exchange.getIn()
-                                .setHeader(
-                                        KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLER_REPLICAS,
-                                        2);
-                    }
-                });
-        
-        Thread.sleep(10000);
-
-        Integer replicas = ex.getOut().getBody(Integer.class);
-        
-        assertTrue(replicas == 2);
-
-        ex = template.request("direct:deleteReplicationController",
-                new Processor() {
-
-                    @Override
-                    public void process(Exchange exchange) throws Exception {
-                        exchange.getIn().setHeader(
-                                KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                                "default");
-                        exchange.getIn()
-                                .setHeader(
-                                        KubernetesConstants.KUBERNETES_REPLICATION_CONTROLLER_NAME,
-                                        "test");
-                    }
-                });
-
-        boolean rcDeleted = ex.getOut().getBody(Boolean.class);
-
-        assertTrue(rcDeleted);
+        Awaitility.await().atMost(3, TimeUnit.SECONDS).untilAsserted(
+                () -> assertEquals(5, ex.getMessage().getBody(Integer.class)));
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("direct:list")
-                        .toF("kubernetes://%s?oauthToken=%s&category=replicationControllers&operation=listReplicationControllers",
-                                host, authToken);
-                from("direct:listByLabels")
-                        .toF("kubernetes://%s?oauthToken=%s&category=replicationControllers&operation=listReplicationControllersByLabels",
-                                host, authToken);
-                from("direct:getReplicationController")
-                        .toF("kubernetes://%s?oauthToken=%s&category=replicationControllers&operation=getReplicationController",
-                                host, authToken);
-                from("direct:createReplicationController")
-                        .toF("kubernetes://%s?oauthToken=%s&category=replicationControllers&operation=createReplicationController",
-                                host, authToken);
-                from("direct:scaleReplicationController")
-                        .toF("kubernetes://%s?oauthToken=%s&category=replicationControllers&operation=scaleReplicationController",
-                                host, authToken);
-                from("direct:deleteReplicationController")
-                        .toF("kubernetes://%s?oauthToken=%s&category=replicationControllers&operation=deleteReplicationController",
-                                host, authToken);
+            public void configure() {
+                from("direct:list").to(
+                        "kubernetes-replication-controllers:///?kubernetesClient=#kubernetesClient&operation=listReplicationControllers");
+                from("direct:listByLabels").to(
+                        "kubernetes-replication-controllers:///?kubernetesClient=#kubernetesClient&operation=listReplicationControllersByLabels");
+                from("direct:getReplicationController").to(
+                        "kubernetes-replication-controllers:///?kubernetesClient=#kubernetesClient&operation=getReplicationController");
+                from("direct:scaleReplicationController").to(
+                        "kubernetes-replication-controllers:///?kubernetesClient=#kubernetesClient&operation=scaleReplicationController");
+                from("direct:createReplicationController").to(
+                        "kubernetes-replication-controllers:///?kubernetesClient=#kubernetesClient&operation=createReplicationController");
+                from("direct:updateReplicationController").to(
+                        "kubernetes-replication-controllers:///?kubernetesClient=#kubernetesClient&operation=updateReplicationController");
+                from("direct:deleteReplicationController").to(
+                        "kubernetes-replication-controllers:///?kubernetesClient=#kubernetesClient&operation=deleteReplicationController");
             }
         };
     }

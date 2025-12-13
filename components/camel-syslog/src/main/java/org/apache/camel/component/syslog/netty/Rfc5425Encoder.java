@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,7 +16,7 @@
  */
 package org.apache.camel.component.syslog.netty;
 
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import io.netty.buffer.ByteBuf;
@@ -25,7 +25,6 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandler.Sharable;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToMessageEncoder;
-
 
 @Sharable
 public class Rfc5425Encoder extends MessageToMessageEncoder<ByteBuf> {
@@ -37,8 +36,8 @@ public class Rfc5425Encoder extends MessageToMessageEncoder<ByteBuf> {
 
             String headerString = length + " ";
 
-            ByteBuf header = ByteBufAllocator.DEFAULT.buffer(headerString.getBytes(Charset.forName("UTF8")).length);
-            header.writeBytes(headerString.getBytes(Charset.forName("UTF8")));
+            ByteBuf header = ByteBufAllocator.DEFAULT.buffer(headerString.getBytes(StandardCharsets.UTF_8).length);
+            header.writeBytes(headerString.getBytes(StandardCharsets.UTF_8));
 
             Unpooled.buffer();
 

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,6 +17,7 @@
 package org.apache.camel.dataformat.bindy;
 
 import java.util.Locale;
+
 import org.apache.camel.dataformat.bindy.annotation.BindyConverter;
 import org.apache.camel.util.ObjectHelper;
 
@@ -122,6 +123,8 @@ public class FormattingOptions {
         if (ObjectHelper.isNotEmpty(locale)) {
             String[] result = locale.split("-");
             if (result.length <= 2) {
+                // TODO Update once baseline is Java 21
+                // answer = result.length == 1 ? Locale.of(result[0]) : Locale.of(result[0], result[1]);
                 answer = result.length == 1 ? new Locale(result[0]) : new Locale(result[0], result[1]);
             }
         }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,19 +16,26 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
-
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+public class JmsInOnlyWithReplyToDisabledTest extends AbstractJMSTest {
 
-/**
- * @version 
- */
-public class JmsInOnlyWithReplyToDisabledTest extends CamelTestSupport {
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
     public void testSendInOnlyWithReplyTo() throws Exception {
@@ -38,32 +45,42 @@ public class JmsInOnlyWithReplyToDisabledTest extends CamelTestSupport {
 
         template.sendBody("direct:start", "World");
 
-        assertMockEndpointsSatisfied();
-    }
-
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-        return camelContext;
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected String getComponentName() {
+        return "activemq";
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .to("activemq:queue:foo?replyTo=queue:bar&disableReplyTo=true")
-                    .to("mock:done");
+                        .to("activemq:queue:JmsInOnlyWithReplyToDisabledTestRequest?replyTo=queue:JmsInOnlyWithReplyToDisabledTestReply&disableReplyTo=true")
+                        .to("mock:done");
 
-                from("activemq:queue:foo")
-                    .to("mock:foo")
-                    .transform(body().prepend("Bye "));
+                from("activemq:queue:JmsInOnlyWithReplyToDisabledTestRequest")
+                        .to("mock:foo")
+                        .transform(body().prepend("Bye "));
 
-                from("activemq:queue:bar")
-                    .to("mock:bar");
+                from("activemq:queue:JmsInOnlyWithReplyToDisabledTestReply")
+                        .to("mock:bar");
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
     }
 }

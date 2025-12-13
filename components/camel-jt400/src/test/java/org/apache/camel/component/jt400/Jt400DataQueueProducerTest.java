@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,8 +16,9 @@
  */
 package org.apache.camel.component.jt400;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 public class Jt400DataQueueProducerTest extends Jt400TestSupport {
 
@@ -26,9 +27,7 @@ public class Jt400DataQueueProducerTest extends Jt400TestSupport {
     private Jt400DataQueueProducer producer;
 
     @Override
-    @Before
-    public void setUp() throws Exception {
-        super.setUp();
+    public void doPostSetup() {
         Jt400Endpoint endpoint = resolveMandatoryEndpoint(
                 "jt400://user:" + PASSWORD + "@host/qsys.lib/library.lib/queue.dtaq?connectionPool=#mockPool",
                 Jt400Endpoint.class);

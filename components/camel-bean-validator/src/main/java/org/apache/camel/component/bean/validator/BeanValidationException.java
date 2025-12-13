@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,15 +18,13 @@ package org.apache.camel.component.bean.validator;
 
 import java.util.Set;
 
-import javax.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolation;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.ValidationException;
 
 /**
  * A bean validation exception occurred
- * 
- * @version 
  */
 public class BeanValidationException extends ValidationException {
 
@@ -40,18 +38,22 @@ public class BeanValidationException extends ValidationException {
     }
 
     protected static String buildMessage(Set<ConstraintViolation<Object>> constraintViolations, Object bean) {
-        StringBuilder buffer = new StringBuilder("Validation failed for: ");
+        StringBuilder buffer = new StringBuilder(256);
+
+        buffer.append("Validation failed for: ");
         buffer.append(bean);
 
         buffer.append(" errors: [");
         for (ConstraintViolation<Object> constraintViolation : constraintViolations) {
-            buffer.append("property: " + constraintViolation.getPropertyPath() + "; value: " + constraintViolation.getInvalidValue() + "; constraint: " + constraintViolation.getMessage() + "; ");
+            buffer.append("property: ").append(constraintViolation.getPropertyPath()).append("; value: ")
+                    .append(constraintViolation.getInvalidValue()).append("; constraint: ")
+                    .append(constraintViolation.getMessage()).append("; ");
         }
-        buffer.append("]");
+        buffer.append(']');
 
         return buffer.toString();
     }
-    
+
     public Set<ConstraintViolation<Object>> getConstraintViolations() {
         return constraintViolations;
     }

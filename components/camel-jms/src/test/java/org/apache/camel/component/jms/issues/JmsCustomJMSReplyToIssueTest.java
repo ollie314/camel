@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,28 +16,37 @@
  */
 package org.apache.camel.component.jms.issues;
 
-import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
-import javax.jms.TextMessage;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Queue;
+import jakarta.jms.TextMessage;
 
 import org.apache.camel.CamelContext;
-import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.jms.CamelJmsTestHelper;
+import org.apache.camel.component.jms.AbstractJMSTest;
 import org.apache.camel.component.jms.JmsComponent;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.jms.core.JmsTemplate;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/**
- * @version 
- */
-public class JmsCustomJMSReplyToIssueTest extends CamelTestSupport {
+@Timeout(15)
+public class JmsCustomJMSReplyToIssueTest extends AbstractJMSTest {
 
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
     private JmsComponent amq;
 
     @Test
@@ -48,47 +57,57 @@ public class JmsCustomJMSReplyToIssueTest extends CamelTestSupport {
         // start a inOnly route
         template.sendBody("direct:start", "Hello World");
 
-        // now consume using something that is not Camel
-        Thread.sleep(1000);
-
         JmsTemplate jms = new JmsTemplate(amq.getConfiguration().getConnectionFactory());
-        TextMessage msg = (TextMessage) jms.receive("in");
+        TextMessage msg = (TextMessage) jms.receive("JmsCustomJMSReplyToIssueTest.in");
         assertEquals("Hello World", msg.getText());
 
-        // there should be a JMSReplyTo so we know where to send the reply
-        Destination replyTo = msg.getJMSReplyTo();
-        assertEquals("queue://myReplyQueue", replyTo.toString());
+        // there should be a JMSReplyTo - and it should be a Queue - so we know where to send the reply
+        Queue replyTo = (Queue) msg.getJMSReplyTo();
+        assertEquals("ActiveMQQueue[JmsCustomJMSReplyToIssueTest.reply]", replyTo.toString());
 
         // send reply
-        template.sendBody("activemq:" + replyTo.toString(), "Bye World");
+        template.sendBody("activemq:" + replyTo.getQueueName(), "Bye World");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-        amq = camelContext.getComponent("activemq", JmsComponent.class);
-
-        return camelContext;
+    @Override
+    protected String getComponentName() {
+        return "activemq";
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected JmsComponent buildComponent(ConnectionFactory connectionFactory) {
+        amq = super.buildComponent(connectionFactory);
+
+        return amq;
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("direct:start").process(new Processor() {
-                    public void process(Exchange exchange) throws Exception {
-                        exchange.getOut().setBody("Hello World");
-                        // set the JMSReplyTo to force sending the reply here
-                        exchange.getOut().setHeader("JMSReplyTo", "myReplyQueue");
-                    }
+            public void configure() {
                 // must preserve QoS so Camel will send JMSReplyTo even if message is inOnly
-                }).to("activemq:queue:in?preserveMessageQos=true");
+                from("direct:start").process(exchange -> {
+                    exchange.getMessage().setBody("Hello World");
+                    // set the JMSReplyTo to force sending the reply here
+                    exchange.getMessage().setHeader("JMSReplyTo", "JmsCustomJMSReplyToIssueTest.reply");
+                }).to("activemq:queue:JmsCustomJMSReplyToIssueTest.in?preserveMessageQos=true");
 
-                from("activemq:queue:myReplyQueue").to("mock:result");
+                from("activemq:queue:JmsCustomJMSReplyToIssueTest.reply").to("mock:result");
             }
         };
     }
 
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
+    }
 }

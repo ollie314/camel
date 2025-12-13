@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,27 +16,29 @@
  */
 package org.apache.camel.component.netty;
 
+import io.netty.channel.ChannelHandler;
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.impl.JndiRegistry;
+import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.util.ObjectHelper;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class NettyCustomCodecTest extends BaseNettyTest {
 
+    @BindToRegistry("myCustomDecoder")
+    private ChannelHandlerFactory customDec = MyCustomCodec.createMyCustomDecoder();
+
+    @BindToRegistry("myCustomDecoder2")
+    private ChannelHandler customDec2 = MyCustomCodec.createMyCustomDecoder2();
+
+    @BindToRegistry("myCustomEncoder")
+    private ChannelHandler customEnc = MyCustomCodec.createMyCustomEncoder();
+
     private String uri = "netty:tcp://localhost:{{port}}?disconnect=true&sync=false"
-        + "&allowDefaultCodec=false&decoders=#myCustomDecoder,#myCustomDecoder2&encoder=#myCustomEncoder";
+                         + "&allowDefaultCodec=false&decoders=#myCustomDecoder,#myCustomDecoder2&encoders=#myCustomEncoder";
 
     // use reaadble bytes
-    private byte[] data = new byte[]{65, 66, 67, 68, 69, 70, 71, 72, 73, 0, 0};
-
-    @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry jndi = super.createRegistry();
-        jndi.bind("myCustomDecoder", MyCustomCodec.createMyCustomDecoder());
-        jndi.bind("myCustomDecoder2", MyCustomCodec.createMyCustomDecoder2());
-        jndi.bind("myCustomEncoder", MyCustomCodec.createMyCustomEncoder());
-        return jndi;
-    }
+    private byte[] data = new byte[] { 65, 66, 67, 68, 69, 70, 71, 72, 73, 0, 0 };
 
     @Test
     public void testCustomCodec() throws Exception {
@@ -44,20 +46,18 @@ public class NettyCustomCodecTest extends BaseNettyTest {
 
         template.sendBody(uri, data);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         byte[] mockData = getMockEndpoint("mock:input").getReceivedExchanges().get(0).getIn().getBody(byte[].class);
         ObjectHelper.equalByteArray(data, mockData);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from(uri)
-                    .to("log:input")
-                    .to("mock:input");
+            public void configure() {
+                from(uri).to("log:input").to("mock:input");
             }
         };
     }

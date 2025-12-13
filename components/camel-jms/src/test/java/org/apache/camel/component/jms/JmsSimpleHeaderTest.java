@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,31 +16,37 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
-
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-/**
- * @version 
- */
-public class JmsSimpleHeaderTest extends CamelTestSupport {
+public class JmsSimpleHeaderTest extends AbstractJMSTest {
 
-    protected String componentName = "activemq";
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected final String componentName = "activemq";
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
     public void testByteJMSHeaders() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMessageCount(1);
-        mock.message(0).header("data").isEqualTo((byte)40);
+        mock.message(0).header("data").isEqualTo((byte) 40);
 
-        template.sendBodyAndHeader("activemq:queue:foo", "Hello World", "data", (byte) 40);
+        template.sendBodyAndHeader("activemq:queue:JmsSimpleHeaderTest", "Hello World", "data", (byte) 40);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -49,9 +55,9 @@ public class JmsSimpleHeaderTest extends CamelTestSupport {
         mock.expectedMessageCount(1);
         mock.message(0).header("data").isEqualTo('A');
 
-        template.sendBodyAndHeader("activemq:queue:foo", "Hello World", "data", 'A');
+        template.sendBodyAndHeader("activemq:queue:JmsSimpleHeaderTest", "Hello World", "data", 'A');
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -62,27 +68,35 @@ public class JmsSimpleHeaderTest extends CamelTestSupport {
         mock.expectedMessageCount(1);
         mock.message(0).header("data").isEqualTo(cs);
 
-        template.sendBodyAndHeader("activemq:queue:foo", "Hello World", "data", cs);
+        template.sendBodyAndHeader("activemq:queue:JmsSimpleHeaderTest", "Hello World", "data", cs);
 
-        assertMockEndpointsSatisfied();
-    }
-
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent(componentName, jmsComponentAutoAcknowledge(connectionFactory));
-
-        return camelContext;
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    public String getComponentName() {
+        return componentName;
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("activemq:queue:foo").to("mock:result");
+            public void configure() {
+                from("activemq:queue:JmsSimpleHeaderTest").to("mock:result");
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
     }
 }

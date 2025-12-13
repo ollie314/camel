@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,55 +16,63 @@
  */
 package org.apache.camel.component.ignite.queue;
 
-import java.net.URI;
 import java.util.Map;
 
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
 import org.apache.camel.component.ignite.AbstractIgniteEndpoint;
-import org.apache.camel.component.ignite.IgniteComponent;
+import org.apache.camel.component.ignite.IgniteConstants;
 import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
-import org.apache.camel.util.EndpointHelper;
-import org.apache.camel.util.IntrospectionSupport;
+import org.apache.camel.spi.UriPath;
+import org.apache.camel.support.PropertyBindingSupport;
 import org.apache.camel.util.ObjectHelper;
+import org.apache.camel.util.PropertiesHelper;
 import org.apache.ignite.IgniteQueue;
 import org.apache.ignite.configuration.CollectionConfiguration;
 
+import static org.apache.camel.component.ignite.IgniteConstants.SCHEME_QUEUE;
+
 /**
- * Ignite Queue endpoint.
+ * Interact with <a href="https://apacheignite.readme.io/docs/queue-and-set">Ignite Queue data structures</a>.
+ *
+ * This endpoint only supports producers.
  */
-@UriEndpoint(scheme = "ignite:queue", title = "Ignite Queues", syntax = "ignite:queue:[name]", label = "nosql,cache", producerOnly = true)
+@UriEndpoint(firstVersion = "2.17.0", scheme = SCHEME_QUEUE, title = "Ignite Queues", syntax = "ignite-queue:name",
+             category = { Category.CACHE, Category.CLUSTERING, Category.MESSAGING }, producerOnly = true,
+             headersClass = IgniteConstants.class)
 public class IgniteQueueEndpoint extends AbstractIgniteEndpoint {
 
-    @UriParam @Metadata(required = "true")
+    @UriPath
+    @Metadata(required = true)
     private String name;
 
-    @UriParam
+    @UriParam(label = "producer")
     private int capacity;
 
-    @UriParam
+    @UriParam(label = "producer")
     private CollectionConfiguration configuration = new CollectionConfiguration();
 
-    @UriParam
+    @UriParam(label = "producer")
     private Long timeoutMillis;
 
-    @UriParam
+    @UriParam(label = "producer")
     private IgniteQueueOperation operation;
 
-    public IgniteQueueEndpoint(String endpointUri, URI remainingUri, Map<String, Object> parameters, IgniteComponent igniteComponent) throws Exception {
+    public IgniteQueueEndpoint(String endpointUri, String remaining, Map<String, Object> parameters,
+                               IgniteQueueComponent igniteComponent) {
         super(endpointUri, igniteComponent);
-        name = remainingUri.getHost();
+        name = remaining;
 
         ObjectHelper.notNull(name, "Queue name");
 
         // Set the configuration values.
         if (!parameters.containsKey("configuration")) {
-            Map<String, Object> configProps = IntrospectionSupport.extractProperties(parameters, "config.");
-            EndpointHelper.setReferenceProperties(this.getCamelContext(), configProps, parameters);
-            EndpointHelper.setProperties(this.getCamelContext(), configProps, parameters);
+            Map<String, Object> configProps = PropertiesHelper.extractProperties(parameters, "config.");
+            PropertyBindingSupport.bindProperties(this.getCamelContext(), parameters, configProps);
         }
     }
 
@@ -82,17 +90,13 @@ public class IgniteQueueEndpoint extends AbstractIgniteEndpoint {
 
     /**
      * Gets the queue name.
-     * 
-     * @return
      */
     public String getName() {
         return name;
     }
 
     /**
-     * Sets the queue name.
-     * 
-     * @param name
+     * The queue name.
      */
     public void setName(String name) {
         this.name = name;
@@ -100,17 +104,15 @@ public class IgniteQueueEndpoint extends AbstractIgniteEndpoint {
 
     /**
      * Gets the queue operation to perform.
-     * 
-     * @return
      */
     public IgniteQueueOperation getOperation() {
         return operation;
     }
 
     /**
-     * Sets the queue operation to perform.
-     * 
-     * @param operation
+     * The operation to invoke on the Ignite Queue. Superseded by the IgniteConstants.IGNITE_QUEUE_OPERATION header in
+     * the IN message. Possible values: CONTAINS, ADD, SIZE, REMOVE, ITERATOR, CLEAR, RETAIN_ALL, ARRAY, DRAIN, ELEMENT,
+     * PEEK, OFFER, POLL, TAKE, PUT.
      */
     public void setOperation(IgniteQueueOperation operation) {
         this.operation = operation;
@@ -118,17 +120,13 @@ public class IgniteQueueEndpoint extends AbstractIgniteEndpoint {
 
     /**
      * Gets the queue capacity. Default: non-bounded.
-     * 
-     * @return
      */
     public int getCapacity() {
         return capacity;
     }
 
     /**
-     * Sets the queue capacity. Default: non-bounded.
-     * 
-     * @param capacity
+     * The queue capacity. Default: non-bounded.
      */
     public void setCapacity(int capacity) {
         this.capacity = capacity;
@@ -136,19 +134,15 @@ public class IgniteQueueEndpoint extends AbstractIgniteEndpoint {
 
     /**
      * Gets the collection configuration. Default: empty configuration.
-     * 
-     * @return
      */
     public CollectionConfiguration getConfiguration() {
         return configuration;
     }
 
     /**
-     * Sets the collection configuration. Default: empty configuration.
+     * The collection configuration. Default: empty configuration.
      * <p>
      * You can also conveniently set inner properties by using <tt>configuration.xyz=123</tt> options.
-     * 
-     * @param configuration
      */
     public void setConfiguration(CollectionConfiguration configuration) {
         this.configuration = configuration;
@@ -156,17 +150,13 @@ public class IgniteQueueEndpoint extends AbstractIgniteEndpoint {
 
     /**
      * Gets the queue timeout in milliseconds. Default: no timeout.
-     * 
-     * @return
      */
     public Long getTimeoutMillis() {
         return timeoutMillis;
     }
 
     /**
-     * Sets the queue timeout in milliseconds. Default: no timeout.
-     * 
-     * @param timeoutMillis
+     * The queue timeout in milliseconds. Default: no timeout.
      */
     public void setTimeoutMillis(Long timeoutMillis) {
         this.timeoutMillis = timeoutMillis;

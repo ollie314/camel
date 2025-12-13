@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,14 +22,14 @@ import java.util.concurrent.Executors;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class JdbcAggregateLoadConcurrentTest extends AbstractJdbcAggregationTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(JdbcAggregateLoadConcurrentTest.class);
-    private static final char[] KEYS = new char[]{'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'};
+    private static final char[] KEYS = new char[] { 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J' };
     private static final int SIZE = 500;
 
     @Test
@@ -40,7 +40,7 @@ public class JdbcAggregateLoadConcurrentTest extends AbstractJdbcAggregationTest
 
         ExecutorService executor = Executors.newFixedThreadPool(10);
 
-        LOG.info("Staring to send " + SIZE + " messages.");
+        LOG.info("Starting to send {} messages.", SIZE);
 
         for (int i = 0; i < SIZE; i++) {
             final int value = 1;
@@ -49,7 +49,7 @@ public class JdbcAggregateLoadConcurrentTest extends AbstractJdbcAggregationTest
                 public Object call() throws Exception {
                     char id = KEYS[key];
                     LOG.debug("Sending {} with id {}", value, id);
-                    template.sendBodyAndHeader("direct:start", value, "id", "" + id);
+                    template.sendBodyAndHeader("direct:start", value, "id", Character.toString(id));
                     // simulate a little delay
                     Thread.sleep(3);
                     return null;
@@ -57,17 +57,19 @@ public class JdbcAggregateLoadConcurrentTest extends AbstractJdbcAggregationTest
             });
         }
 
-        LOG.info("Sending all " + SIZE + " message done. Now waiting for aggregation to complete.");
+        LOG.info("Sending all {} message done. Now waiting for aggregation to complete.", SIZE);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
         executor.shutdownNow();
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
+                configureJdbcAggregationRepository();
+
                 from("direct:start")
                         .to("log:input?groupSize=500")
                         .aggregate(header("id"), new MyAggregationStrategy())

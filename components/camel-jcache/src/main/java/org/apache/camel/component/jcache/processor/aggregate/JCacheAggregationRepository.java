@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,32 +20,58 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
+
 import javax.cache.Cache;
 
 import org.apache.camel.CamelContext;
+import org.apache.camel.CamelContextAware;
 import org.apache.camel.Exchange;
 import org.apache.camel.component.jcache.JCacheConfiguration;
 import org.apache.camel.component.jcache.JCacheHelper;
 import org.apache.camel.component.jcache.JCacheManager;
-import org.apache.camel.impl.DefaultExchange;
-import org.apache.camel.impl.DefaultExchangeHolder;
+import org.apache.camel.spi.Configurer;
+import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.OptimisticLockingAggregationRepository;
-import org.apache.camel.support.ServiceSupport;
+import org.apache.camel.support.DefaultExchange;
+import org.apache.camel.support.DefaultExchangeHolder;
+import org.apache.camel.support.service.ServiceSupport;
 import org.apache.camel.util.ObjectHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class JCacheAggregationRepository extends ServiceSupport implements  OptimisticLockingAggregationRepository {
+@Metadata(label = "bean",
+          description = "Aggregation repository that uses JCache to store exchanges.",
+          annotations = { "interfaceName=org.apache.camel.spi.AggregationRepository" })
+@Configurer(metadataOnly = true)
+public class JCacheAggregationRepository extends ServiceSupport
+        implements CamelContextAware, OptimisticLockingAggregationRepository {
+
     private static final Logger LOG = LoggerFactory.getLogger(JCacheAggregationRepository.class);
 
-    private JCacheConfiguration configuration;
+    private CamelContext camelContext;
     private Cache<String, DefaultExchangeHolder> cache;
-    private boolean optimistic;
-    private boolean allowSerializedHeaders;
     private JCacheManager<String, DefaultExchangeHolder> cacheManager;
+
+    @Metadata(description = "Configuration for JCache")
+    private JCacheConfiguration configuration;
+    @Metadata(description = "Whether optimistic locking is in use")
+    private boolean optimistic;
+    @Metadata(label = "advanced",
+              description = "Whether headers on the Exchange that are Java objects and Serializable should be included and saved to the repository")
+    private boolean allowSerializedHeaders;
 
     public JCacheAggregationRepository() {
         this.configuration = new JCacheConfiguration();
+    }
+
+    @Override
+    public CamelContext getCamelContext() {
+        return camelContext;
+    }
+
+    @Override
+    public void setCamelContext(CamelContext camelContext) {
+        this.camelContext = camelContext;
     }
 
     public JCacheConfiguration getConfiguration() {
@@ -89,7 +115,8 @@ public class JCacheAggregationRepository extends ServiceSupport implements  Opti
     }
 
     @Override
-    public Exchange add(CamelContext camelContext, String key, Exchange oldExchange, Exchange newExchange) throws OptimisticLockingException {
+    public Exchange add(CamelContext camelContext, String key, Exchange oldExchange, Exchange newExchange)
+            throws OptimisticLockingException {
         if (!optimistic) {
             throw new UnsupportedOperationException();
         }
@@ -100,9 +127,10 @@ public class JCacheAggregationRepository extends ServiceSupport implements  Opti
             DefaultExchangeHolder oldHolder = cache.getAndPut(key, newHolder);
             if (oldHolder != null) {
                 Exchange exchange = unmarshallExchange(camelContext, oldHolder);
-                LOG.error("Optimistic locking failed for exchange with key {}: IMap#putIfAbsend returned Exchange with ID {}, while it's expected no exchanges to be returned",
-                    key,
-                    exchange != null ? exchange.getExchangeId() : "<null>");
+                LOG.error(
+                        "Optimistic locking failed for exchange with key {}: IMap#putIfAbsend returned Exchange with ID {}, while it's expected no exchanges to be returned",
+                        key,
+                        exchange != null ? exchange.getExchangeId() : "<null>");
 
                 throw new OptimisticLockingException();
             }
@@ -110,7 +138,9 @@ public class JCacheAggregationRepository extends ServiceSupport implements  Opti
             DefaultExchangeHolder oldHolder = DefaultExchangeHolder.marshal(oldExchange, true, allowSerializedHeaders);
             DefaultExchangeHolder newHolder = DefaultExchangeHolder.marshal(newExchange, true, allowSerializedHeaders);
             if (!cache.replace(key, oldHolder, newHolder)) {
-                LOG.error("Optimistic locking failed for exchange with key {}: IMap#replace returned no Exchanges, while it's expected to replace one", key);
+                LOG.error(
+                        "Optimistic locking failed for exchange with key {}: IMap#replace returned no Exchanges, while it's expected to replace one",
+                        key);
                 throw new OptimisticLockingException();
             }
         }
@@ -140,7 +170,9 @@ public class JCacheAggregationRepository extends ServiceSupport implements  Opti
         if (optimistic) {
             LOG.trace("Removing an exchange with ID {} for key {} in an optimistic manner.", exchange.getExchangeId(), key);
             if (!cache.remove(key, holder)) {
-                LOG.error("Optimistic locking failed for exchange with key {}: IMap#remove removed no Exchanges, while it's expected to remove one.", key);
+                LOG.error(
+                        "Optimistic locking failed for exchange with key {}: IMap#remove removed no Exchanges, while it's expected to remove one.",
+                        key);
                 throw new OptimisticLockingException();
             }
             LOG.trace("Removed an exchange with ID {} for key {} in an optimistic manner.", exchange.getExchangeId(), key);
@@ -168,13 +200,13 @@ public class JCacheAggregationRepository extends ServiceSupport implements  Opti
 
     @Override
     protected void doStart() throws Exception {
+        ObjectHelper.notNull(camelContext, "camelContext");
+        ObjectHelper.notNull(configuration, "configuration");
+
         if (cache != null) {
             cacheManager = new JCacheManager<>(cache);
         } else {
-            cacheManager = JCacheHelper.createManager(
-                ObjectHelper.notNull(configuration, "configuration")
-            );
-
+            cacheManager = JCacheHelper.createManager(getCamelContext(), configuration);
             cache = cacheManager.getCache();
         }
     }

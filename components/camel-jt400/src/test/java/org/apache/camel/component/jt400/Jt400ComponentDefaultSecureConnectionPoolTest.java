@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,31 +17,31 @@
 package org.apache.camel.component.jt400;
 
 import com.ibm.as400.access.AS400ConnectionPool;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class Jt400ComponentDefaultSecureConnectionPoolTest extends Jt400TestSupport {
     private Jt400Component component;
 
-    @Before
-    public void setUp() throws Exception {
-        super.setUp();
+    @Override
+    public void doPostSetup() {
         component = new Jt400Component();
         component.setCamelContext(context);
         try {
             // Use an invalid object type so that endpoints are never created
             // and actual connections are never requested
             component.createEndpoint("jt400://user:password@host/qsys.lib/library.lib/program.xxx?secured=true");
-            Assert.fail("Should have thrown exception");
+            fail("Should have thrown exception");
         } catch (Exception e) {
             /* Expected */
         }
     }
 
-    @After
-    public void tearDown() throws Exception {
+    @Override
+    public void doPostTearDown() {
         if (component != null) {
             component.stop();
         }

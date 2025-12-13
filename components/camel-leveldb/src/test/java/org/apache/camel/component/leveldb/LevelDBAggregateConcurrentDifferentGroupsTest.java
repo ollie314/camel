@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,22 +20,20 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.processor.aggregate.AggregationStrategy;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.params.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
-/**
- * @version 
- */
-public class LevelDBAggregateConcurrentDifferentGroupsTest extends CamelTestSupport {
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
+
+@DisabledOnOs({ OS.AIX, OS.OTHER })
+public class LevelDBAggregateConcurrentDifferentGroupsTest extends LevelDBTestSupport {
 
     @Override
-    public void setUp() throws Exception {
+    public void doPreSetup() {
         deleteDirectory("target/data");
-        super.setUp();
     }
 
     @Test
@@ -72,36 +70,21 @@ public class LevelDBAggregateConcurrentDifferentGroupsTest extends CamelTestSupp
             });
         }
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
         executor.shutdownNow();
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                LevelDBAggregationRepository repo = new LevelDBAggregationRepository("repo1", "target/data/leveldb.dat");
+            public void configure() {
 
                 from("direct:start")
-                    .aggregate(header("id"), new MyAggregationStrategy())
-                        .completionTimeout(1000).aggregationRepository(repo)
+                        .aggregate(header("id"), new StringAggregationStrategy())
+                        .completionTimeout(1000).aggregationRepository(getRepo())
                         .to("mock:aggregated");
             }
         };
-    }
-
-    private static class MyAggregationStrategy implements AggregationStrategy {
-
-        public Exchange aggregate(Exchange oldExchange, Exchange newExchange) {
-            if (oldExchange == null) {
-                return newExchange;
-            }
-            String body1 = oldExchange.getIn().getBody(String.class);
-            String body2 = newExchange.getIn().getBody(String.class);
-
-            oldExchange.getIn().setBody(body1 + body2);
-            return oldExchange;
-        }
     }
 
 }

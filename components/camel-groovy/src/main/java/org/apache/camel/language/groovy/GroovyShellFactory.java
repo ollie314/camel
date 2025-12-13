@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,6 +16,9 @@
  */
 package org.apache.camel.language.groovy;
 
+import java.util.Collections;
+import java.util.Map;
+
 import groovy.lang.GroovyShell;
 import org.apache.camel.Exchange;
 
@@ -23,4 +26,17 @@ public interface GroovyShellFactory {
 
     GroovyShell createGroovyShell(Exchange exchange);
 
+    default String getFileName(Exchange exchange) {
+        return null;
+    }
+
+    /**
+     * This method provide a way to define some global variables that will be applied to all the groovy script context.
+     *
+     * @param  exchange the camel exchange in process.
+     * @return          the global variables that will be applied to all the groovy script context.
+     */
+    default Map<String, Object> getVariables(Exchange exchange) {
+        return Collections.emptyMap();
+    }
 }

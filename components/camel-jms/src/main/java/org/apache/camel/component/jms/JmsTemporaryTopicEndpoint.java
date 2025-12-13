@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,18 +16,15 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Session;
-import javax.jms.TemporaryTopic;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Session;
+import jakarta.jms.TemporaryTopic;
 
 /**
- * A <a href="http://activemq.apache.org/jms.html">JMS Endpoint</a>
- * for working with a {@link TemporaryTopic}
+ * A <a href="http://activemq.apache.org/jms.html">JMS Endpoint</a> for working with a {@link TemporaryTopic}
  * <p/>
  * <b>Important:</b> Need to be really careful to always use the same Connection otherwise the destination goes stale
- *
- * @version 
  */
 public class JmsTemporaryTopicEndpoint extends JmsEndpoint implements DestinationEndpoint {
     private Destination jmsDestination;
@@ -38,31 +35,31 @@ public class JmsTemporaryTopicEndpoint extends JmsEndpoint implements Destinatio
 
     public JmsTemporaryTopicEndpoint(String endpointUri, String destination) {
         super(endpointUri, destination);
-        setDestinationType("temp:topic");
-    }
-
-    public JmsTemporaryTopicEndpoint(TemporaryTopic jmsDestination) throws JMSException {
-        super("jms:temp:topic:" + jmsDestination.getTopicName(), null);
-        this.jmsDestination = jmsDestination;
-        setDestinationType("temp:topic");
-        setDestination(jmsDestination);
+        setDestinationType("temp-topic");
     }
 
     /**
-     * This endpoint is a singleton so that the temporary destination instances are shared across all
-     * producers and consumers of the same endpoint URI
+     * This endpoint is a singleton so that the temporary destination instances are shared across all producers and
+     * consumers of the same endpoint URI
      *
      * @return true
      */
+    @Override
     public boolean isSingleton() {
         return true;
     }
-    
-    public synchronized Destination getJmsDestination(Session session) throws JMSException {
-        if (jmsDestination == null) {
-            jmsDestination = createJmsDestination(session);
+
+    @Override
+    public Destination getJmsDestination(Session session) throws JMSException {
+        lock.lock();
+        try {
+            if (jmsDestination == null) {
+                jmsDestination = createJmsDestination(session);
+            }
+            return jmsDestination;
+        } finally {
+            lock.unlock();
         }
-        return jmsDestination;
     }
 
     protected Destination createJmsDestination(Session session) throws JMSException {

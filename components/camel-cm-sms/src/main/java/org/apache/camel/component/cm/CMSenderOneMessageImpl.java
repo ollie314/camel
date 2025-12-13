@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,9 +20,10 @@ import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
+import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
@@ -48,11 +49,9 @@ import org.apache.camel.component.cm.exceptions.cmresponse.InvalidProductTokenEx
 import org.apache.camel.component.cm.exceptions.cmresponse.NoAccountFoundForProductTokenException;
 import org.apache.camel.component.cm.exceptions.cmresponse.UnknownErrorException;
 import org.apache.camel.component.cm.exceptions.cmresponse.UnroutableMessageException;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.hc.client5.http.classic.HttpClient;
+import org.apache.hc.client5.http.classic.methods.HttpPost;
+import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,15 +61,17 @@ public class CMSenderOneMessageImpl implements CMSender {
 
     private final String url;
     private final UUID productToken;
+    private final HttpClient client;
 
-    public CMSenderOneMessageImpl(final String url, final UUID productToken) {
-
+    public CMSenderOneMessageImpl(final HttpClient client, final String url, final UUID productToken) {
         this.url = url;
         this.productToken = productToken;
+        this.client = client;
     }
 
     /**
-     * Sends a message to CM endpoints. 1. CMMessage instance is going to be marshalled to xml. 2. Post request xml string to CMEndpoint.
+     * Sends a message to CM endpoints. 1. CMMessage instance is going to be marshalled to xml. 2. Post request xml
+     * string to CMEndpoint.
      */
     @Override
     public void send(final CMMessage cmMessage) {
@@ -85,11 +86,13 @@ public class CMSenderOneMessageImpl implements CMSender {
     }
 
     private String createXml(final CMMessage message) {
-
         try {
-
             final ByteArrayOutputStream xml = new ByteArrayOutputStream();
             final DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
             factory.setNamespaceAware(true);
 
             // Get the DocumentBuilder
@@ -106,7 +109,7 @@ public class CMSenderOneMessageImpl implements CMSender {
             final Element authenticationElement = doc.createElement("AUTHENTICATION");
             final Element productTokenElement = doc.createElement("PRODUCTTOKEN");
             authenticationElement.appendChild(productTokenElement);
-            final Text productTokenValue = doc.createTextNode("" + productToken);
+            final Text productTokenValue = doc.createTextNode(productToken.toString());
             productTokenElement.appendChild(productTokenValue);
             root.appendChild(authenticationElement);
 
@@ -141,7 +144,7 @@ public class CMSenderOneMessageImpl implements CMSender {
             final String id = message.getIdAsString();
             if (id != null && !id.isEmpty()) {
                 final Element refElement = doc.createElement("REFERENCE");
-                refElement.appendChild(doc.createTextNode("" + message.getIdAsString()));
+                refElement.appendChild(doc.createTextNode(message.getIdAsString()));
                 msgElement.appendChild(refElement);
             }
 
@@ -157,98 +160,100 @@ public class CMSenderOneMessageImpl implements CMSender {
                 msgElement.appendChild(maxMessagePartsElement);
             }
 
-            // Creatate XML as String
-            final Transformer aTransformer = TransformerFactory.newInstance().newTransformer();
+            // Create XML as String
+            TransformerFactory transformerFactory = TransformerFactory.newInstance();
+            transformerFactory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, Boolean.TRUE);
+            transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+            transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "");
+            final Transformer aTransformer = transformerFactory.newTransformer();
             aTransformer.setOutputProperty(OutputKeys.INDENT, "yes");
             final Source src = new DOMSource(doc);
             final Result dest = new StreamResult(xml);
             aTransformer.transform(src, dest);
             return xml.toString();
-        } catch (final TransformerException e) {
-            throw new XMLConstructionException(String.format("Cant serialize CMMessage %s", message), e);
-        } catch (final ParserConfigurationException e) {
+        } catch (final TransformerException | ParserConfigurationException e) {
             throw new XMLConstructionException(String.format("Cant serialize CMMessage %s", message), e);
         }
     }
 
     private void doHttpPost(final String urlString, final String requestString) {
 
-        final HttpClient client = HttpClientBuilder.create().build();
         final HttpPost post = new HttpPost(urlString);
-        post.setEntity(new StringEntity(requestString, Charset.forName("UTF-8")));
+        post.setEntity(new StringEntity(requestString, StandardCharsets.UTF_8));
 
         try {
+            client.execute(post,
+                    response -> {
+                        final int statusCode = response.getCode();
 
-            final HttpResponse response = client.execute(post);
+                        LOG.debug("Response Code : {}", statusCode);
 
-            final int statusCode = response.getStatusLine().getStatusCode();
+                        if (statusCode == 400) {
+                            throw new CMDirectException(
+                                    "CM Component and CM API show some kind of inconsistency. "
+                                                        + "CM is complaining about not using a post method for the request. And this component only uses POST requests. What happens?");
+                        }
 
-            LOG.debug("Response Code : {}", statusCode);
+                        if (statusCode != 200) {
+                            throw new CMDirectException(
+                                    "CM Component and CM API show some kind of inconsistency. The component expects the status code to be 200 or 400. New api released? ");
+                        }
 
-            if (statusCode == 400) {
-                throw new CMDirectException("CM Component and CM API show some kind of inconsistency. "
-                                            + "CM is complaining about not using a post method for the request. And this component only uses POST requests. What happens?");
-            }
+                        // So we have 200 status code...
 
-            if (statusCode != 200) {
-                throw new CMDirectException("CM Component and CM API show some kind of inconsistency. The component expects the status code to be 200 or 400. New api released? ");
-            }
+                        // The response type is 'text/plain' and contains the actual
+                        // result of the request processing.
 
-            // So we have 200 status code...
+                        // We obtain the result text
+                        try (BufferedReader rd = new BufferedReader(new InputStreamReader(response.getEntity().getContent()))) {
+                            final StringBuilder result = new StringBuilder();
+                            String line;
+                            while ((line = rd.readLine()) != null) {
+                                result.append(line);
+                            }
 
-            // The response type is 'text/plain' and contains the actual
-            // result of the request processing.
+                            // ... and process it
 
-            // We obtaing the result text
-            final BufferedReader rd = new BufferedReader(new InputStreamReader(response.getEntity().getContent()));
+                            line = result.toString();
+                            if (!line.isEmpty()) {
 
-            final StringBuffer result = new StringBuffer();
-            String line = null;
-            while ((line = rd.readLine()) != null) {
-                result.append(line);
-            }
+                                // Line is not empty = error
+                                LOG.debug("Result of the request processing: FAILED\n{}", line);
 
-            // ... and process it
+                                // The response text contains the error description. We will
+                                // throw a custom exception for each.
 
-            line = result.toString();
-            if (!line.isEmpty()) {
+                                if (line.contains(CMConstants.ERROR_UNKNOWN)) {
+                                    throw new UnknownErrorException();
+                                } else if (line.contains(CMConstants.ERROR_NO_ACCOUNT)
+                                        || line.contains(CMConstants.ERROR_NO_USER)) {
+                                    throw new NoAccountFoundForProductTokenException();
+                                } else if (line.contains(CMConstants.ERROR_INSUFICIENT_BALANCE)) {
+                                    throw new InsufficientBalanceException();
+                                } else if (line.contains(CMConstants.ERROR_UNROUTABLE_MESSAGE)) {
+                                    throw new UnroutableMessageException();
+                                } else if (line.contains(CMConstants.ERROR_INVALID_PRODUCT_TOKEN)) {
+                                    throw new InvalidProductTokenException();
+                                } else {
+                                    throw new CMResponseException(line);
+                                }
+                            }
 
-                // Line is not empty = error
-                LOG.debug("Result of the request processing: FAILED\n{}", line);
+                            // Ok. Line is EMPTY - successfully submitted
+                            LOG.debug("Result of the request processing: Successfully submitted");
+                        }
+                        return null;
+                    });
 
-                // The response text contains the error description. We will
-                // throw a custom exception for each.
-
-                if (line.contains(CMConstants.ERROR_UNKNOWN)) {
-                    throw new UnknownErrorException();
-                } else if (line.contains(CMConstants.ERROR_NO_ACCOUNT)) {
-                    throw new NoAccountFoundForProductTokenException();
-                } else if (line.contains(CMConstants.ERROR_INSUFICIENT_BALANCE)) {
-                    throw new InsufficientBalanceException();
-                } else if (line.contains(CMConstants.ERROR_UNROUTABLE_MESSAGE)) {
-                    throw new UnroutableMessageException();
-                } else if (line.contains(CMConstants.ERROR_INVALID_PRODUCT_TOKEN)) {
-                    throw new InvalidProductTokenException();
-                } else {
-
-                    // SO FAR i would expect other kind of ERROR.
-
-                    // MSISDN correctness and message validity is client
-                    // responsibility
-                    throw new CMResponseException("CHECK ME. I am not expecting this. ");
-                }
-            }
-
-            // Ok. Line is EMPTY - successfully submitted
-            LOG.debug("Result of the request processing: Successfully submited");
         } catch (final IOException io) {
             throw new CMDirectException(io);
-        } catch (Throwable t) {
-            if (!(t instanceof CMDirectException)) {
+        } catch (Exception t) {
+            Exception exception = t;
+            if (!(exception instanceof CMDirectException)) {
                 // Chain it
-                t = new CMDirectException(t);
+                exception = new CMDirectException(exception);
             }
-            throw (CMDirectException) t;
+            throw (CMDirectException) exception;
         }
     }
 }

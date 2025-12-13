@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,32 +18,47 @@ package org.apache.camel.component.ical;
 
 import java.io.ByteArrayInputStream;
 import java.io.UnsupportedEncodingException;
+import java.time.Instant;
+import java.time.temporal.Temporal;
 import java.util.Date;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.property.DateProperty;
-
 import org.apache.camel.Converter;
 import org.apache.camel.Exchange;
-import org.apache.camel.util.IOHelper;
+import org.apache.camel.support.ExchangeHelper;
 
 /**
  * ICal related converter.
  */
-@Converter
+@Converter(generateLoader = true)
 public final class ICalConverter {
+
     private ICalConverter() {
         // Helper class
     }
 
-    @Converter
+    @Converter(allowNull = true)
     public static Date toDate(DateProperty property) {
-        return property.getDate();
+        Temporal t = property.getDate();
+        if (t instanceof Instant ins) {
+            return Date.from(ins);
+        }
+        return null;
+    }
+
+    @Converter(allowNull = true)
+    public static Instant toInstant(DateProperty property) {
+        Temporal t = property.getDate();
+        if (t instanceof Instant ins) {
+            return ins;
+        }
+        return null;
     }
 
     @Converter
     public static ByteArrayInputStream toStream(Calendar calendar, Exchange exchange) throws UnsupportedEncodingException {
-        return new ByteArrayInputStream(calendar.toString().getBytes(IOHelper.getCharsetName(exchange)));
+        return new ByteArrayInputStream(calendar.toString().getBytes(ExchangeHelper.getCharsetName(exchange)));
     }
 
 }

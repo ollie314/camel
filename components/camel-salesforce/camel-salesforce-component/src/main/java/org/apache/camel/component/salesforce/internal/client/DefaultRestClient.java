@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,36 +16,36 @@
  */
 package org.apache.camel.component.salesforce.internal.client;
 
-import java.io.IOException;
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.thoughtworks.xstream.XStream;
-
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.apache.camel.component.salesforce.SalesforceHttpClient;
+import org.apache.camel.component.salesforce.SalesforceLoginConfig;
 import org.apache.camel.component.salesforce.api.SalesforceException;
-import org.apache.camel.component.salesforce.api.SalesforceMultipleChoicesException;
-import org.apache.camel.component.salesforce.api.dto.RestError;
-import org.apache.camel.component.salesforce.api.utils.JsonUtils;
-import org.apache.camel.component.salesforce.internal.PayloadFormat;
+import org.apache.camel.component.salesforce.api.utils.Version;
 import org.apache.camel.component.salesforce.internal.SalesforceSession;
-import org.apache.camel.component.salesforce.internal.dto.RestChoices;
-import org.apache.camel.component.salesforce.internal.dto.RestErrors;
 import org.apache.camel.util.ObjectHelper;
 import org.apache.camel.util.URISupport;
-import org.eclipse.jetty.client.api.Request;
-import org.eclipse.jetty.client.api.Response;
-import org.eclipse.jetty.client.util.InputStreamContentProvider;
+import org.eclipse.jetty.client.InputStreamRequestContent;
+import org.eclipse.jetty.client.MultiPartRequestContent;
+import org.eclipse.jetty.client.Request;
+import org.eclipse.jetty.http.HttpFields;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpMethod;
-import org.eclipse.jetty.http.HttpStatus;
-import org.eclipse.jetty.util.StringUtil;
+import org.eclipse.jetty.http.MultiPart;
 
 public class DefaultRestClient extends AbstractClientBase implements RestClient {
 
@@ -53,104 +53,59 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
     private static final String TOKEN_HEADER = "Authorization";
     private static final String TOKEN_PREFIX = "Bearer ";
     private static final String SERVICES_APEXREST = "/services/apexrest/";
+    private static final String GET_SCHEMA_MINIMUM_VERSION = "40.0";
 
-    protected PayloadFormat format;
-    private ObjectMapper objectMapper;
-    private XStream xStream;
-
-    public DefaultRestClient(SalesforceHttpClient httpClient, String version, PayloadFormat format, SalesforceSession session)
-            throws SalesforceException {
-        super(version, session, httpClient);
-
-        this.format = format;
-
-        // initialize error parsers for JSON and XML
-        this.objectMapper = JsonUtils.createObjectMapper();
-        this.xStream = new XStream();
-        xStream.processAnnotations(RestErrors.class);
-        xStream.processAnnotations(RestChoices.class);
-
-        xStream.ignoreUnknownElements();
-        XStreamUtils.addDefaultPermissions(xStream);
+    public DefaultRestClient(final SalesforceHttpClient httpClient, final String version,
+                             final SalesforceSession session,
+                             final SalesforceLoginConfig loginConfig) throws SalesforceException {
+        super(version, session, httpClient, loginConfig);
     }
 
     @Override
     protected void doHttpRequest(Request request, ClientResponseCallback callback) {
         // set standard headers for all requests
-        final String contentType = PayloadFormat.JSON.equals(format) ? APPLICATION_JSON_UTF8 : APPLICATION_XML_UTF8;
-        request.header(HttpHeader.ACCEPT, contentType);
-        request.header(HttpHeader.ACCEPT_CHARSET, StringUtil.__UTF8);
+        request.headers(h -> h.add(HttpHeader.ACCEPT, APPLICATION_JSON_UTF8));
+        request.headers(h -> h.add(HttpHeader.ACCEPT_CHARSET, StandardCharsets.UTF_8.name()));
         // request content type and charset is set by the request entity
 
         super.doHttpRequest(request, callback);
     }
 
     @Override
-    protected SalesforceException createRestException(Response response, InputStream responseContent) {
-        // get status code and reason phrase
-        final int statusCode = response.getStatus();
-        String reason = response.getReason();
-        if (reason == null || reason.isEmpty()) {
-            reason = HttpStatus.getMessage(statusCode);
-        }
-        // try parsing response according to format
-        try {
-            if (responseContent != null && responseContent.available() > 0) {
-                final List<String> choices;
-                // return list of choices as error message for 300
-                if (statusCode == HttpStatus.MULTIPLE_CHOICES_300) {
-                    if (PayloadFormat.JSON.equals(format)) {
-                        choices = objectMapper.readValue(responseContent, new TypeReference<List<String>>() {
-                        });
-                    } else {
-                        RestChoices restChoices = new RestChoices();
-                        xStream.fromXML(responseContent, restChoices);
-                        choices = restChoices.getUrls();
-                    }
-                    return new SalesforceMultipleChoicesException(reason, statusCode, choices);
-                } else {
-                    final List<RestError> restErrors;
-                    if (PayloadFormat.JSON.equals(format)) {
-                        restErrors = objectMapper.readValue(
-                                responseContent, new TypeReference<List<RestError>>() {
-                                }
-                        );
-                    } else {
-                        RestErrors errors = new RestErrors();
-                        xStream.fromXML(responseContent, errors);
-                        restErrors = errors.getErrors();
-                    }
-                    return new SalesforceException(restErrors, statusCode);
-                }
-            }
-        } catch (IOException e) {
-            // log and ignore
-            String msg = "Unexpected Error parsing " + format
-                    + " error response body + [" + responseContent + "] : " + e.getMessage();
-            log.warn(msg, e);
-        } catch (RuntimeException e) {
-            // log and ignore
-            String msg = "Unexpected Error parsing " + format
-                    + " error response body + [" + responseContent + "] : " + e.getMessage();
-            log.warn(msg, e);
-        }
+    public void approval(final InputStream request, Map<String, List<String>> headers, final ResponseCallback callback) {
+        final Request post = getRequest(HttpMethod.POST, versionUrl() + "process/approvals/", headers);
 
-        // just report HTTP status info
-        return new SalesforceException("Unexpected error: " + reason + ", with content: " + responseContent,
-                statusCode);
+        // authorization
+        setAccessToken(post);
+
+        // input stream as entity content
+        post.body(new InputStreamRequestContent(request));
+        post.headers(h -> h.add(HttpHeader.CONTENT_TYPE, APPLICATION_JSON_UTF8));
+
+        doHttpRequest(post, new DelegatingClientCallback(callback));
     }
 
     @Override
-    public void getVersions(final ResponseCallback callback) {
-        Request get = getRequest(HttpMethod.GET, servicesDataUrl());
+    public void approvals(Map<String, List<String>> headers, final ResponseCallback callback) {
+        final Request get = getRequest(HttpMethod.GET, versionUrl() + "process/approvals/", headers);
+
+        // authorization
+        setAccessToken(get);
+
+        doHttpRequest(get, new DelegatingClientCallback(callback));
+    }
+
+    @Override
+    public void getVersions(Map<String, List<String>> headers, final ResponseCallback callback) {
+        Request get = getRequest(HttpMethod.GET, servicesDataUrl(), headers);
         // does not require authorization token
 
         doHttpRequest(get, new DelegatingClientCallback(callback));
     }
 
     @Override
-    public void getResources(ResponseCallback callback) {
-        Request get = getRequest(HttpMethod.GET, versionUrl());
+    public void getResources(Map<String, List<String>> headers, ResponseCallback callback) {
+        Request get = getRequest(HttpMethod.GET, versionUrl(), headers);
         // requires authorization token
         setAccessToken(get);
 
@@ -158,8 +113,8 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
     }
 
     @Override
-    public void getGlobalObjects(ResponseCallback callback) {
-        Request get = getRequest(HttpMethod.GET, sobjectsUrl(""));
+    public void getGlobalObjects(Map<String, List<String>> headers, ResponseCallback callback) {
+        Request get = getRequest(HttpMethod.GET, sobjectsUrl(""), headers);
         // requires authorization token
         setAccessToken(get);
 
@@ -167,9 +122,8 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
     }
 
     @Override
-    public void getBasicInfo(String sObjectName,
-                             ResponseCallback callback) {
-        Request get = getRequest(HttpMethod.GET, sobjectsUrl(sObjectName + "/"));
+    public void getBasicInfo(String sObjectName, Map<String, List<String>> headers, ResponseCallback callback) {
+        Request get = getRequest(HttpMethod.GET, sobjectsUrl(sObjectName + "/"), headers);
         // requires authorization token
         setAccessToken(get);
 
@@ -177,9 +131,8 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
     }
 
     @Override
-    public void getDescription(String sObjectName,
-                               ResponseCallback callback) {
-        Request get = getRequest(HttpMethod.GET, sobjectsUrl(sObjectName + "/describe/"));
+    public void getDescription(String sObjectName, Map<String, List<String>> headers, ResponseCallback callback) {
+        Request get = getRequest(HttpMethod.GET, sobjectsUrl(sObjectName + "/describe/"), headers);
         // requires authorization token
         setAccessToken(get);
 
@@ -187,8 +140,8 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
     }
 
     @Override
-    public void getSObject(String sObjectName, String id, String[] fields,
-                           ResponseCallback callback) {
+    public void getSObject(
+            String sObjectName, String id, String[] fields, Map<String, List<String>> headers, ResponseCallback callback) {
 
         // parse fields if set
         String params = "";
@@ -202,7 +155,7 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
             }
             params = fieldsValue.toString();
         }
-        Request get = getRequest(HttpMethod.GET, sobjectsUrl(sObjectName + "/" + id + params));
+        Request get = getRequest(HttpMethod.GET, sobjectsUrl(sObjectName + "/" + id + params), headers);
         // requires authorization token
         setAccessToken(get);
 
@@ -210,39 +163,205 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
     }
 
     @Override
-    public void createSObject(String sObjectName, InputStream sObject,
-                              ResponseCallback callback) {
+    public void createSObject(
+            String sObjectName, InputStream sObject, Map<String, List<String>> headers, ResponseCallback callback) {
         // post the sObject
-        final Request post = getRequest(HttpMethod.POST, sobjectsUrl(sObjectName));
+        final Request post = getRequest(HttpMethod.POST, sobjectsUrl(sObjectName), headers);
 
         // authorization
         setAccessToken(post);
 
         // input stream as entity content
-        post.content(new InputStreamContentProvider(sObject));
-        post.header(HttpHeader.CONTENT_TYPE, PayloadFormat.JSON.equals(format) ? APPLICATION_JSON_UTF8 : APPLICATION_XML_UTF8);
+        post.body(new InputStreamRequestContent(sObject));
+        post.headers(h -> h.add(HttpHeader.CONTENT_TYPE, APPLICATION_JSON_UTF8));
 
         doHttpRequest(post, new DelegatingClientCallback(callback));
     }
 
     @Override
-    public void updateSObject(String sObjectName, String id, InputStream sObject,
-                              ResponseCallback callback) {
-        final Request patch = getRequest("PATCH", sobjectsUrl(sObjectName + "/" + id));
+    public void createSObjectMultipart(
+            String sObjectName, Object sObjectDto, InputStream sObject,
+            Map<String, List<String>> headers, ResponseCallback callback) {
+        try {
+            final Request post = getRequest(HttpMethod.POST, sobjectsUrl(sObjectName), headers);
+
+            setAccessToken(post);
+
+            try (MultiPartRequestContent multipartContent = new MultiPartRequestContent()) {
+                ObjectMapper objectMapper = new ObjectMapper();
+                JsonNode jsonNode = objectMapper.readTree(sObject);
+
+                if (jsonNode.isObject()) {
+                    ObjectNode objectNode = (ObjectNode) jsonNode;
+                    ObjectNode cleanJson = objectNode.deepCopy();
+
+                    Map<String, InputStream> binaryFields = getBinaryFieldMap(sObjectDto);
+
+                    if (!binaryFields.isEmpty()) {
+
+                        // Remove binary field names from JSON first
+                        for (String fieldName : binaryFields.keySet()) {
+                            cleanJson.remove(fieldName);
+                        }
+
+                        // non-binary json data must be the first part of the multipart request
+                        String cleanJsonString = objectMapper.writeValueAsString(cleanJson);
+                        multipartContent.addPart(new MultiPart.ContentSourcePart(
+                                "entity", null,
+                                HttpFields.build().add(HttpHeader.CONTENT_TYPE, APPLICATION_JSON_UTF8),
+                                new InputStreamRequestContent(
+                                        new ByteArrayInputStream(cleanJsonString.getBytes(StandardCharsets.UTF_8)))));
+
+                        // Then add binary fields as subsequent parts
+                        for (Map.Entry<String, InputStream> entry : binaryFields.entrySet()) {
+                            String fieldName = entry.getKey();
+                            InputStream binaryData = entry.getValue();
+
+                            multipartContent.addPart(new MultiPart.ContentSourcePart(
+                                    fieldName, "temp-file-name.doc",
+                                    HttpFields.build().add(HttpHeader.CONTENT_TYPE, "application/octet-stream"),
+                                    new InputStreamRequestContent(binaryData)));
+                        }
+                    } else {
+                        // No multipart data found - this shouldn't happen as processor should handle this case
+                        callback.onResponse(null, Collections.emptyMap(),
+                                new SalesforceException("createSObjectMultipart called but no binary fields found", null));
+                        return;
+                    }
+                } else {
+                    // If not a JSON object, send as-is
+                    multipartContent.addPart(new MultiPart.ContentSourcePart(
+                            "entity", null,
+                            HttpFields.build().add(HttpHeader.CONTENT_TYPE, APPLICATION_JSON_UTF8),
+                            new InputStreamRequestContent(sObject)));
+                }
+
+                post.body(multipartContent);
+            }
+
+            doHttpRequest(post, new DelegatingClientCallback(callback));
+        } catch (Exception e) {
+            // If JSON parsing fails, fall back to regular processing
+            callback.onResponse(null, Collections.emptyMap(),
+                    new SalesforceException("Failed to process multipart request: " + e.getMessage(), e));
+        }
+    }
+
+    private Map<String, InputStream> getBinaryFieldMap(Object sObject) {
+        Map<String, InputStream> binaryFields = new HashMap<>();
+
+        if (sObject == null) {
+            return binaryFields;
+        }
+
+        Class<?> clazz = sObject.getClass();
+        java.lang.reflect.Field[] fields = clazz.getDeclaredFields();
+
+        for (java.lang.reflect.Field field : fields) {
+            String fieldName = field.getName();
+
+            if (fieldName.endsWith("Binary") && field.isAnnotationPresent(JsonIgnore.class)) {
+                try {
+                    field.setAccessible(true);
+                    Object value = field.get(sObject);
+                    if (value instanceof InputStream) {
+                        String originalFieldName = fieldName.replace("Binary", "");
+                        binaryFields.put(originalFieldName, (InputStream) value);
+                    }
+                } catch (Exception e) {
+                    // Skip inaccessible fields
+                }
+            }
+        }
+
+        return binaryFields;
+    }
+
+    @Override
+    public void updateSObject(
+            String sObjectName, String id, InputStream sObject, Map<String, List<String>> headers, ResponseCallback callback) {
+        final Request patch = getRequest("PATCH", sobjectsUrl(sObjectName + "/" + id), headers);
         // requires authorization token
         setAccessToken(patch);
 
         // input stream as entity content
-        patch.content(new InputStreamContentProvider(sObject));
-        patch.header(HttpHeader.CONTENT_TYPE, PayloadFormat.JSON.equals(format) ? APPLICATION_JSON_UTF8 : APPLICATION_XML_UTF8);
+        patch.body(new InputStreamRequestContent(sObject));
+        patch.headers(h -> h.add(HttpHeader.CONTENT_TYPE, APPLICATION_JSON_UTF8));
 
         doHttpRequest(patch, new DelegatingClientCallback(callback));
     }
 
     @Override
-    public void deleteSObject(String sObjectName, String id,
-                              ResponseCallback callback) {
-        final Request delete = getRequest(HttpMethod.DELETE, sobjectsUrl(sObjectName + "/" + id));
+    public void updateSObjectMultipart(
+            String sObjectName, String id, Object sObjectDto, InputStream sObject,
+            Map<String, List<String>> headers, ResponseCallback callback) {
+        try {
+            final Request patch = getRequest("PATCH", sobjectsUrl(sObjectName + "/" + id), headers);
+            setAccessToken(patch);
+
+            try (MultiPartRequestContent multipartContent = new MultiPartRequestContent()) {
+                ObjectMapper objectMapper = new ObjectMapper();
+                JsonNode jsonNode = objectMapper.readTree(sObject);
+
+                if (jsonNode.isObject()) {
+                    ObjectNode objectNode = (ObjectNode) jsonNode;
+                    ObjectNode cleanJson = objectNode.deepCopy();
+
+                    Map<String, InputStream> binaryFields = getBinaryFieldMap(sObjectDto);
+
+                    if (!binaryFields.isEmpty()) {
+
+                        // Remove binary field names from JSON first
+                        for (String fieldName : binaryFields.keySet()) {
+                            cleanJson.remove(fieldName);
+                        }
+
+                        // non-binary json data must be the first part of the multipart request
+                        String cleanJsonString = objectMapper.writeValueAsString(cleanJson);
+                        multipartContent.addPart(new MultiPart.ContentSourcePart(
+                                "entity", null,
+                                HttpFields.build().add(HttpHeader.CONTENT_TYPE, APPLICATION_JSON_UTF8),
+                                new InputStreamRequestContent(
+                                        new ByteArrayInputStream(cleanJsonString.getBytes(StandardCharsets.UTF_8)))));
+
+                        // Then add binary fields as subsequent parts
+                        for (Map.Entry<String, InputStream> entry : binaryFields.entrySet()) {
+                            String fieldName = entry.getKey();
+                            InputStream binaryData = entry.getValue();
+
+                            multipartContent.addPart(new MultiPart.ContentSourcePart(
+                                    fieldName, "temp-file-name.doc",
+                                    HttpFields.build().add(HttpHeader.CONTENT_TYPE, "application/octet-stream"),
+                                    new InputStreamRequestContent(binaryData)));
+                        }
+                    } else {
+                        // No multipart data found - this shouldn't happen as processor should handle this case
+                        callback.onResponse(null, Collections.emptyMap(),
+                                new SalesforceException("updateSObjectMultipart called but no binary fields found", null));
+                        return;
+                    }
+                } else {
+                    // If not a JSON object, send as-is
+                    multipartContent.addPart(new MultiPart.ContentSourcePart(
+                            "entity", null,
+                            HttpFields.build().add(HttpHeader.CONTENT_TYPE, APPLICATION_JSON_UTF8),
+                            new InputStreamRequestContent(sObject)));
+                }
+
+                patch.body(multipartContent);
+            }
+
+            doHttpRequest(patch, new DelegatingClientCallback(callback));
+        } catch (Exception e) {
+            // If JSON parsing fails, fall back to regular processing
+            callback.onResponse(null, Collections.emptyMap(),
+                    new SalesforceException("Failed to process multipart update request: " + e.getMessage(), e));
+        }
+    }
+
+    @Override
+    public void deleteSObject(String sObjectName, String id, Map<String, List<String>> headers, ResponseCallback callback) {
+        final Request delete = getRequest(HttpMethod.DELETE, sobjectsUrl(sObjectName + "/" + id), headers);
 
         // requires authorization token
         setAccessToken(delete);
@@ -251,10 +370,10 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
     }
 
     @Override
-    public void getSObjectWithId(String sObjectName, String fieldName, String fieldValue,
-                                 ResponseCallback callback) {
-        final Request get = getRequest(HttpMethod.GET,
-                sobjectsExternalIdUrl(sObjectName, fieldName, fieldValue));
+    public void getSObjectWithId(
+            String sObjectName, String fieldName, String fieldValue, Map<String, List<String>> headers,
+            ResponseCallback callback) {
+        final Request get = getRequest(HttpMethod.GET, sobjectsExternalIdUrl(sObjectName, fieldName, fieldValue), headers);
 
         // requires authorization token
         setAccessToken(get);
@@ -263,27 +382,28 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
     }
 
     @Override
-    public void upsertSObject(String sObjectName, String fieldName, String fieldValue, InputStream sObject,
-                              ResponseCallback callback) {
-        final Request patch = getRequest("PATCH",
-                sobjectsExternalIdUrl(sObjectName, fieldName, fieldValue));
+    public void upsertSObject(
+            String sObjectName, String fieldName, String fieldValue, Map<String, List<String>> headers, InputStream sObject,
+            ResponseCallback callback) {
+        final Request patch = getRequest("PATCH", sobjectsExternalIdUrl(sObjectName, fieldName, fieldValue), headers);
 
         // requires authorization token
         setAccessToken(patch);
 
         // input stream as entity content
-        patch.content(new InputStreamContentProvider(sObject));
+        patch.body(new InputStreamRequestContent(sObject));
         // TODO will the encoding always be UTF-8??
-        patch.header(HttpHeader.CONTENT_TYPE, PayloadFormat.JSON.equals(format) ? APPLICATION_JSON_UTF8 : APPLICATION_XML_UTF8);
+        patch.headers(h -> h.add(HttpHeader.CONTENT_TYPE, APPLICATION_JSON_UTF8));
 
         doHttpRequest(patch, new DelegatingClientCallback(callback));
     }
 
     @Override
-    public void deleteSObjectWithId(String sObjectName, String fieldName, String fieldValue,
-                                    ResponseCallback callback) {
-        final Request delete = getRequest(HttpMethod.DELETE,
-                sobjectsExternalIdUrl(sObjectName, fieldName, fieldValue));
+    public void deleteSObjectWithId(
+            String sObjectName, String fieldName, String fieldValue, Map<String, List<String>> headers,
+            ResponseCallback callback) {
+        final Request delete
+                = getRequest(HttpMethod.DELETE, sobjectsExternalIdUrl(sObjectName, fieldName, fieldValue), headers);
 
         // requires authorization token
         setAccessToken(delete);
@@ -292,11 +412,12 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
     }
 
     @Override
-    public void getBlobField(String sObjectName, String id, String blobFieldName, ResponseCallback callback) {
-        final Request get = getRequest(HttpMethod.GET,
-                sobjectsUrl(sObjectName + "/" + id + "/" + blobFieldName));
-        // TODO this doesn't seem to be required, the response is always the content binary stream
-        //get.header(HttpHeader.ACCEPT_ENCODING, "base64");
+    public void getBlobField(
+            String sObjectName, String id, String blobFieldName, Map<String, List<String>> headers, ResponseCallback callback) {
+        final Request get = getRequest(HttpMethod.GET, sobjectsUrl(sObjectName + "/" + id + "/" + blobFieldName), headers);
+        // TODO this doesn't seem to be required, the response is always the
+        // content binary stream
+        // get.header(HttpHeader.ACCEPT_ENCODING, "base64");
 
         // requires authorization token
         setAccessToken(get);
@@ -305,11 +426,11 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
     }
 
     @Override
-    public void query(String soqlQuery, ResponseCallback callback) {
+    public void query(String soqlQuery, Map<String, List<String>> headers, ResponseCallback callback) {
         try {
 
             String encodedQuery = urlEncode(soqlQuery);
-            final Request get = getRequest(HttpMethod.GET, versionUrl() + "query/?q=" + encodedQuery);
+            final Request get = getRequest(HttpMethod.GET, versionUrl() + "query/?q=" + encodedQuery, headers);
 
             // requires authorization token
             setAccessToken(get);
@@ -318,13 +439,13 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
 
         } catch (UnsupportedEncodingException e) {
             String msg = "Unexpected error: " + e.getMessage();
-            callback.onResponse(null, new SalesforceException(msg, e));
+            callback.onResponse(null, Collections.emptyMap(), new SalesforceException(msg, e));
         }
     }
 
     @Override
-    public void queryMore(String nextRecordsUrl, ResponseCallback callback) {
-        final Request get = getRequest(HttpMethod.GET, instanceUrl + nextRecordsUrl);
+    public void queryMore(String nextRecordsUrl, Map<String, List<String>> headers, ResponseCallback callback) {
+        final Request get = getRequest(HttpMethod.GET, instanceUrl + nextRecordsUrl, headers);
 
         // requires authorization token
         setAccessToken(get);
@@ -333,11 +454,11 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
     }
 
     @Override
-    public void queryAll(String soqlQuery, ResponseCallback callback) {
+    public void queryAll(String soqlQuery, Map<String, List<String>> headers, ResponseCallback callback) {
         try {
 
             String encodedQuery = urlEncode(soqlQuery);
-            final Request get = getRequest(HttpMethod.GET, versionUrl() + "queryAll/?q=" + encodedQuery);
+            final Request get = getRequest(HttpMethod.GET, versionUrl() + "queryAll/?q=" + encodedQuery, headers);
 
             // requires authorization token
             setAccessToken(get);
@@ -346,16 +467,16 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
 
         } catch (UnsupportedEncodingException e) {
             String msg = "Unexpected error: " + e.getMessage();
-            callback.onResponse(null, new SalesforceException(msg, e));
+            callback.onResponse(null, Collections.emptyMap(), new SalesforceException(msg, e));
         }
     }
 
     @Override
-    public void search(String soslQuery, ResponseCallback callback) {
+    public void search(String soslQuery, Map<String, List<String>> headers, ResponseCallback callback) {
         try {
 
             String encodedQuery = urlEncode(soslQuery);
-            final Request get = getRequest(HttpMethod.GET, versionUrl() + "search/?q=" + encodedQuery);
+            final Request get = getRequest(HttpMethod.GET, versionUrl() + "search/?q=" + encodedQuery, headers);
 
             // requires authorization token
             setAccessToken(get);
@@ -364,35 +485,69 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
 
         } catch (UnsupportedEncodingException e) {
             String msg = "Unexpected error: " + e.getMessage();
-            callback.onResponse(null, new SalesforceException(msg, e));
+            callback.onResponse(null, Collections.emptyMap(), new SalesforceException(msg, e));
         }
     }
 
     @Override
-    public void apexCall(String httpMethod, String apexUrl,
-                         Map<String, Object> queryParams, InputStream requestDto, ResponseCallback callback) {
+    public void apexCall(
+            String httpMethod, String apexUrl, Map<String, Object> queryParams, InputStream requestDto,
+            Map<String, List<String>> headers, ResponseCallback callback) {
         // create APEX call request
         final Request request;
         try {
-            request = getRequest(httpMethod, apexCallUrl(apexUrl, queryParams));
+            request = getRequest(httpMethod, apexCallUrl(apexUrl, queryParams), headers);
             // set request SObject and content type
             if (requestDto != null) {
-                request.content(new InputStreamContentProvider(requestDto));
-                request.header(HttpHeader.CONTENT_TYPE,
-                        PayloadFormat.JSON.equals(format) ? APPLICATION_JSON_UTF8 : APPLICATION_XML_UTF8);
+                // guard against requests that do not support bodies
+                switch (request.getMethod()) {
+                    case "PUT":
+                    case "PATCH":
+                    case "POST":
+                        request.body(new InputStreamRequestContent(requestDto));
+                        request.headers(h -> h.add(HttpHeader.CONTENT_TYPE, APPLICATION_JSON_UTF8));
+                        break;
+                    default:
+                        // ignore body for other methods
+                }
             }
 
             // requires authorization token
             setAccessToken(request);
 
             doHttpRequest(request, new DelegatingClientCallback(callback));
-        } catch (UnsupportedEncodingException e) {
+        } catch (UnsupportedEncodingException | URISyntaxException e) {
             String msg = "Unexpected error: " + e.getMessage();
-            callback.onResponse(null, new SalesforceException(msg, e));
-        } catch (URISyntaxException e) {
-            String msg = "Unexpected error: " + e.getMessage();
-            callback.onResponse(null, new SalesforceException(msg, e));
+            callback.onResponse(null, Collections.emptyMap(), new SalesforceException(msg, e));
         }
+    }
+
+    @Override
+    public void getEventSchemaByEventName(
+            String eventName, String payloadFormat, Map<String, List<String>> headers, ResponseCallback callback) {
+        validateMinimumVersion(GET_SCHEMA_MINIMUM_VERSION);
+        final Request request;
+        request = getRequest(HttpMethod.GET, sobjectsUrl(eventName) + "/eventSchema" + "?payloadFormat=" + payloadFormat,
+                headers);
+
+        // requires authorization token
+        setAccessToken(request);
+
+        doHttpRequest(request, new DelegatingClientCallback(callback));
+    }
+
+    @Override
+    public void getEventSchemaBySchemaId(
+            String schemaId, String payloadFormat, Map<String, List<String>> headers, ResponseCallback callback) {
+        validateMinimumVersion(GET_SCHEMA_MINIMUM_VERSION);
+        final Request request;
+        request = getRequest(HttpMethod.GET, versionUrl() + "event/eventSchema/" + schemaId + "?payloadFormat=" + payloadFormat,
+                headers);
+
+        // requires authorization token
+        setAccessToken(request);
+
+        doHttpRequest(request, new DelegatingClientCallback(callback));
     }
 
     private String apexCallUrl(String apexUrl, Map<String, Object> queryParams)
@@ -405,8 +560,37 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
         return instanceUrl + SERVICES_APEXREST + apexUrl;
     }
 
+    @Override
+    public void recent(final Integer limit, Map<String, List<String>> headers, final ResponseCallback responseCallback) {
+        final String param = Optional.ofNullable(limit).map(v -> "?limit=" + v).orElse("");
+
+        final Request get = getRequest(HttpMethod.GET, versionUrl() + "recent/" + param, headers);
+
+        // requires authorization token
+        setAccessToken(get);
+
+        doHttpRequest(get, new DelegatingClientCallback(responseCallback));
+    }
+
+    @Override
+    public void limits(Map<String, List<String>> headers, final ResponseCallback responseCallback) {
+        final Request get = getRequest(HttpMethod.GET, versionUrl() + "limits/", headers);
+
+        // requires authorization token
+        setAccessToken(get);
+
+        doHttpRequest(get, new DelegatingClientCallback(responseCallback));
+    }
+
     private String servicesDataUrl() {
         return instanceUrl + SERVICES_DATA;
+    }
+
+    private void validateMinimumVersion(String minimumVersion) {
+        if (Version.create(version).compareTo(Version.create(minimumVersion)) < 0) {
+            throw new IllegalArgumentException(
+                    "Salesforce API version " + minimumVersion + " or newer is required, version " + version + " was detected");
+        }
     }
 
     private String versionUrl() {
@@ -432,13 +616,14 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
         }
     }
 
+    @Override
     protected void setAccessToken(Request request) {
         // replace old token
-        request.getHeaders().put(TOKEN_HEADER, TOKEN_PREFIX + accessToken);
+        request.headers(h -> h.add(TOKEN_HEADER, TOKEN_PREFIX + accessToken));
     }
 
     private String urlEncode(String query) throws UnsupportedEncodingException {
-        String encodedQuery = URLEncoder.encode(query, StringUtil.__UTF8);
+        String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
         // URLEncoder likes to use '+' for spaces
         encodedQuery = encodedQuery.replace("+", "%20");
         return encodedQuery;
@@ -452,9 +637,8 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
         }
 
         @Override
-        public void onResponse(InputStream response, SalesforceException ex) {
-            callback.onResponse(response, ex);
+        public void onResponse(InputStream response, Map<String, String> headers, SalesforceException ex) {
+            callback.onResponse(response, headers, ex);
         }
     }
-
 }

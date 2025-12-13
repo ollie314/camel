@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,15 +16,18 @@
  */
 package org.apache.camel.component.netty.http;
 
-import org.apache.camel.Exchange;
 import org.apache.camel.Message;
-import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.methods.GetMethod;
-import org.apache.commons.httpclient.methods.PostMethod;
-import org.apache.commons.httpclient.methods.StringRequestEntity;
-import org.junit.Test;
+import org.apache.hc.client5.http.classic.methods.HttpGet;
+import org.apache.hc.client5.http.classic.methods.HttpPost;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
+import org.apache.hc.core5.http.io.entity.StringEntity;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class NettyHttpMethodRestrictTest extends BaseNettyTest {
 
@@ -34,38 +37,34 @@ public class NettyHttpMethodRestrictTest extends BaseNettyTest {
 
     @Test
     public void testProperHttpMethod() throws Exception {
-        HttpClient httpClient = new HttpClient();
-        PostMethod httpPost = new PostMethod(getUrl());
+        HttpPost httpPost = new HttpPost(getUrl());
+        httpPost.setEntity(new StringEntity("This is a test"));
+        try (CloseableHttpClient client = HttpClients.createDefault();
+             CloseableHttpResponse response = client.execute(httpPost)) {
+            assertEquals(200, response.getCode(), "Get a wrong response status");
 
-        StringRequestEntity reqEntity = new StringRequestEntity("This is a test", null, null);
-        httpPost.setRequestEntity(reqEntity);
-
-        int status = httpClient.executeMethod(httpPost);
-
-        assertEquals("Get a wrong response status", 200, status);
-
-        String result = httpPost.getResponseBodyAsString();
-        assertEquals("Get a wrong result", "This is a test response", result);
+            String responseString = EntityUtils.toString(response.getEntity(), "UTF-8");
+            assertEquals("This is a test response", responseString, "Get a wrong result");
+        }
     }
 
     @Test
     public void testImproperHttpMethod() throws Exception {
-        HttpClient httpClient = new HttpClient();
-        GetMethod httpGet = new GetMethod(getUrl());
-        int status = httpClient.executeMethod(httpGet);
-
-        assertEquals("Get a wrong response status", 405, status);
+        HttpGet httpGet = new HttpGet(getUrl());
+        try (CloseableHttpClient client = HttpClients.createDefault();
+             CloseableHttpResponse response = client.execute(httpGet)) {
+            assertEquals(405, response.getCode(), "Get a wrong response status");
+        }
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("netty-http:http://localhost:{{port}}/methodRestrict?httpMethodRestrict=POST").process(new Processor() {
-                    public void process(Exchange exchange) throws Exception {
-                        Message in = exchange.getIn();
-                        String request = in.getBody(String.class);
-                        exchange.getOut().setBody(request + " response");
-                    }
+            public void configure() {
+                from("netty-http:http://localhost:{{port}}/methodRestrict?httpMethodRestrict=POST").process(exchange -> {
+                    Message in = exchange.getIn();
+                    String request = in.getBody(String.class);
+                    exchange.getMessage().setBody(request + " response");
                 });
             }
         };

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,12 +20,11 @@ import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.github.GitHubComponent;
 import org.apache.camel.component.github.GitHubComponentTestBase;
 import org.eclipse.egit.github.core.Comment;
 import org.eclipse.egit.github.core.CommitComment;
 import org.eclipse.egit.github.core.PullRequest;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,13 +32,12 @@ public class PullRequestCommentConsumerTest extends GitHubComponentTestBase {
     protected static final Logger LOG = LoggerFactory.getLogger(PullRequestCommentConsumerTest.class);
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
 
             @Override
-            public void configure() throws Exception {
-                context.addComponent("github", new GitHubComponent());
-                from("github://pullRequestComment?username=someguy&password=apassword&repoOwner=anotherguy&repoName=somerepo")
+            public void configure() {
+                from("github://pullRequestComment?repoOwner=anotherguy&repoName=somerepo")
                         .process(new PullRequestCommentProcessor())
                         .to(mockResultEndpoint);
             }
@@ -59,13 +57,12 @@ public class PullRequestCommentConsumerTest extends GitHubComponentTestBase {
         mockResultEndpoint.assertIsSatisfied();
     }
 
-
     public class PullRequestCommentProcessor implements Processor {
         @Override
-        public void process(Exchange exchange) throws Exception {
+        public void process(Exchange exchange) {
             Message in = exchange.getIn();
             Comment comment = (Comment) in.getBody();
-            LOG.debug("Got Comment " + comment.getId() + " [" + comment.getBody() + "] from User [" + comment.getUser().getLogin() + "]");
+            LOG.debug("Got Comment {} [{}] from User [{}]", comment.getId(), comment.getBody(), comment.getUser().getLogin());
         }
     }
 }

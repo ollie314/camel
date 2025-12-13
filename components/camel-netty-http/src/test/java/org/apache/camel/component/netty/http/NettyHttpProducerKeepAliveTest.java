@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,11 +16,14 @@
  */
 package org.apache.camel.component.netty.http;
 
+import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaderValues;
 import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.jboss.netty.handler.codec.http.HttpHeaders;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class NettyHttpProducerKeepAliveTest extends BaseNettyTest {
 
@@ -28,53 +31,51 @@ public class NettyHttpProducerKeepAliveTest extends BaseNettyTest {
     public void testHttpKeepAlive() throws Exception {
         getMockEndpoint("mock:input").expectedBodiesReceived("Hello World", "Hello Again");
 
-        String out = template.requestBody("netty-http:http://localhost:{{port}}/foo?keepAlive=true", "Hello World", String.class);
+        String out
+                = template.requestBody("netty-http:http://localhost:{{port}}/foo?keepAlive=true", "Hello World", String.class);
         assertEquals("Bye World", out);
 
         out = template.requestBody("netty-http:http://localhost:{{port}}/foo?keepAlive=true", "Hello Again", String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
     public void testHttpKeepAliveFalse() throws Exception {
         getMockEndpoint("mock:input").expectedBodiesReceived("Hello World", "Hello Again");
 
-        String out = template.requestBody("netty-http:http://localhost:{{port}}/foo?keepAlive=false", "Hello World", String.class);
+        String out
+                = template.requestBody("netty-http:http://localhost:{{port}}/foo?keepAlive=false", "Hello World", String.class);
         assertEquals("Bye World", out);
 
         out = template.requestBody("netty-http:http://localhost:{{port}}/foo?keepAlive=false", "Hello Again", String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testConnectionClosed() throws Exception {
         getMockEndpoint("mock:input").expectedBodiesReceived("Hello World");
-        Exchange ex = template.request("netty-http:http://localhost:{{port}}/bar?keepAlive=false", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setBody("Hello World");
-            }
-            
-        });
-        assertMockEndpointsSatisfied();
-        assertEquals(HttpHeaders.Values.CLOSE, ex.getOut().getHeader(HttpHeaders.Names.CONNECTION));
+        Exchange ex = template.request("netty-http:http://localhost:{{port}}/bar?keepAlive=false",
+                exchange -> exchange.getIn().setBody("Hello World"));
+
+        MockEndpoint.assertIsSatisfied(context);
+        assertEquals(HttpHeaderValues.CLOSE.toString(), ex.getMessage().getHeader(HttpHeaderNames.CONNECTION.toString()));
     }
-    
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("netty-http:http://localhost:{{port}}/foo")
-                    .to("mock:input")
-                    .transform().constant("Bye World");
-                
-                from("netty-http:http://localhost:{{port}}/bar").removeHeaders("*").to("mock:input").transform().constant("Bye World");
+                        .to("mock:input")
+                        .transform().constant("Bye World");
+
+                from("netty-http:http://localhost:{{port}}/bar").removeHeaders("*").to("mock:input").transform()
+                        .constant("Bye World");
             }
         };
     }

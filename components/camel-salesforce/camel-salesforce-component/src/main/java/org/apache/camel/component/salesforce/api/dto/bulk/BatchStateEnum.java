@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,16 +16,18 @@
  */
 package org.apache.camel.component.salesforce.api.dto.bulk;
 
-import javax.xml.bind.annotation.XmlEnum;
-import javax.xml.bind.annotation.XmlEnumValue;
-import javax.xml.bind.annotation.XmlType;
-
+import jakarta.xml.bind.annotation.XmlEnum;
+import jakarta.xml.bind.annotation.XmlEnumValue;
+import jakarta.xml.bind.annotation.XmlType;
 
 /**
- * <p>Java class for BatchStateEnum.
+ * <p>
+ * Java class for BatchStateEnum.
  * <p/>
- * <p>The following schema fragment specifies the expected content contained within this class.
+ * <p>
+ * The following schema fragment specifies the expected content contained within this class.
  * <p/>
+ *
  * <pre>
  * &lt;simpleType name="BatchStateEnum">
  *   &lt;restriction base="{http://www.w3.org/2001/XMLSchema}string">
@@ -52,6 +54,7 @@ public enum BatchStateEnum {
     FAILED("Failed"),
     @XmlEnumValue("NotProcessed")
     NOT_PROCESSED("NotProcessed");
+
     private final String value;
 
     BatchStateEnum(String v) {

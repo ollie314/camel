@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,6 +17,7 @@
 package org.apache.camel.component.smpp;
 
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 
 import org.apache.camel.Message;
 import org.jsmpp.bean.Alphabet;
@@ -30,8 +31,8 @@ public abstract class SmppSmCommand extends AbstractSmppCommand {
     // FIXME: these constants should be defined somewhere in jSMPP:
     public static final int SMPP_NEG_RESPONSE_MSG_TOO_LONG = 1;
 
-    protected Charset ascii = Charset.forName("US-ASCII");
-    protected Charset latin1 = Charset.forName("ISO-8859-1");
+    protected Charset ascii = StandardCharsets.US_ASCII;
+    protected Charset latin1 = StandardCharsets.ISO_8859_1;
     protected Charset defaultCharset;
 
     private final Logger logger = LoggerFactory.getLogger(SmppSmCommand.class);
@@ -49,18 +50,18 @@ public abstract class SmppSmCommand extends AbstractSmppCommand {
             // Message body is split into multiple parts,
             // check if this is permitted
             SmppSplittingPolicy policy = getSplittingPolicy(message);
-            switch(policy) {
-            case ALLOW:
-                return segments;
-            case TRUNCATE:
-                return new byte[][] {java.util.Arrays.copyOfRange(shortMessage, 0, segments[0].length)};
-            case REJECT:
-                // FIXME - JSMPP needs to have an enum of the negative response
-                // codes instead of just using them like this
-                NegativeResponseException nre = new NegativeResponseException(SMPP_NEG_RESPONSE_MSG_TOO_LONG);
-                throw new SmppException(nre);
-            default:
-                throw new SmppException("Unknown splitting policy: " + policy);
+            switch (policy) {
+                case ALLOW:
+                    return segments;
+                case TRUNCATE:
+                    return new byte[][] { java.util.Arrays.copyOfRange(shortMessage, 0, segments[0].length) };
+                case REJECT:
+                    // FIXME - JSMPP needs to have an enum of the negative response
+                    // codes instead of just using them like this
+                    NegativeResponseException nre = new NegativeResponseException(SMPP_NEG_RESPONSE_MSG_TOO_LONG);
+                    throw new SmppException(nre);
+                default:
+                    throw new SmppException("Unknown splitting policy: " + policy);
             }
         } else {
             return segments;
@@ -75,12 +76,20 @@ public abstract class SmppSmCommand extends AbstractSmppCommand {
         return config.getSplittingPolicy();
     }
 
-    protected SmppSplitter createSplitter(Message message) {
-        Alphabet alphabet = determineAlphabet(message);
-
-        String body = message.getBody(String.class);
+    protected SmppSplitter createSplitter(Message message) throws SmppException {
 
         SmppSplitter splitter;
+        // use the splitter if provided via header
+        if (message.getHeaders().containsKey(SmppConstants.DATA_SPLITTER)) {
+            splitter = message.getHeader(SmppConstants.DATA_SPLITTER, SmppSplitter.class);
+            if (null != splitter) {
+                return splitter;
+            }
+            throw new SmppException("Invalid splitter given. Must be instance of SmppSplitter");
+        }
+        Alphabet alphabet = determineAlphabet(message);
+        String body = message.getBody(String.class);
+
         if (SmppUtils.is8Bit(alphabet)) {
             splitter = new Smpp8BitSplitter(body.length());
         } else if (alphabet == Alphabet.ALPHA_UCS2) {
@@ -88,7 +97,6 @@ public abstract class SmppSmCommand extends AbstractSmppCommand {
         } else {
             splitter = new SmppDefaultSplitter(body.length());
         }
-
         return splitter;
     }
 
@@ -141,12 +149,12 @@ public abstract class SmppSmCommand extends AbstractSmppCommand {
             return result;
         }
 
-        if (providedAlphabet == Alphabet.ALPHA_UCS2.value() 
-            || (providedAlphabet == SmppConstants.UNKNOWN_ALPHABET && determinedAlphabet == Alphabet.ALPHA_UCS2.value())) {
+        if (providedAlphabet == Alphabet.ALPHA_UCS2.value()
+                || providedAlphabet == SmppConstants.UNKNOWN_ALPHABET && determinedAlphabet == Alphabet.ALPHA_UCS2.value()) {
             // change charset to use multilang messages
-            return Charset.forName(SmppConstants.UCS2_ENCODING); 
+            return StandardCharsets.UTF_16BE;
         }
-        
+
         return defaultCharset;
     }
 
@@ -179,5 +187,19 @@ public abstract class SmppSmCommand extends AbstractSmppCommand {
             return true;
         }
         return false;
+    }
+
+    protected byte getRegisterDeliveryFlag(Message message) {
+        if (message.getHeaders().containsKey(SmppConstants.REGISTERED_DELIVERY)) {
+            return message.getHeader(SmppConstants.REGISTERED_DELIVERY, Byte.class);
+        }
+        return config.getRegisteredDelivery();
+    }
+
+    protected boolean getRequestsSingleDLR(Message message) {
+        if (message.getHeaders().containsKey(SmppConstants.SINGLE_DLR)) {
+            return message.getHeader(SmppConstants.SINGLE_DLR, Boolean.class);
+        }
+        return config.isSingleDLR();
     }
 }

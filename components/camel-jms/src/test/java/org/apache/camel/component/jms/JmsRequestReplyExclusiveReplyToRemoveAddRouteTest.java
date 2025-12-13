@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,34 +16,42 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
-
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/**
- * @version
- */
-public class JmsRequestReplyExclusiveReplyToRemoveAddRouteTest extends CamelTestSupport {
+public class JmsRequestReplyExclusiveReplyToRemoveAddRouteTest extends AbstractJMSTest {
+
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
     public void testJmsRequestReplyExclusiveFixedReplyTo() throws Exception {
         assertEquals("Hello A", template.requestBody("direct:start", "A"));
 
         // stop and remove route
-        context.stopRoute("start");
+        context.getRouteController().stopRoute("start");
         context.removeRoute("start");
 
         // add new route using same jms endpoint uri
         context.addRoutes(new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start2").routeId("start2")
-                        .to("activemq:queue:foo?replyTo=bar&replyToType=Exclusive")
+                        .to("activemq:queue:JmsRequestReplyExclusiveReplyToRemoveAddRouteTest?replyTo=JmsRequestReplyExclusiveReplyToRemoveAddRouteTest.reply&replyToType=Exclusive")
                         .to("log:start2");
             }
         });
@@ -55,25 +63,35 @@ public class JmsRequestReplyExclusiveReplyToRemoveAddRouteTest extends CamelTest
         assertEquals("Hello E", template.requestBody("direct:start2", "E"));
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-        return camelContext;
+    @Override
+    protected String getComponentName() {
+        return "activemq";
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start").routeId("start")
-                    .to("activemq:queue:foo?replyTo=bar&replyToType=Exclusive")
-                    .to("log:start");
+                        .to("activemq:queue:JmsRequestReplyExclusiveReplyToRemoveAddRouteTest?replyTo=JmsRequestReplyExclusiveReplyToRemoveAddRouteTest.reply&replyToType=Exclusive")
+                        .to("log:start");
 
-                from("activemq:queue:foo").routeId("foo")
-                    .transform(body().prepend("Hello "));
+                from("activemq:queue:JmsRequestReplyExclusiveReplyToRemoveAddRouteTest").routeId("foo")
+                        .transform(body().prepend("Hello "));
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
     }
 }

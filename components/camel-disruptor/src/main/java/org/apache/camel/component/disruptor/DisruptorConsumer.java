@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -29,10 +29,10 @@ import org.apache.camel.Suspendable;
 import org.apache.camel.spi.ExceptionHandler;
 import org.apache.camel.spi.ShutdownAware;
 import org.apache.camel.spi.Synchronization;
+import org.apache.camel.support.AsyncProcessorConverterHelper;
+import org.apache.camel.support.ExchangeHelper;
 import org.apache.camel.support.LoggingExceptionHandler;
-import org.apache.camel.support.ServiceSupport;
-import org.apache.camel.util.AsyncProcessorConverterHelper;
-import org.apache.camel.util.ExchangeHelper;
+import org.apache.camel.support.service.ServiceSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,6 +57,11 @@ public class DisruptorConsumer extends ServiceSupport implements Consumer, Suspe
     public DisruptorConsumer(final DisruptorEndpoint endpoint, final Processor processor) {
         this.endpoint = endpoint;
         this.processor = AsyncProcessorConverterHelper.convert(processor);
+    }
+
+    @Override
+    public AsyncProcessor getProcessor() {
+        return processor;
     }
 
     public ExceptionHandler getExceptionHandler() {
@@ -96,7 +101,7 @@ public class DisruptorConsumer extends ServiceSupport implements Consumer, Suspe
     }
 
     Set<LifecycleAwareExchangeEventHandler> createEventHandlers(final int concurrentConsumers) {
-        final Set<LifecycleAwareExchangeEventHandler> eventHandlers = new HashSet<LifecycleAwareExchangeEventHandler>();
+        final Set<LifecycleAwareExchangeEventHandler> eventHandlers = new HashSet<>();
 
         for (int i = 0; i < concurrentConsumers; ++i) {
             eventHandlers.add(new ConsumerEventHandler(i, concurrentConsumers));
@@ -130,10 +135,9 @@ public class DisruptorConsumer extends ServiceSupport implements Consumer, Suspe
     private Exchange prepareExchange(final Exchange exchange) {
         // send a new copied exchange with new camel context
         // don't copy handovers as they are handled by the Disruptor Event Handlers
-        final Exchange newExchange = ExchangeHelper
-                .copyExchangeAndSetCamelContext(exchange, endpoint.getCamelContext(), false);
+        final Exchange newExchange = ExchangeHelper.copyExchangeWithProperties(exchange, endpoint.getCamelContext());
         // set the from endpoint
-        newExchange.setFromEndpoint(endpoint);
+        newExchange.getExchangeExtension().setFromEndpoint(endpoint);
         return newExchange;
     }
 
@@ -153,37 +157,55 @@ public class DisruptorConsumer extends ServiceSupport implements Consumer, Suspe
             final Exchange result = prepareExchange(exchange);
 
             // We need to be notified when the exchange processing is complete to synchronize the original exchange
-            // This is however the last part of the processing of this exchange and as such can't be done
+            // This is however, the last part of the processing of this exchange and as such can't be done
             // in the AsyncCallback as that is called *AFTER* processing is considered to be done
             // (see org.apache.camel.processor.CamelInternalProcessor.InternalCallback#done).
             // To solve this problem, a new synchronization is set on the exchange that is to be
             // processed
-            result.addOnCompletion(new Synchronization() {
-                @Override
-                public void onComplete(Exchange exchange) {
-                    synchronizedExchange.consumed(result);
-                }
-
-                @Override
-                public void onFailure(Exchange exchange) {
-                    synchronizedExchange.consumed(result);
-                }
-            });
+            result.getExchangeExtension().addOnCompletion(newSynchronization(synchronizedExchange, result));
 
             // As the necessary post-processing of the exchange is done by the registered Synchronization,
             // we can suffice with a no-op AsyncCallback
             processor.process(result, NOOP_ASYNC_CALLBACK);
 
         } catch (Exception e) {
-            Exchange exchange = synchronizedExchange.getExchange();
-
-            if (exchange != null) {
-                getExceptionHandler().handleException("Error processing exchange",
-                        exchange, e);
-            } else {
-                getExceptionHandler().handleException(e);
-            }
+            handleException(synchronizedExchange, e);
         }
+    }
+
+    private static Synchronization newSynchronization(SynchronizedExchange synchronizedExchange, Exchange result) {
+        return new Synchronization() {
+            @Override
+            public void onComplete(Exchange exchange) {
+                synchronizedExchange.consumed(result);
+            }
+
+            @Override
+            public void onFailure(Exchange exchange) {
+                synchronizedExchange.consumed(result);
+            }
+        };
+    }
+
+    private void handleException(SynchronizedExchange synchronizedExchange, Exception e) {
+        Exchange exchange = synchronizedExchange.getExchange();
+
+        if (exchange != null) {
+            getExceptionHandler().handleException("Error processing exchange", exchange, e);
+        } else {
+            getExceptionHandler().handleException(e);
+        }
+    }
+
+    @Override
+    public Exchange createExchange(boolean autoRelease) {
+        // noop
+        return null;
+    }
+
+    @Override
+    public void releaseExchange(Exchange exchange, boolean autoRelease) {
+        // noop
     }
 
     /**

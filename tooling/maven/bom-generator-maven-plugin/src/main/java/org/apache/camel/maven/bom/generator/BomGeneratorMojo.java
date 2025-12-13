@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,16 +18,17 @@ package org.apache.camel.maven.bom.generator;
 
 import java.io.File;
 import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
+
+import javax.inject.Inject;
+import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.transform.OutputKeys;
@@ -38,6 +39,7 @@ import javax.xml.transform.stream.StreamResult;
 import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathExpression;
+import javax.xml.xpath.XPathExpressionException;
 import javax.xml.xpath.XPathFactory;
 
 import org.w3c.dom.Document;
@@ -45,11 +47,11 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
-import org.apache.commons.io.IOUtils;
+import org.apache.camel.tooling.util.FileUtil;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.factory.ArtifactFactory;
 import org.apache.maven.artifact.repository.ArtifactRepository;
-import org.apache.maven.artifact.resolver.ArtifactResolver;
+import org.apache.maven.execution.MavenSession;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.DependencyManagement;
 import org.apache.maven.model.Exclusion;
@@ -58,98 +60,90 @@ import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugins.annotations.LifecyclePhase;
+import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.project.DefaultProjectBuildingRequest;
 import org.apache.maven.project.MavenProject;
+import org.apache.maven.project.ProjectBuildingRequest;
+import org.apache.maven.shared.transfer.artifact.resolve.ArtifactResolver;
 
 /**
  * Generate BOM by flattening the current project's dependency management section and applying exclusions.
- *
- * @goal generate
- * @phase validate
  */
+@Mojo(name = "generate", defaultPhase = LifecyclePhase.VALIDATE, threadSafe = true)
 public class BomGeneratorMojo extends AbstractMojo {
 
     /**
      * The maven project.
-     *
-     * @parameter property="project"
-     * @required
-     * @readonly
      */
+    @Parameter(defaultValue = "${project}", readonly = true)
     protected MavenProject project;
 
     /**
-     * The source pom template file.
-     *
-     * @parameter default-value="${basedir}/pom.xml"
+     * The maven session.
      */
+    @Parameter(defaultValue = "${session}", required = true, readonly = true)
+    private MavenSession session;
+
+    /**
+     * The source pom template file.
+     */
+    @Parameter(defaultValue = "${basedir}/pom.xml")
     protected File sourcePom;
 
     /**
      * The pom file.
-     *
-     * @parameter default-value="${project.build.directory}/${project.name}-pom.xml"
      */
+    @Parameter(defaultValue = "${project.build.directory}/${project.name}-pom.xml")
     protected File targetPom;
-
 
     /**
      * The user configuration
-     *
-     * @parameter
-     * @readonly
      */
+    @Parameter
     protected DependencySet dependencies;
 
     /**
      * The conflict checks configured by the user
-     *
-     * @parameter
-     * @readonly
      */
+    @Parameter
     protected ExternalBomConflictCheckSet checkConflicts;
 
     /**
      * Used to look up Artifacts in the remote repository.
-     *
-     * @component role="org.apache.maven.artifact.factory.ArtifactFactory"
-     * @required
-     * @readonly
      */
-    protected ArtifactFactory artifactFactory;
+    protected final ArtifactFactory artifactFactory;
 
     /**
      * Used to look up Artifacts in the remote repository.
-     *
-     * @component role="org.apache.maven.artifact.resolver.ArtifactResolver"
-     * @required
-     * @readonly
      */
-    protected ArtifactResolver artifactResolver;
+    protected final ArtifactResolver artifactResolver;
 
     /**
      * List of Remote Repositories used by the resolver
-     *
-     * @parameter property="project.remoteArtifactRepositories"
-     * @readonly
-     * @required
      */
-    protected List remoteRepositories;
+    @Parameter(property = "project.remoteArtifactRepositories", readonly = true, required = true)
+    protected List<ArtifactRepository> remoteRepositories;
 
     /**
      * Location of the local repository.
-     *
-     * @parameter property="localRepository"
-     * @readonly
-     * @required
      */
+    @Parameter(property = "localRepository", readonly = true, required = true)
     protected ArtifactRepository localRepository;
+
+    @Inject
+    public BomGeneratorMojo(ArtifactFactory artifactFactory, ArtifactResolver artifactResolver) {
+        this.artifactFactory = artifactFactory;
+        this.artifactResolver = artifactResolver;
+    }
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         try {
             DependencyManagement mng = project.getDependencyManagement();
 
-            List<Dependency> filteredDependencies = enhance(filter(mng.getDependencies()));
+            List<Dependency> filteredDependencies = filter(mng.getDependencies());
 
             Set<String> externallyManagedDependencies = getExternallyManagedDependencies();
             checkConflictsWithExternalBoms(filteredDependencies, externallyManagedDependencies);
@@ -161,24 +155,11 @@ public class BomGeneratorMojo extends AbstractMojo {
 
             writePom(pom);
 
-        } catch (MojoFailureException ex) {
-            throw ex;
-        } catch (MojoExecutionException ex) {
+        } catch (MojoFailureException | MojoExecutionException ex) {
             throw ex;
         } catch (Exception ex) {
             throw new MojoExecutionException("Cannot generate the output BOM file", ex);
         }
-    }
-
-    private List<Dependency> enhance(List<Dependency> dependencyList) {
-
-        for (Dependency dep : dependencyList) {
-            if (dep.getGroupId().startsWith(project.getGroupId()) && project.getVersion().equals(dep.getVersion())) {
-                dep.setVersion("${project.version}");
-            }
-        }
-
-        return dependencyList;
     }
 
     private List<Dependency> filter(List<Dependency> dependencyList) {
@@ -189,31 +170,48 @@ public class BomGeneratorMojo extends AbstractMojo {
 
         for (Dependency dep : dependencyList) {
             boolean accept = inclusions.matches(dep) && !exclusions.matches(dep);
+            // skip test-jar
+            accept &= !"test-jar".equals(dep.getType());
             getLog().debug(dep + (accept ? " included in the BOM" : " excluded from BOM"));
 
             if (accept) {
                 outDependencies.add(dep);
+            } else {
+                // lets log a WARN if some Camel JARs was excluded
+                if (dep.getGroupId().startsWith("org.apache.camel")) {
+                    getLog().warn(dep + " excluded from BOM");
+                }
             }
         }
 
-        Collections.sort(outDependencies, (d1, d2) -> (d1.getGroupId() + ":" + d1.getArtifactId()).compareTo(d2.getGroupId() + ":" + d2.getArtifactId()));
+        outDependencies.sort(Comparator.comparing(d -> d.getGroupId() + ":" + d.getArtifactId()));
 
         return outDependencies;
     }
 
     private Document loadBasePom() throws Exception {
-        DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+        DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+        dbf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, Boolean.TRUE);
+        dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        DocumentBuilder builder = dbf.newDocumentBuilder();
         Document pom = builder.parse(sourcePom);
 
         XPath xpath = XPathFactory.newInstance().newXPath();
-        XPathExpression expr = xpath.compile("/project/parent/version");
 
-        Node node = (Node) expr.evaluate(pom, XPathConstants.NODE);
+        XPathExpression parentVersion = xpath.compile("/project/parent/version");
+        setActualVersion(pom, parentVersion);
+
+        XPathExpression projectVersion = xpath.compile("/project/version");
+        setActualVersion(pom, projectVersion);
+
+        return pom;
+    }
+
+    private void setActualVersion(Document pom, XPathExpression path) throws XPathExpressionException {
+        Node node = (Node) path.evaluate(pom, XPathConstants.NODE);
         if (node != null && node.getTextContent() != null && node.getTextContent().trim().equals("${project.version}")) {
             node.setTextContent(project.getVersion());
         }
-
-        return pom;
     }
 
     private void writePom(Document pom) throws Exception {
@@ -226,14 +224,24 @@ public class BomGeneratorMojo extends AbstractMojo {
             emptyNode.getParentNode().removeChild(emptyNode);
         }
 
-        Transformer transformer = TransformerFactory.newInstance().newTransformer();
+        TransformerFactory transformerFactory = TransformerFactory.newInstance();
+        transformerFactory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, Boolean.TRUE);
+        try {
+            transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+        } catch (IllegalArgumentException e) {
+            // ignore
+        }
+        try {
+            transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "");
+        } catch (IllegalArgumentException e) {
+            // ignore
+        }
+        Transformer transformer = transformerFactory.newTransformer();
         transformer.setOutputProperty(OutputKeys.INDENT, "yes");
         transformer.setOutputProperty(OutputKeys.METHOD, "xml");
         transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2");
 
         DOMSource source = new DOMSource(pom);
-
-        targetPom.getParentFile().mkdirs();
 
         String content;
         try (StringWriter out = new StringWriter()) {
@@ -244,38 +252,10 @@ public class BomGeneratorMojo extends AbstractMojo {
 
         // Fix header formatting problem
         content = content.replaceFirst("-->", "-->\n");
-        writeFileIfChanged(content, targetPom);
+        FileUtil.updateFile(targetPom.toPath(), content);
     }
-
-    private void writeFileIfChanged(String content, File file) throws IOException {
-        boolean write = true;
-
-        if (file.exists()) {
-            try (FileReader fr = new FileReader(file)) {
-                String oldContent = IOUtils.toString(fr);
-                if (!content.equals(oldContent)) {
-                    getLog().debug("Writing new file " + file.getAbsolutePath());
-                    fr.close();
-                } else {
-                    getLog().debug("File " + file.getAbsolutePath() + " left unchanged");
-                    write = false;
-                }
-            }
-        } else {
-            File parent = file.getParentFile();
-            parent.mkdirs();
-        }
-
-        if (write) {
-            try (FileWriter fw = new FileWriter(file)) {
-                IOUtils.write(content, fw);
-            }
-        }
-    }
-
 
     private void overwriteDependencyManagement(Document pom, List<Dependency> dependencies) throws Exception {
-
         XPath xpath = XPathFactory.newInstance().newXPath();
         XPathExpression expr = xpath.compile("/project/dependencyManagement/dependencies");
 
@@ -345,14 +325,13 @@ public class BomGeneratorMojo extends AbstractMojo {
                 dependencyEl.appendChild(exclsEl);
             }
 
-
             dependenciesSection.appendChild(dependencyEl);
         }
 
-
     }
 
-    private void checkConflictsWithExternalBoms(Collection<Dependency> dependencies, Set<String> external) throws MojoFailureException {
+    private void checkConflictsWithExternalBoms(Collection<Dependency> dependencies, Set<String> external)
+            throws MojoFailureException {
         Set<String> errors = new TreeSet<>();
         for (Dependency d : dependencies) {
             String key = comparisonKey(d);
@@ -361,9 +340,10 @@ public class BomGeneratorMojo extends AbstractMojo {
             }
         }
 
-        if (errors.size() > 0) {
+        if (!errors.isEmpty()) {
             StringBuilder msg = new StringBuilder();
-            msg.append("Found ").append(errors.size()).append(" conflicts between the current managed dependencies and the external BOMS:\n");
+            msg.append("Found ").append(errors.size())
+                    .append(" conflicts between the current managed dependencies and the external BOMS:\n");
             for (String error : errors) {
                 msg.append(" - ").append(error).append("\n");
             }
@@ -376,7 +356,8 @@ public class BomGeneratorMojo extends AbstractMojo {
         Set<String> provided = new HashSet<>();
         if (checkConflicts != null && checkConflicts.getBoms() != null) {
             for (ExternalBomConflictCheck check : checkConflicts.getBoms()) {
-                Set<String> bomProvided = getProvidedDependencyManagement(check.getGroupId(), check.getArtifactId(), check.getVersion());
+                Set<String> bomProvided
+                        = getProvidedDependencyManagement(check.getGroupId(), check.getArtifactId(), check.getVersion());
                 provided.addAll(bomProvided);
             }
         }
@@ -385,30 +366,71 @@ public class BomGeneratorMojo extends AbstractMojo {
     }
 
     private Set<String> getProvidedDependencyManagement(String groupId, String artifactId, String version) throws Exception {
+        return getProvidedDependencyManagement(groupId, artifactId, version, new TreeSet<>());
+    }
+
+    private Set<String> getProvidedDependencyManagement(
+            String groupId, String artifactId, String version, Set<String> gaChecked)
+            throws Exception {
+        String ga = groupId + ":" + artifactId;
+        gaChecked.add(ga);
         Artifact bom = resolveArtifact(groupId, artifactId, version, "pom");
         MavenProject bomProject = loadExternalProjectPom(bom.getFile());
 
         Set<String> provided = new HashSet<>();
         if (bomProject.getDependencyManagement() != null && bomProject.getDependencyManagement().getDependencies() != null) {
             for (Dependency dep : bomProject.getDependencyManagement().getDependencies()) {
-                provided.add(comparisonKey(dep));
+                if ("pom".equals(dep.getType()) && "import".equals(dep.getScope())) {
+                    String subGa = dep.getGroupId() + ":" + dep.getArtifactId();
+                    if (!gaChecked.contains(subGa)) {
+                        Set<String> sub = getProvidedDependencyManagement(dep.getGroupId(), dep.getArtifactId(),
+                                resolveVersion(bomProject, dep.getVersion()), gaChecked);
+                        provided.addAll(sub);
+                    }
+                } else {
+                    provided.add(comparisonKey(dep));
+                }
             }
         }
 
         return provided;
     }
 
+    private String resolveVersion(MavenProject project, String version) {
+        if (version.contains("${")) {
+            int start = version.indexOf("${");
+            int end = version.indexOf("}");
+            if (end > start) {
+                String prop = version.substring(start + 2, end);
+                String resolved = project.getProperties().getProperty(prop);
+                if (resolved != null) {
+                    // may contain yet another placeholder
+                    if (resolved.contains("${")) {
+                        resolved = resolveVersion(project, resolved);
+                    }
+                    version = version.substring(0, start) + resolved + version.substring(end + 1);
+                }
+            }
+        }
+        return version;
+    }
+
     private String comparisonKey(Dependency dependency) {
-        return dependency.getGroupId() + ":" + dependency.getArtifactId();
+        return dependency.getGroupId() + ":" + dependency.getArtifactId() + ":"
+               + (dependency.getType() != null ? dependency.getType() : "jar");
     }
 
     private Artifact resolveArtifact(String groupId, String artifactId, String version, String type) throws Exception {
 
         Artifact art = artifactFactory.createArtifact(groupId, artifactId, version, "runtime", type);
+        ProjectBuildingRequest buildingRequest = new DefaultProjectBuildingRequest(session.getProjectBuildingRequest());
+        buildingRequest
+                .setRemoteRepositories(remoteRepositories)
+                .setLocalRepository(localRepository);
 
-        artifactResolver.resolve(art, remoteRepositories, localRepository);
-
-        return art;
+        return artifactResolver
+                .resolveArtifact(buildingRequest, art)
+                .getArtifact();
     }
 
     private MavenProject loadExternalProjectPom(File pomFile) throws Exception {

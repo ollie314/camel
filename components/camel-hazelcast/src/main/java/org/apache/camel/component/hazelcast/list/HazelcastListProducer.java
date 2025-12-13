@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,15 +19,15 @@ package org.apache.camel.component.hazelcast.list;
 import java.util.Collection;
 import java.util.Map;
 
+import com.hazelcast.collection.IList;
 import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.core.IList;
-
 import org.apache.camel.Exchange;
 import org.apache.camel.Producer;
 import org.apache.camel.component.hazelcast.HazelcastComponentHelper;
 import org.apache.camel.component.hazelcast.HazelcastConstants;
 import org.apache.camel.component.hazelcast.HazelcastDefaultEndpoint;
 import org.apache.camel.component.hazelcast.HazelcastDefaultProducer;
+import org.apache.camel.component.hazelcast.HazelcastOperation;
 
 /**
  * Implementation of Hazelcast List {@link Producer}.
@@ -41,11 +41,12 @@ public class HazelcastListProducer extends HazelcastDefaultProducer {
         this.list = hazelcastInstance.getList(listName);
     }
 
+    @Override
     public void process(Exchange exchange) throws Exception {
 
         Map<String, Object> headers = exchange.getIn().getHeaders();
 
-        // get header parameters
+        // GET header parameters
         Integer pos = null;
 
         if (headers.containsKey(HazelcastConstants.OBJECT_POS)) {
@@ -55,44 +56,50 @@ public class HazelcastListProducer extends HazelcastDefaultProducer {
             pos = (Integer) headers.get(HazelcastConstants.OBJECT_POS);
         }
 
-        final int operation = lookupOperationNumber(exchange);
+        final HazelcastOperation operation = lookupOperation(exchange);
 
         switch (operation) {
 
-        case HazelcastConstants.ADD_OPERATION:
-            this.add(pos, exchange);
-            break;
+            case ADD:
+                this.add(pos, exchange);
+                break;
 
-        case HazelcastConstants.GET_OPERATION:
-            this.get(pos, exchange);
-            break;
+            case GET:
+                this.get(pos, exchange);
+                break;
 
-        case HazelcastConstants.SETVALUE_OPERATION:
-            this.set(pos, exchange);
-            break;
+            case SET_VALUE:
+                this.set(pos, exchange);
+                break;
 
-        case HazelcastConstants.REMOVEVALUE_OPERATION:
-            this.remove(pos, exchange);
-            break;
-            
-        case HazelcastConstants.CLEAR_OPERATION:
-            this.clear();
-            break;
-            
-        case HazelcastConstants.ADD_ALL_OPERATION:
-            this.addAll(pos, exchange);
-            break;
-            
-        case HazelcastConstants.REMOVE_ALL_OPERATION:
-            this.removeAll(exchange);
-            break;
+            case REMOVE_VALUE:
+                this.remove(pos, exchange);
+                break;
 
-        case HazelcastConstants.RETAIN_ALL_OPERATION:
-            this.retainAll(exchange);
-            break;
-            
-        default:
-            throw new IllegalArgumentException(String.format("The value '%s' is not allowed for parameter '%s' on the LIST cache.", operation, HazelcastConstants.OPERATION));
+            case CLEAR:
+                this.clear();
+                break;
+
+            case ADD_ALL:
+                this.addAll(pos, exchange);
+                break;
+
+            case REMOVE_ALL:
+                this.removeAll(exchange);
+                break;
+
+            case RETAIN_ALL:
+                this.retainAll(exchange);
+                break;
+
+            case GET_ALL:
+                this.getAll(exchange);
+                break;
+
+            default:
+                throw new IllegalArgumentException(
+                        String.format("The value '%s' is not allowed for parameter '%s' on the LIST cache.", operation,
+                                HazelcastConstants.OPERATION));
         }
 
         // finally copy headers
@@ -102,16 +109,16 @@ public class HazelcastListProducer extends HazelcastDefaultProducer {
     private void add(Integer pos, Exchange exchange) {
         final Object body = exchange.getIn().getBody();
         if (null == pos) {
-            // add the specified element to the end of the list
+            // ADD the specified element to the end of the list
             list.add(body);
         } else {
-            // add the specified element at the specified position
+            // ADD the specified element at the specified position
             list.add(pos, body);
         }
     }
 
     private void get(Integer pos, Exchange exchange) {
-        exchange.getOut().setBody(this.list.get(pos));
+        exchange.getMessage().setBody(this.list.get(pos));
     }
 
     private void set(Integer pos, Exchange exchange) {
@@ -134,11 +141,11 @@ public class HazelcastListProducer extends HazelcastDefaultProducer {
             list.remove(position);
         }
     }
-    
+
     private void clear() {
         list.clear();
     }
-    
+
     private void addAll(Integer pos, Exchange exchange) {
         final Object body = exchange.getIn().getBody();
         if (null == pos) {
@@ -147,14 +154,18 @@ public class HazelcastListProducer extends HazelcastDefaultProducer {
             list.addAll(pos, (Collection<? extends Object>) body);
         }
     }
-    
+
     private void removeAll(Exchange exchange) {
         final Object body = exchange.getIn().getBody();
         list.removeAll((Collection<?>) body);
     }
-    
+
     private void retainAll(Exchange exchange) {
         final Object body = exchange.getIn().getBody();
         list.retainAll((Collection<?>) body);
+    }
+
+    private void getAll(Exchange exchange) {
+        exchange.getMessage().setBody(list);
     }
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -28,11 +28,12 @@ import java.util.List;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.impl.DefaultCamelContext;
-import org.apache.camel.impl.DefaultExchange;
-import org.apache.camel.impl.DefaultExchangeHolder;
-import org.junit.Test;
+import org.apache.camel.support.DefaultExchange;
+import org.apache.camel.support.DefaultExchangeHolder;
+import org.apache.camel.util.ClassLoadingAwareObjectInputStream;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class ClassLoadingAwareObjectInputStreamTest {
 
@@ -55,7 +56,8 @@ public class ClassLoadingAwareObjectInputStreamTest {
         oos.flush();
         final byte[] serialized = baos.toByteArray();
 
-        final ObjectInputStream bis = new ClassLoadingAwareObjectInputStream(context, new ByteArrayInputStream(serialized));
+        final ObjectInputStream bis = new ClassLoadingAwareObjectInputStream(
+                context.getApplicationContextClassLoader(), new ByteArrayInputStream(serialized));
         final DefaultExchangeHolder deserialized = (DefaultExchangeHolder) bis.readObject();
 
         final DefaultExchange exchange2 = new DefaultExchange(context);
@@ -67,7 +69,6 @@ public class ClassLoadingAwareObjectInputStreamTest {
     }
 
 }
-
 
 class MyObject implements Serializable {
     final String name;

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,15 +16,24 @@
  */
 package org.apache.camel.component.atmosphere.websocket;
 
+import org.apache.camel.spi.Metadata;
+
 /**
  *
  */
 public final class WebsocketConstants {
-    
+
+    @Metadata(description = "The connection key.", javaType = "java.lang.String")
     public static final String CONNECTION_KEY = "websocket.connectionKey";
+    @Metadata(description = "The list of connection keys.", javaType = "java.util.List")
     public static final String CONNECTION_KEY_LIST = "websocket.connectionKey.list";
     public static final String SEND_TO_ALL = "websocket.sendToAll";
+    @Metadata(label = "consumer",
+              description = "The type of event received. It can be `ONOPEN_EVENT_TYPE`, `ONERROR_EVENT_TYPE` or `ONCLOSE_EVENT_TYPE`.",
+              javaType = "int", important = true)
     public static final String EVENT_TYPE = "websocket.eventType";
+    @Metadata(label = "consumer", description = "The type of error that occurred. It can be `MESSAGE_NOT_SENT_ERROR_TYPE`.",
+              javaType = "int")
     public static final String ERROR_TYPE = "websocket.errorType";
 
     public static final int ONOPEN_EVENT_TYPE = 1;

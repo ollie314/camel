@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,9 @@ package org.apache.camel.component.mybatis;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class MyBatisUpdateTest extends MyBatisTestSupport {
 
@@ -35,11 +37,11 @@ public class MyBatisUpdateTest extends MyBatisTestSupport {
 
         template.sendBody("direct:start", account);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // there should be 2 rows now
         Integer rows = template.requestBody("mybatis:count?statementType=SelectOne", null, Integer.class);
-        assertEquals("There should be 2 rows", 2, rows.intValue());
+        assertEquals(2, rows.intValue(), "There should be 2 rows");
 
         Account claus = template.requestBody("mybatis:selectAccountById?statementType=SelectOne", 456, Account.class);
         assertEquals("Claus", claus.getFirstName());
@@ -48,14 +50,14 @@ public class MyBatisUpdateTest extends MyBatisTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: e1
                 from("direct:start")
-                    .to("mybatis:updateAccount?statementType=Update")
-                    .to("mock:result");
+                        .to("mybatis:updateAccount?statementType=Update")
+                        .to("mock:result");
                 // END SNIPPET: e1
             }
         };

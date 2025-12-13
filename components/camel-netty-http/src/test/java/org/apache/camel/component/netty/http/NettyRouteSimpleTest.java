@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,9 +17,17 @@
 package org.apache.camel.component.netty.http;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.AvailablePortFinder;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class NettyRouteSimpleTest extends BaseNettyTest {
+
+    @RegisterExtension
+    AvailablePortFinder.Port port2 = AvailablePortFinder.find();
 
     @Test
     public void testHttpSimple() throws Exception {
@@ -29,22 +37,21 @@ public class NettyRouteSimpleTest extends BaseNettyTest {
         String out = template.requestBody("netty-http:http://localhost:{{port}}/foo", "Hello World", String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            int port2 = getNextPort();
-
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("netty-http:http://0.0.0.0:{{port}}/foo")
-                    .to("mock:input1")
-                    .to("netty-http:http://localhost:" + port2 + "/bar");
+                        .to("mock:input1")
+                        .to("netty-http:http://localhost:" + port2 + "/bar");
+
                 from("netty-http:http://0.0.0.0:" + port2 + "/bar")
-                    .to("mock:input2")
-                    .transform().constant("Bye World");
+                        .to("mock:input2")
+                        .transform().constant("Bye World");
             }
         };
     }

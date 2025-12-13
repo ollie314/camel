@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,21 +17,21 @@
 package org.apache.camel.dataformat.tarfile;
 
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.spring.CamelSpringTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.spring.junit5.CamelSpringTestSupport;
+import org.junit.jupiter.api.Test;
 import org.springframework.context.support.ClassPathXmlApplicationContext;
 
-public class SpringTarSplitterRouteTest extends CamelSpringTestSupport {
+class SpringTarSplitterRouteTest extends CamelSpringTestSupport {
 
     @Test
-    public void testSplitter() throws InterruptedException {
+    void testSplitter() throws InterruptedException {
         MockEndpoint processTarEntry = getMockEndpoint("mock:processTarEntry");
 
         processTarEntry.expectedBodiesReceivedInAnyOrder("chau", "hi", "hola", "hello", "greetings");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Override
     protected ClassPathXmlApplicationContext createApplicationContext() {
         return new ClassPathXmlApplicationContext("org/apache/camel/dataformat/tarfile/SpringTarSplitterRouteTest.xml");

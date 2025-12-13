@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,184 +16,177 @@
  */
 package org.apache.camel.component.kubernetes.producer;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
-import io.fabric8.kubernetes.api.model.Container;
-import io.fabric8.kubernetes.api.model.ContainerPort;
 import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodBuilder;
+import io.fabric8.kubernetes.api.model.PodListBuilder;
 import io.fabric8.kubernetes.api.model.PodSpec;
-
+import io.fabric8.kubernetes.api.model.PodSpecBuilder;
+import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.NamespacedKubernetesClient;
+import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient;
+import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer;
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.kubernetes.KubernetesConstants;
 import org.apache.camel.component.kubernetes.KubernetesTestSupport;
-import org.apache.camel.util.ObjectHelper;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@EnableKubernetesMockClient
 public class KubernetesPodsProducerTest extends KubernetesTestSupport {
 
-    @Test
-    public void listTest() throws Exception {
-        if (ObjectHelper.isEmpty(authToken)) {
-            return;
-        }
-        List<Pod> result = template.requestBody("direct:list", "", List.class);
+    KubernetesMockServer server;
+    NamespacedKubernetesClient client;
 
-        boolean defaultExists = false;
-
-        Iterator<Pod> it = result.iterator();
-        while (it.hasNext()) {
-            Pod pod = it.next();
-            if ((pod.getMetadata().getName()).contains("fabric8")) {
-                defaultExists = true;
-            }
-        }
-
-        assertTrue(defaultExists);
+    @BindToRegistry("kubernetesClient")
+    public KubernetesClient getClient() {
+        return client;
     }
 
     @Test
-    public void listByLabelsTest() throws Exception {
-        if (ObjectHelper.isEmpty(authToken)) {
-            return;
-        }
-        Exchange ex = template.request("direct:listByLabels", new Processor() {
+    void listTest() {
+        server.expect().withPath("/api/v1/pods")
+                .andReturn(200, new PodListBuilder().addNewItem().and().addNewItem().and().addNewItem().and().build()).once();
+        server.expect().withPath("/api/v1/namespaces/test/pods")
+                .andReturn(200, new PodListBuilder().addNewItem().and().addNewItem().and().build()).once();
+        List<?> result = template.requestBody("direct:list", "", List.class);
+        assertEquals(3, result.size());
 
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                        "default");
-                Map<String, String> labels = new HashMap<String, String>();
-                labels.put("component", "elasticsearch");
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_PODS_LABELS, labels);
-            }
-        });
+        Exchange ex = template.request("direct:list",
+                exchange -> exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test"));
+        List<?> resultNamespace = ex.getMessage().getBody(List.class);
 
-        List<Pod> result = ex.getOut().getBody(List.class);
-
-        boolean podExists = false;
-        Iterator<Pod> it = result.iterator();
-        while (it.hasNext()) {
-            Pod pod = it.next();
-            if (pod.getMetadata().getLabels().containsValue("elasticsearch")) {
-                podExists = true;
-            }
-        }
-
-        assertFalse(podExists);
+        assertEquals(2, resultNamespace.size());
     }
 
     @Test
-    public void getPodTest() throws Exception {
-        if (ObjectHelper.isEmpty(authToken)) {
-            return;
-        }
-        Exchange ex = template.request("direct:getPod", new Processor() {
+    void listByLabelsTest() throws Exception {
+        Map<String, String> labels = Map.of(
+                "key1", "value1",
+                "key2", "value2");
 
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                        "default");
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_POD_NAME,
-                        "elasticsearch-7015o");
-            }
+        String urlEncodedLabels = toUrlEncoded(labels.entrySet().stream().map(e -> e.getKey() + "=" + e.getValue())
+                .collect(Collectors.joining(",")));
+
+        server.expect().withPath("/api/v1/pods?labelSelector=" + urlEncodedLabels)
+                .andReturn(200, new PodListBuilder().addNewItem().and().addNewItem().and().addNewItem().and().build())
+                .once();
+        server.expect().withPath("/api/v1/namespaces/test/pods?labelSelector=" + urlEncodedLabels)
+                .andReturn(200, new PodListBuilder().addNewItem().and().addNewItem().and().build())
+                .once();
+        Exchange ex = template.request("direct:listByLabels",
+                exchange -> exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_PODS_LABELS, labels));
+
+        assertEquals(3, ex.getMessage().getBody(List.class).size());
+
+        ex = template.request("direct:listByLabels", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_PODS_LABELS, labels);
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
         });
 
-        Pod result = ex.getOut().getBody(Pod.class);
-
-        assertNull(result);
+        assertEquals(2, ex.getMessage().getBody(List.class).size());
     }
 
     @Test
-    public void createAndDeletePod() throws Exception {
-        if (ObjectHelper.isEmpty(authToken)) {
-            return;
-        }
-        Exchange ex = template.request("direct:createPod", new Processor() {
+    void getPodTest() {
+        Pod pod1 = new PodBuilder().withNewMetadata().withName("pod1").withNamespace("test").and().build();
+        Pod pod2 = new PodBuilder().withNewMetadata().withName("pod2").withNamespace("ns1").and().build();
 
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                        "default");
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_POD_NAME, "test");
-                Map<String, String> labels = new HashMap<String, String>();
-                labels.put("this", "rocks");
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_PODS_LABELS, labels);
-                PodSpec podSpec = new PodSpec();
-                podSpec.setHost("172.28.128.4");
-                Container cont = new Container();
-                cont.setImage("docker.io/jboss/wildfly:latest");
-                cont.setName("pippo");
-
-                List<ContainerPort> containerPort = new ArrayList<ContainerPort>();
-                ContainerPort port = new ContainerPort();
-                port.setHostIP("0.0.0.0");
-                port.setHostPort(8080);
-                port.setContainerPort(8080);
-
-                containerPort.add(port);
-
-                cont.setPorts(containerPort);
-
-                List<Container> list = new ArrayList<Container>();
-                list.add(cont);
-
-                podSpec.setContainers(list);
-
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_POD_SPEC, podSpec);
-            }
+        server.expect().withPath("/api/v1/namespaces/test/pods/pod1").andReturn(200, pod1).once();
+        server.expect().withPath("/api/v1/namespaces/ns1/pods/pod2").andReturn(200, pod2).once();
+        Exchange ex = template.request("direct:getPod", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_POD_NAME, "pod1");
         });
 
-        ex = template.request("direct:deletePod", new Processor() {
+        Pod result = ex.getMessage().getBody(Pod.class);
 
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                        "default");
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_POD_NAME, "test");
-            }
+        assertEquals("pod1", result.getMetadata().getName());
+    }
+
+    @Test
+    void createPod() {
+        Map<String, String> labels = Map.of("my.label.key", "my.label.value");
+        PodSpec spec = new PodSpecBuilder().withHostname("SomeHostname").build();
+        Pod pod1 = new PodBuilder().withNewMetadata().withName("pod1").withNamespace("test").withLabels(labels).and()
+                .withSpec(spec).build();
+        server.expect().post().withPath("/api/v1/namespaces/test/pods").andReturn(200, pod1).once();
+
+        Exchange ex = template.request("direct:createPod", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_PODS_LABELS, labels);
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_POD_NAME, "pod1");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_POD_SPEC, spec);
         });
 
-        boolean podDeleted = ex.getOut().getBody(Boolean.class);
+        Pod result = ex.getMessage().getBody(Pod.class);
+
+        assertEquals("test", result.getMetadata().getNamespace());
+        assertEquals("pod1", result.getMetadata().getName());
+        assertEquals(labels, result.getMetadata().getLabels());
+        assertEquals("SomeHostname", result.getSpec().getHostname());
+    }
+
+    @Test
+    void updatePod() {
+        Map<String, String> labels = Map.of("my.label.key", "my.label.value");
+        PodSpec spec = new PodSpecBuilder().withHostname("SomeHostname").build();
+        Pod pod1 = new PodBuilder().withNewMetadata().withName("pod1").withNamespace("test").withLabels(labels).and()
+                .withSpec(spec).build();
+        server.expect().get().withPath("/api/v1/namespaces/test/pods/pod1")
+                .andReturn(200, new PodBuilder().withNewMetadata().withName("pod1").withNamespace("test").endMetadata().build())
+                .once();
+        server.expect().put().withPath("/api/v1/namespaces/test/pods/pod1").andReturn(200, pod1).once();
+
+        Exchange ex = template.request("direct:updatePod", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_PODS_LABELS, labels);
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_POD_NAME, "pod1");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_POD_SPEC, spec);
+        });
+
+        Pod result = ex.getMessage().getBody(Pod.class);
+
+        assertEquals("test", result.getMetadata().getNamespace());
+        assertEquals("pod1", result.getMetadata().getName());
+        assertEquals(labels, result.getMetadata().getLabels());
+        assertEquals("SomeHostname", result.getSpec().getHostname());
+    }
+
+    @Test
+    void deletePod() {
+        Pod pod1 = new PodBuilder().withNewMetadata().withName("pod1").withNamespace("test").and().build();
+        server.expect().withPath("/api/v1/namespaces/test/pods/pod1").andReturn(200, pod1).once();
+
+        Exchange ex = template.request("direct:deletePod", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_POD_NAME, "pod1");
+        });
+
+        boolean podDeleted = ex.getMessage().getBody(Boolean.class);
 
         assertTrue(podDeleted);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("direct:list")
-                        .toF("kubernetes://%s?oauthToken=%s&category=pods&operation=listPods",
-                                host, authToken);
+            public void configure() {
+                from("direct:list").to("kubernetes-pods:///?kubernetesClient=#kubernetesClient&operation=listPods");
                 from("direct:listByLabels")
-                        .toF("kubernetes://%s?oauthToken=%s&category=pods&operation=listPodsByLabels",
-                                host, authToken);
-                from("direct:getPod")
-                        .toF("kubernetes://%s?oauthToken=%s&category=pods&operation=getPod",
-                                host, authToken);
-                from("direct:createPod")
-                        .toF("kubernetes://%s?oauthToken=%s&category=pods&operation=createPod",
-                                host, authToken);
-                from("direct:deletePod")
-                        .toF("kubernetes://%s?oauthToken=%s&category=pods&operation=deletePod",
-                                host, authToken);
+                        .to("kubernetes-pods:///?kubernetesClient=#kubernetesClient&operation=listPodsByLabels");
+                from("direct:getPod").to("kubernetes-pods:///?kubernetesClient=#kubernetesClient&operation=getPod");
+                from("direct:createPod").to("kubernetes-pods:///?kubernetesClient=#kubernetesClient&operation=createPod");
+                from("direct:updatePod").to("kubernetes-pods:///?kubernetesClient=#kubernetesClient&operation=updatePod");
+                from("direct:deletePod").to("kubernetes-pods:///?kubernetesClient=#kubernetesClient&operation=deletePod");
             }
         };
     }

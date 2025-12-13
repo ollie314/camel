@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,34 +21,45 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-import javax.mail.search.SearchTerm;
+import jakarta.mail.search.SearchTerm;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
-import org.apache.camel.impl.UriEndpointComponent;
-import org.apache.camel.util.IntrospectionSupport;
-import org.apache.camel.util.ObjectHelper;
+import org.apache.camel.SSLContextParametersAware;
+import org.apache.camel.spi.HeaderFilterStrategy;
+import org.apache.camel.spi.HeaderFilterStrategyAware;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.spi.annotations.Component;
+import org.apache.camel.support.HealthCheckComponent;
+import org.apache.camel.util.PropertiesHelper;
+import org.apache.camel.util.StringHelper;
+import org.eclipse.angus.mail.imap.SortTerm;
 
 /**
  * Component for JavaMail.
- *
- * @version
  */
-public class MailComponent extends UriEndpointComponent {
+@Component("imap,imaps,pop3,pop3s,smtp,smtps")
+public class MailComponent extends HealthCheckComponent implements HeaderFilterStrategyAware, SSLContextParametersAware {
+
+    @Metadata(label = "advanced")
     private MailConfiguration configuration;
+    @Metadata(label = "advanced")
     private ContentTypeResolver contentTypeResolver;
+    @Metadata(label = "security", defaultValue = "false")
+    private boolean useGlobalSslContextParameters;
+    @Metadata(label = "filter",
+              description = "To use a custom org.apache.camel.spi.HeaderFilterStrategy to filter header to and from Camel message.")
+    private HeaderFilterStrategy headerFilterStrategy;
 
     public MailComponent() {
-        super(MailEndpoint.class);
     }
 
     public MailComponent(MailConfiguration configuration) {
-        super(MailEndpoint.class);
         this.configuration = configuration;
     }
 
     public MailComponent(CamelContext context) {
-        super(context, MailEndpoint.class);
+        super(context);
     }
 
     @Override
@@ -63,29 +74,64 @@ public class MailComponent extends UriEndpointComponent {
         configureAdditionalJavaMailProperties(config, parameters);
 
         MailEndpoint endpoint = new MailEndpoint(uri, this, config);
-        endpoint.setContentTypeResolver(contentTypeResolver);
-        setProperties(endpoint.getConfiguration(), parameters);
-        setProperties(endpoint, parameters);
 
-        Map<String, Object> sstParams = IntrospectionSupport.extractProperties(parameters, "searchTerm.");
+        // special for search term bean reference
+        Object searchTerm = getAndRemoveOrResolveReferenceParameter(parameters, "searchTerm", Object.class);
+        if (searchTerm != null) {
+            SearchTerm st;
+            if (searchTerm instanceof SimpleSearchTerm) {
+                // okay its a SimpleSearchTerm then lets convert that to SearchTerm
+                st = MailConverters.toSearchTerm((SimpleSearchTerm) searchTerm);
+            } else {
+                st = getCamelContext().getTypeConverter().mandatoryConvertTo(SearchTerm.class, searchTerm);
+            }
+            endpoint.setSearchTerm(st);
+        }
+
+        // special for sort term
+        Object sortTerm = getAndRemoveOrResolveReferenceParameter(parameters, "sortTerm", Object.class);
+        if (sortTerm != null) {
+            SortTerm[] st;
+            if (sortTerm instanceof String) {
+                // okay its a String then lets convert that to SortTerm
+                st = MailConverters.toSortTerm((String) sortTerm);
+            } else if (sortTerm instanceof SortTerm[]) {
+                st = (SortTerm[]) sortTerm;
+            } else {
+                throw new IllegalArgumentException("SortTerm must either be SortTerm[] or a String value");
+            }
+            endpoint.setSortTerm(st);
+        }
+
+        // special for searchTerm.xxx options
+        Map<String, Object> sstParams = PropertiesHelper.extractProperties(parameters, "searchTerm.");
         if (!sstParams.isEmpty()) {
             // use SimpleSearchTerm as POJO to store the configuration and then convert that to the actual SearchTerm
             SimpleSearchTerm sst = new SimpleSearchTerm();
             setProperties(sst, sstParams);
-            SearchTerm st = MailConverters.toSearchTerm(sst, getCamelContext().getTypeConverter());
+            SearchTerm st = MailConverters.toSearchTerm(sst);
             endpoint.setSearchTerm(st);
         }
 
+        endpoint.setContentTypeResolver(contentTypeResolver);
+        setEndpointHeaderFilterStrategy(endpoint);
+        setProperties(endpoint, parameters);
+
         // sanity check that we know the mail server
-        ObjectHelper.notEmpty(config.getHost(), "host");
-        ObjectHelper.notEmpty(config.getProtocol(), "protocol");
+        StringHelper.notEmpty(config.getHost(), "host");
+        StringHelper.notEmpty(config.getProtocol(), "protocol");
+
+        // Use global ssl if present
+        if (endpoint.getConfiguration().getSslContextParameters() == null) {
+            endpoint.getConfiguration().setSslContextParameters(retrieveGlobalSslContextParameters());
+        }
 
         return endpoint;
     }
 
     private void configureAdditionalJavaMailProperties(MailConfiguration config, Map<String, Object> parameters) {
         // we cannot remove while iterating, as we will get a modification exception
-        Set<Object> toRemove = new HashSet<Object>();
+        Set<Object> toRemove = new HashSet<>();
 
         for (Map.Entry<String, Object> entry : parameters.entrySet()) {
             if (entry.getKey().toString().startsWith("mail.")) {
@@ -125,4 +171,41 @@ public class MailComponent extends UriEndpointComponent {
     public void setContentTypeResolver(ContentTypeResolver contentTypeResolver) {
         this.contentTypeResolver = contentTypeResolver;
     }
+
+    @Override
+    public boolean isUseGlobalSslContextParameters() {
+        return this.useGlobalSslContextParameters;
+    }
+
+    /**
+     * Enable usage of global SSL context parameters.
+     */
+    @Override
+    public void setUseGlobalSslContextParameters(boolean useGlobalSslContextParameters) {
+        this.useGlobalSslContextParameters = useGlobalSslContextParameters;
+    }
+
+    @Override
+    public HeaderFilterStrategy getHeaderFilterStrategy() {
+        return headerFilterStrategy;
+    }
+
+    /**
+     * To use a custom {@link org.apache.camel.spi.HeaderFilterStrategy} to filter header to and from Camel message.
+     */
+    @Override
+    public void setHeaderFilterStrategy(HeaderFilterStrategy strategy) {
+        headerFilterStrategy = strategy;
+    }
+
+    /**
+     * Sets the header filter strategy to use from the given endpoint if the endpoint is a
+     * {@link HeaderFilterStrategyAware} type.
+     */
+    public void setEndpointHeaderFilterStrategy(Endpoint endpoint) {
+        if (headerFilterStrategy != null && endpoint instanceof HeaderFilterStrategyAware) {
+            ((HeaderFilterStrategyAware) endpoint).setHeaderFilterStrategy(headerFilterStrategy);
+        }
+    }
+
 }

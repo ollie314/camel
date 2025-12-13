@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,8 +21,8 @@ import java.util.Map;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
 /**
  * Unit test with some variables missing.
@@ -36,12 +36,12 @@ public class VelocitySomeValuesNotInExchangeTest extends CamelTestSupport {
         mock.message(0).constant("Hello Claus");
         mock.message(0).constant("You have id: 123 if an id was assigned to you.");
 
-        Map<String, Object> headers = new HashMap<String, Object>();
+        Map<String, Object> headers = new HashMap<>();
         headers.put("name", "Claus");
         headers.put("id", 123);
         template.sendBodyAndHeaders("direct:a", "", headers);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -51,17 +51,20 @@ public class VelocitySomeValuesNotInExchangeTest extends CamelTestSupport {
         mock.message(0).constant("Hello Claus");
         mock.message(0).constant("You have id:  if an id was assigned to you.");
 
-        Map<String, Object> headers = new HashMap<String, Object>();
+        Map<String, Object> headers = new HashMap<>();
         headers.put("name", "Claus");
         template.sendBodyAndHeaders("direct:a", "", headers);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("direct:a").to("velocity:org/apache/camel/component/velocity/someValuesNotInExchange.vm").to("mock:result");
+            public void configure() {
+                from("direct:a")
+                        .to("velocity:org/apache/camel/component/velocity/someValuesNotInExchange.vm")
+                        .to("mock:result");
             }
         };
     }

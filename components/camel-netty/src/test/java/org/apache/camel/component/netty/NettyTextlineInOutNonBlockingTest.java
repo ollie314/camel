@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,11 +19,12 @@ package org.apache.camel.component.netty;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+
 public class NettyTextlineInOutNonBlockingTest extends BaseNettyTest {
 
     private static String beforeThreadName;
@@ -38,49 +39,49 @@ public class NettyTextlineInOutNonBlockingTest extends BaseNettyTest {
         String reply = template.requestBody("direct:start", "Hello World", String.class);
         assertEquals("Bye World", reply);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
-        assertFalse("Should not same threads", beforeThreadName.equalsIgnoreCase(afterThreadName));
-        assertFalse("Should not same threads", beforeThreadName2.equalsIgnoreCase(afterThreadName2));
+        assertFalse(beforeThreadName.equalsIgnoreCase(afterThreadName), "Should not same threads");
+        assertFalse(beforeThreadName2.equalsIgnoreCase(afterThreadName2), "Should not same threads");
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .to("log:before")
-                    .process(new Processor() {
-                        public void process(Exchange exchange) throws Exception {
-                            beforeThreadName = Thread.currentThread().getName();
-                        }
-                    })
-                    .to("netty:tcp://localhost:{{port}}?textline=true&sync=true")
-                    .process(new Processor() {
-                        public void process(Exchange exchange) throws Exception {
-                            afterThreadName = Thread.currentThread().getName();
-                        }
-                    })
-                    .to("log:after")
-                    .to("mock:result");
+                        .to("log:before")
+                        .process(new Processor() {
+                            public void process(Exchange exchange) {
+                                beforeThreadName = Thread.currentThread().getName();
+                            }
+                        })
+                        .to("netty:tcp://localhost:{{port}}?textline=true&sync=true")
+                        .process(new Processor() {
+                            public void process(Exchange exchange) {
+                                afterThreadName = Thread.currentThread().getName();
+                            }
+                        })
+                        .to("log:after")
+                        .to("mock:result");
 
                 from("netty:tcp://localhost:{{port}}?textline=true&sync=true")
-                    .process(new Processor() {
-                        public void process(Exchange exchange) throws Exception {
-                            beforeThreadName2 = Thread.currentThread().getName();
-                        }
-                    })
-                    // body should be a String when using textline codec
-                    .validate(body().isInstanceOf(String.class))
-                    // async delayed is non blocking
-                    .delay(100).asyncDelayed()
-                    .process(new Processor() {
-                        public void process(Exchange exchange) throws Exception {
-                            afterThreadName2 = Thread.currentThread().getName();
-                        }
-                    })
-                    .transform(body().regexReplaceAll("Hello", "Bye"));
+                        .process(new Processor() {
+                            public void process(Exchange exchange) {
+                                beforeThreadName2 = Thread.currentThread().getName();
+                            }
+                        })
+                        // body should be a String when using textline codec
+                        .validate(body().isInstanceOf(String.class))
+                        // async delayed is non blocking
+                        .delay(100).asyncDelayed()
+                        .process(new Processor() {
+                            public void process(Exchange exchange) {
+                                afterThreadName2 = Thread.currentThread().getName();
+                            }
+                        })
+                        .transform(body().regexReplaceAll("Hello", "Bye"));
             }
         };
     }

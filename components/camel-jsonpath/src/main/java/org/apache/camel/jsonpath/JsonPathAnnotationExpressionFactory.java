@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,20 +21,26 @@ import java.lang.annotation.Annotation;
 import com.jayway.jsonpath.Option;
 import org.apache.camel.CamelContext;
 import org.apache.camel.Expression;
-import org.apache.camel.component.bean.DefaultAnnotationExpressionFactory;
-import org.apache.camel.language.LanguageAnnotation;
+import org.apache.camel.support.builder.ExpressionBuilder;
+import org.apache.camel.support.language.DefaultAnnotationExpressionFactory;
+import org.apache.camel.support.language.LanguageAnnotation;
 
 public class JsonPathAnnotationExpressionFactory extends DefaultAnnotationExpressionFactory {
 
     @Override
-    public Expression createExpression(CamelContext camelContext, Annotation annotation,
-                                       LanguageAnnotation languageAnnotation, Class<?> expressionReturnType) {
+    public Expression createExpression(
+            CamelContext camelContext, Annotation annotation,
+            LanguageAnnotation languageAnnotation, Class<?> expressionReturnType) {
 
         String expression = getExpressionFromAnnotation(annotation);
         JsonPathExpression answer = new JsonPathExpression(expression);
 
-        if (expressionReturnType != null) {
-            answer.setResultType(expressionReturnType);
+        Class<?> resultType = getResultType(annotation);
+        if (resultType.equals(Object.class)) {
+            resultType = expressionReturnType;
+        }
+        if (resultType != null) {
+            answer.setResultType(resultType);
         }
 
         if (annotation instanceof JsonPath) {
@@ -42,12 +48,33 @@ public class JsonPathAnnotationExpressionFactory extends DefaultAnnotationExpres
 
             answer.setSuppressExceptions(jsonPathAnnotation.suppressExceptions());
             answer.setAllowSimple(jsonPathAnnotation.allowSimple());
-
             Option[] options = jsonPathAnnotation.options();
             answer.setOptions(options);
+
+            String source = getSource(annotation);
+            if (source != null) {
+                answer.setSource(ExpressionBuilder.singleInputExpression(source));
+            }
         }
 
-        answer.init();
+        answer.init(camelContext);
+        return answer;
+    }
+
+    private Class<?> getResultType(Annotation annotation) {
+        return (Class<?>) getAnnotationObjectValue(annotation, "resultType");
+    }
+
+    protected String getSource(Annotation annotation) {
+        String answer = null;
+        try {
+            answer = (String) getAnnotationObjectValue(annotation, "source");
+        } catch (Exception e) {
+            // Do Nothing
+        }
+        if (answer != null && answer.isBlank()) {
+            return null;
+        }
         return answer;
     }
 

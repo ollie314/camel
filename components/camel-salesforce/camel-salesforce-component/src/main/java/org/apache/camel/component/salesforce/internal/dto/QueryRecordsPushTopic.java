@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,23 +16,10 @@
  */
 package org.apache.camel.component.salesforce.internal.dto;
 
-import java.util.List;
-
-import com.thoughtworks.xstream.annotations.XStreamImplicit;
 import org.apache.camel.component.salesforce.api.dto.AbstractQueryRecordsBase;
 
 /**
  * Salesforce Query Records DTO for PushTopic
  */
-public class QueryRecordsPushTopic extends AbstractQueryRecordsBase {
-    @XStreamImplicit
-    private List<PushTopic> records;
-
-    public List<PushTopic> getRecords() {
-        return records;
-    }
-
-    public void setRecords(List<PushTopic> records) {
-        this.records = records;
-    }
+public class QueryRecordsPushTopic extends AbstractQueryRecordsBase<PushTopic> {
 }

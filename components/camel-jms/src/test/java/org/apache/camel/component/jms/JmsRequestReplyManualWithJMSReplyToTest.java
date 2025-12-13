@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,61 +16,73 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Queue;
 
 import org.apache.camel.Body;
 import org.apache.camel.CamelContext;
 import org.apache.camel.Consume;
-import org.apache.camel.Exchange;
+import org.apache.camel.ConsumerTemplate;
 import org.apache.camel.Header;
-import org.apache.camel.Processor;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.ProducerTemplate;
+import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/**
- * @version 
- */
-public class JmsRequestReplyManualWithJMSReplyToTest extends CamelTestSupport {
+public class JmsRequestReplyManualWithJMSReplyToTest extends AbstractJMSTest {
 
-    @Override
-    public boolean isUseRouteBuilder() {
-        return false;
-    }
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
-    @Consume(uri = "activemq:queue:foo")
-    public void doSomething(@Header("JMSReplyTo") Destination jmsReplyTo, @Body String body) throws Exception {
+    @Consume("activemq:queue:fooJmsRequestReplyManualWithJMSReplyToTest")
+    public void doSomething(@Header("JMSReplyTo") Queue jmsReplyTo, @Body String body) throws JMSException {
         assertEquals("Hello World", body);
 
-        String endpointName = "activemq:" + jmsReplyTo.toString();
+        String endpointName = "activemq:" + jmsReplyTo.getQueueName();
         template.sendBody(endpointName, "Bye World");
     }
 
     @Test
-    public void testManualRequestReply() throws Exception {
-        context.start();
-
+    public void testManualRequestReply() {
         // send an InOnly but force Camel to pass JMSReplyTo
-        template.send("activemq:queue:foo?preserveMessageQos=true", new Processor() {
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setBody("Hello World");
-                exchange.getIn().setHeader("JMSReplyTo", "bar");
-            }
+        template.send("activemq:queue:fooJmsRequestReplyManualWithJMSReplyToTest?preserveMessageQos=true", exchange -> {
+            exchange.getIn().setBody("Hello World");
+            exchange.getIn().setHeader("JMSReplyTo", "barJmsRequestReplyManualWithJMSReplyToTest");
         });
 
-        String reply = consumer.receiveBody("activemq:queue:bar", 5000, String.class);
+        String reply = consumer.receiveBody("activemq:queue:barJmsRequestReplyManualWithJMSReplyToTest", 5000, String.class);
         assertEquals("Bye World", reply);
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-
-        return camelContext;
+    @Override
+    protected String getComponentName() {
+        return "activemq";
     }
 
+    @Override
+    protected RouteBuilder createRouteBuilder() {
+        return null;
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
+    }
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,24 +16,34 @@
  */
 package org.apache.camel.component.braintree.internal;
 
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+import org.apache.camel.CamelContext;
 import org.apache.camel.component.braintree.BraintreeConfiguration;
-import org.apache.camel.util.component.ApiMethodPropertiesHelper;
+import org.apache.camel.support.component.ApiMethodPropertiesHelper;
 
 /**
  * Singleton {@link ApiMethodPropertiesHelper} for Braintree component.
  */
 public final class BraintreePropertiesHelper extends ApiMethodPropertiesHelper<BraintreeConfiguration> {
 
+    private static final Lock LOCK = new ReentrantLock();
     private static BraintreePropertiesHelper helper;
 
-    private BraintreePropertiesHelper() {
-        super(BraintreeConfiguration.class, BraintreeConstants.PROPERTY_PREFIX);
+    private BraintreePropertiesHelper(CamelContext context) {
+        super(context, BraintreeConfiguration.class, BraintreeConstants.PROPERTY_PREFIX);
     }
 
-    public static synchronized BraintreePropertiesHelper getHelper() {
-        if (helper == null) {
-            helper = new BraintreePropertiesHelper();
+    public static BraintreePropertiesHelper getHelper(CamelContext context) {
+        LOCK.lock();
+        try {
+            if (helper == null) {
+                helper = new BraintreePropertiesHelper(context);
+            }
+            return helper;
+        } finally {
+            LOCK.unlock();
         }
-        return helper;
     }
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,99 +18,111 @@ package org.apache.camel.component.sjms;
 
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
-import javax.jms.ConnectionFactory;
+
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.ExceptionListener;
 
 import org.apache.camel.CamelException;
 import org.apache.camel.Endpoint;
 import org.apache.camel.ExchangePattern;
-import org.apache.camel.component.sjms.jms.ConnectionResource;
+import org.apache.camel.component.sjms.jms.DefaultDestinationCreationStrategy;
 import org.apache.camel.component.sjms.jms.DefaultJmsKeyFormatStrategy;
 import org.apache.camel.component.sjms.jms.DestinationCreationStrategy;
 import org.apache.camel.component.sjms.jms.JmsKeyFormatStrategy;
 import org.apache.camel.component.sjms.jms.MessageCreatedStrategy;
-import org.apache.camel.component.sjms.taskmanager.TimedTaskManager;
-import org.apache.camel.impl.UriEndpointComponent;
-import org.apache.camel.spi.HeaderFilterStrategy;
-import org.apache.camel.spi.HeaderFilterStrategyAware;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.spi.UriParam;
+import org.apache.camel.spi.annotations.Component;
+import org.apache.camel.support.HeaderFilterStrategyComponent;
 
-/**
- * The <a href="http://camel.apache.org/sjms">Simple JMS</a> component.
- */
-public class SjmsComponent extends UriEndpointComponent implements HeaderFilterStrategyAware {
+@Component("sjms")
+public class SjmsComponent extends HeaderFilterStrategyComponent {
 
-    private ConnectionFactory connectionFactory;
-    private ConnectionResource connectionResource;
-    private HeaderFilterStrategy headerFilterStrategy = new SjmsHeaderFilterStrategy();
-    private JmsKeyFormatStrategy jmsKeyFormatStrategy = new DefaultJmsKeyFormatStrategy();
-    private Integer connectionCount = 1;
-    private TransactionCommitStrategy transactionCommitStrategy;
-    private TimedTaskManager timedTaskManager;
-    private DestinationCreationStrategy destinationCreationStrategy;
     private ExecutorService asyncStartStopExecutorService;
+
+    @Metadata(label = "common", autowired = true,
+              description = "The connection factory to be use. A connection factory must be configured either on the component or endpoint.")
+    private ConnectionFactory connectionFactory;
+    @UriParam(description = "Sets the JMS client ID to use. Note that this value, if specified, must be unique and can only be used by a single JMS connection instance."
+                            + " It is typically only required for durable topic subscriptions."
+                            + " If using Apache ActiveMQ you may prefer to use Virtual Topics instead.")
+    private String clientId;
+    @Metadata(label = "advanced",
+              description = "Pluggable strategy for encoding and decoding JMS keys so they can be compliant with the JMS specification."
+                            + " Camel provides one implementation out of the box: default. The default strategy will safely marshal dots and hyphens (. and -)."
+                            + " Can be used for JMS brokers which do not care whether JMS header keys contain illegal characters. You can provide your own implementation"
+                            + " of the org.apache.camel.component.jms.JmsKeyFormatStrategy and refer to it using the # notation.")
+    private JmsKeyFormatStrategy jmsKeyFormatStrategy = new DefaultJmsKeyFormatStrategy();
+    @Metadata(label = "advanced", description = "To use a custom DestinationCreationStrategy.")
+    private DestinationCreationStrategy destinationCreationStrategy = new DefaultDestinationCreationStrategy();
+    @Metadata(label = "advanced",
+              description = "To use the given MessageCreatedStrategy which are invoked when Camel creates new instances"
+                            + " of jakarta.jms.Message objects when Camel is sending a JMS message.")
     private MessageCreatedStrategy messageCreatedStrategy;
+    @Metadata(defaultValue = "5000", label = "advanced", javaType = "java.time.Duration",
+              description = "Specifies the interval between recovery attempts, i.e. when a connection is being refreshed, in milliseconds."
+                            + " The default is 5000 ms, that is, 5 seconds.")
+    private long recoveryInterval = 5000;
+    @Metadata(defaultValue = "1000", label = "advanced", javaType = "java.time.Duration",
+              description = "Configures how often Camel should check for timed out Exchanges when doing request/reply over JMS."
+                            + " By default Camel checks once per second. But if you must react faster when a timeout occurs,"
+                            + " then you can lower this interval, to check more frequently. The timeout is determined by the option requestTimeout.")
+    private long requestTimeoutCheckerInterval = 1000L;
+    @Metadata(label = "advanced", defaultValue = "1",
+              description = "Specifies the maximum number of concurrent consumers for continue routing when timeout occurred when using request/reply over JMS.")
+    private int replyToOnTimeoutMaxConcurrentConsumers = 1;
+
+    @Metadata(label = "advanced",
+              description = "Specifies the JMS Exception Listener that is to be notified of any underlying JMS exceptions.")
+    private ExceptionListener exceptionListener;
 
     public SjmsComponent() {
-        super(SjmsEndpoint.class);
+    }
+
+    protected SjmsComponent(Class<? extends Endpoint> endpointClass) {
     }
 
     @Override
     protected Endpoint createEndpoint(String uri, String remaining, Map<String, Object> parameters) throws Exception {
         validateMepAndReplyTo(parameters);
-        SjmsEndpoint endpoint = new SjmsEndpoint(uri, this, remaining);
+
+        SjmsEndpoint endpoint = createSjmsEndpoint(uri, remaining);
+        endpoint.setConnectionFactory(connectionFactory);
+        endpoint.setDestinationCreationStrategy(destinationCreationStrategy);
+        endpoint.setRecoveryInterval(recoveryInterval);
+        endpoint.setMessageCreatedStrategy(messageCreatedStrategy);
+        endpoint.setClientId(clientId);
+        endpoint.setExceptionListener(exceptionListener);
+        if (getHeaderFilterStrategy() != null) {
+            endpoint.setHeaderFilterStrategy(getHeaderFilterStrategy());
+        }
         setProperties(endpoint, parameters);
-        if (endpoint.isTransacted()) {
-            endpoint.setSynchronous(true);
-        }
-        if (transactionCommitStrategy != null) {
-            endpoint.setTransactionCommitStrategy(transactionCommitStrategy);
-        }
-        if (destinationCreationStrategy != null) {
-            endpoint.setDestinationCreationStrategy(destinationCreationStrategy);
-        }
-        if (headerFilterStrategy != null) {
-            endpoint.setHeaderFilterStrategy(headerFilterStrategy);
-        }
-        if (messageCreatedStrategy != null) {
-            endpoint.setMessageCreatedStrategy(messageCreatedStrategy);
-        }
         return endpoint;
     }
 
+    protected SjmsEndpoint createSjmsEndpoint(String uri, String remaining) {
+        return new SjmsEndpoint(uri, this, remaining);
+    }
+
     /**
-     * Helper method used to verify that when there is a namedReplyTo value we
-     * are using the InOut MEP. If namedReplyTo is defined and the MEP is InOnly
-     * the endpoint won't be expecting a reply so throw an error to alert the
-     * user.
+     * Helper method used to verify that when there is a replyTo value we are using the InOut MEP. If namedReplyTo is
+     * defined and the MEP is InOnly the endpoint won't be expecting a reply so throw an error to alert the user.
      *
-     * @param parameters {@link Endpoint} parameters
-     * @throws Exception throws a {@link CamelException} when MEP equals InOnly
-     *                   and namedReplyTo is defined.
+     * @param  parameters {@link Endpoint} parameters
+     * @throws Exception  throws a {@link CamelException} when MEP equals InOnly and replyTo is defined.
      */
     private static void validateMepAndReplyTo(Map<String, Object> parameters) throws Exception {
-        boolean namedReplyToSet = parameters.containsKey("namedReplyTo");
+        boolean replyToSet = parameters.containsKey("replyTo");
         boolean mepSet = parameters.containsKey("exchangePattern");
-        if (namedReplyToSet && mepSet) {
+        if (replyToSet && mepSet) {
             if (!parameters.get("exchangePattern").equals(ExchangePattern.InOut.toString())) {
-                String namedReplyTo = (String) parameters.get("namedReplyTo");
+                String replyTo = (String) parameters.get("replyTo");
                 ExchangePattern mep = ExchangePattern.valueOf((String) parameters.get("exchangePattern"));
-                throw new CamelException("Setting parameter namedReplyTo=" + namedReplyTo + " requires a MEP of type InOut. Parameter exchangePattern is set to " + mep);
+                throw new CamelException(
+                        "Setting parameter replyTo=" + replyTo
+                                         + " requires a MEP of type InOut. Parameter exchangePattern is set to " + mep);
             }
         }
-    }
-
-    @Override
-    protected void doStart() throws Exception {
-        super.doStart();
-        timedTaskManager = new TimedTaskManager();
-    }
-
-    @Override
-    protected void doStop() throws Exception {
-        if (timedTaskManager != null) {
-            timedTaskManager.cancelTasks();
-            timedTaskManager = null;
-        }
-        super.doStop();
     }
 
     @Override
@@ -122,19 +134,21 @@ public class SjmsComponent extends UriEndpointComponent implements HeaderFilterS
         super.doShutdown();
     }
 
-    protected synchronized ExecutorService getAsyncStartStopExecutorService() {
-        if (asyncStartStopExecutorService == null) {
-            // use a cached thread pool for async start tasks as they can run for a while, and we need a dedicated thread
-            // for each task, and the thread pool will shrink when no more tasks running
-            asyncStartStopExecutorService = getCamelContext().getExecutorServiceManager().newCachedThreadPool(this, "AsyncStartStopListener");
+    protected ExecutorService getAsyncStartStopExecutorService() {
+        lock.lock();
+        try {
+            if (asyncStartStopExecutorService == null) {
+                // use a cached thread pool for async start tasks as they can run for a while, and we need a dedicated thread
+                // for each task, and the thread pool will shrink when no more tasks running
+                asyncStartStopExecutorService
+                        = getCamelContext().getExecutorServiceManager().newCachedThreadPool(this, "AsyncStartStopListener");
+            }
+            return asyncStartStopExecutorService;
+        } finally {
+            lock.unlock();
         }
-        return asyncStartStopExecutorService;
     }
 
-    /**
-     * A ConnectionFactory is required to enable the SjmsComponent.
-     * It can be set directly or set set as part of a ConnectionResource.
-     */
     public void setConnectionFactory(ConnectionFactory connectionFactory) {
         this.connectionFactory = connectionFactory;
     }
@@ -143,50 +157,14 @@ public class SjmsComponent extends UriEndpointComponent implements HeaderFilterS
         return connectionFactory;
     }
 
-    @Override
-    public HeaderFilterStrategy getHeaderFilterStrategy() {
-        return this.headerFilterStrategy;
+    public void setExceptionListener(ExceptionListener exceptionListener) {
+        this.exceptionListener = exceptionListener;
     }
 
-    /**
-     * To use a custom HeaderFilterStrategy to filter header to and from Camel message.
-     */
-    @Override
-    public void setHeaderFilterStrategy(HeaderFilterStrategy headerFilterStrategy) {
-        this.headerFilterStrategy = headerFilterStrategy;
+    public ExceptionListener getExceptionListener() {
+        return exceptionListener;
     }
 
-    /**
-     * A ConnectionResource is an interface that allows for customization and container control of the ConnectionFactory.
-     * See Plugable Connection Resource Management for further details.
-     */
-    public void setConnectionResource(ConnectionResource connectionResource) {
-        this.connectionResource = connectionResource;
-    }
-
-    public ConnectionResource getConnectionResource() {
-        return connectionResource;
-    }
-
-    /**
-     * The maximum number of connections available to endpoints started under this component
-     */
-    public void setConnectionCount(Integer maxConnections) {
-        this.connectionCount = maxConnections;
-    }
-
-    public Integer getConnectionCount() {
-        return connectionCount;
-    }
-
-    /**
-     * Pluggable strategy for encoding and decoding JMS keys so they can be compliant with the JMS specification.
-     * Camel provides one implementation out of the box: default.
-     * The default strategy will safely marshal dots and hyphens (. and -).
-     * Can be used for JMS brokers which do not care whether JMS header keys contain illegal characters.
-     * You can provide your own implementation of the org.apache.camel.component.jms.JmsKeyFormatStrategy
-     * and refer to it using the # notation.
-     */
     public void setJmsKeyFormatStrategy(JmsKeyFormatStrategy jmsKeyFormatStrategy) {
         this.jmsKeyFormatStrategy = jmsKeyFormatStrategy;
     }
@@ -195,50 +173,51 @@ public class SjmsComponent extends UriEndpointComponent implements HeaderFilterS
         return jmsKeyFormatStrategy;
     }
 
-    public TransactionCommitStrategy getTransactionCommitStrategy() {
-        return transactionCommitStrategy;
-    }
-
-    /**
-     * To configure which kind of commit strategy to use. Camel provides two implementations out
-     * of the box, default and batch.
-     */
-    public void setTransactionCommitStrategy(TransactionCommitStrategy commitStrategy) {
-        this.transactionCommitStrategy = commitStrategy;
-    }
-
     public DestinationCreationStrategy getDestinationCreationStrategy() {
         return destinationCreationStrategy;
     }
 
-    /**
-     * To use a custom DestinationCreationStrategy.
-     */
     public void setDestinationCreationStrategy(DestinationCreationStrategy destinationCreationStrategy) {
         this.destinationCreationStrategy = destinationCreationStrategy;
-    }
-
-    public TimedTaskManager getTimedTaskManager() {
-        return timedTaskManager;
-    }
-
-    /**
-     * To use a custom TimedTaskManager
-     */
-    public void setTimedTaskManager(TimedTaskManager timedTaskManager) {
-        this.timedTaskManager = timedTaskManager;
     }
 
     public MessageCreatedStrategy getMessageCreatedStrategy() {
         return messageCreatedStrategy;
     }
 
-    /**
-     * To use the given MessageCreatedStrategy which are invoked when Camel creates new instances of <tt>javax.jms.Message</tt>
-     * objects when Camel is sending a JMS message.
-     */
     public void setMessageCreatedStrategy(MessageCreatedStrategy messageCreatedStrategy) {
         this.messageCreatedStrategy = messageCreatedStrategy;
     }
 
+    public String getClientId() {
+        return clientId;
+    }
+
+    public void setClientId(String clientId) {
+        this.clientId = clientId;
+    }
+
+    public long getRecoveryInterval() {
+        return recoveryInterval;
+    }
+
+    public void setRecoveryInterval(long recoveryInterval) {
+        this.recoveryInterval = recoveryInterval;
+    }
+
+    public long getRequestTimeoutCheckerInterval() {
+        return requestTimeoutCheckerInterval;
+    }
+
+    public void setRequestTimeoutCheckerInterval(long requestTimeoutCheckerInterval) {
+        this.requestTimeoutCheckerInterval = requestTimeoutCheckerInterval;
+    }
+
+    public int getReplyToOnTimeoutMaxConcurrentConsumers() {
+        return replyToOnTimeoutMaxConcurrentConsumers;
+    }
+
+    public void setReplyToOnTimeoutMaxConcurrentConsumers(int replyToOnTimeoutMaxConcurrentConsumers) {
+        this.replyToOnTimeoutMaxConcurrentConsumers = replyToOnTimeoutMaxConcurrentConsumers;
+    }
 }

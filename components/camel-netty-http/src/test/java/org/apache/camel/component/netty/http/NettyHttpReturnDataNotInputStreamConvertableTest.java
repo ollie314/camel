@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,30 +16,26 @@
  */
 package org.apache.camel.component.netty.http;
 
-import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class NettyHttpReturnDataNotInputStreamConvertableTest extends BaseNettyTest {
 
     @Test
-    public void testHttpReturnDataNotInputStreamConvertableTest() throws Exception {
+    public void testHttpReturnDataNotInputStreamConvertableTest() {
         String out = template.requestBody("netty-http:http://localhost:{{port}}/test", "Hello World", String.class);
         assertEquals("This is the response", out);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("netty-http:http://localhost:{{port}}/test")
-                        .process(new Processor() {
-                            public void process(Exchange exchange) throws Exception {
-                                exchange.getOut().setBody(new MyResponseBean());
-                            }
-                        });
+                        .process(exchange -> exchange.getMessage().setBody(new MyResponseBean()));
             }
         };
     }

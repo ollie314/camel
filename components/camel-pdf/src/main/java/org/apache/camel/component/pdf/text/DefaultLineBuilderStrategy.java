@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,12 +23,14 @@ import java.util.LinkedList;
 
 import org.apache.camel.component.pdf.PdfConfiguration;
 import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 
 import static org.apache.camel.component.pdf.PdfConstants.MIN_CONTENT_WIDTH;
 
 /**
- * Builds lines from words based on line width and PDF document page size.
- * Built lines then will be written to pdf document.
+ * Builds lines from words based on line width and PDF document page size. Built lines then will be written to pdf
+ * document.
  */
 public class DefaultLineBuilderStrategy implements LineBuilderStrategy {
     private final PdfConfiguration pdfConfiguration;
@@ -40,16 +42,16 @@ public class DefaultLineBuilderStrategy implements LineBuilderStrategy {
     /**
      * Builds lines from words. Utilizes the same behaviour as office software:
      * <ul>
-     *     <li>If word doesn't fit in current line, and current lines contains other words, then
-     *     it will be moved to new line.</td>
-     *     <li>Word doesn't fit in the line and line does not contain other words, then word will be
-     *     slitted, and split index will be on max amount of characters that fits in the line </li>
+     * <li>If word doesn't fit in current line, and current lines contains other words, then it will be moved to new
+     * line.</td>
+     * <li>Word doesn't fit in the line and line does not contain other words, then word will be slitted, and split
+     * index will be on max amount of characters that fits in the line</li>
      * </ul>
      */
     @Override
     public Collection<String> buildLines(Collection<String> splittedText) throws IOException {
-        LinkedList<String> wordsList = new LinkedList<String>(splittedText);
-        Collection<String> lines = new ArrayList<String>();
+        LinkedList<String> wordsList = new LinkedList<>(splittedText);
+        Collection<String> lines = new ArrayList<>();
         LineBuilder currentLine = new LineBuilder();
         float allowedLineWidth = getAllowedLineWidth();
         while (!wordsList.isEmpty()) {
@@ -88,14 +90,14 @@ public class DefaultLineBuilderStrategy implements LineBuilderStrategy {
                 end = middle;
                 middle = currentSplitIndex + (word.substring(currentSplitIndex, middle).length() >> 1);
             }
-        } while ((currentSplitIndex == -1) || !isSplitIndexFound(word, allowedLineWidth, currentSplitIndex));
+        } while (currentSplitIndex == -1 || !isSplitIndexFound(word, allowedLineWidth, currentSplitIndex));
 
         return currentSplitIndex;
     }
 
     private boolean isSplitIndexFound(String word, float allowedLineWidth, int currentSplitIndex) throws IOException {
         return isLineFitInLineWidth(word.substring(0, currentSplitIndex), allowedLineWidth)
-            && !isLineFitInLineWidth(word.substring(0, currentSplitIndex + 1), allowedLineWidth);
+                && !isLineFitInLineWidth(word.substring(0, currentSplitIndex + 1), allowedLineWidth);
     }
 
     private boolean isWordFitInCurrentLine(LineBuilder currentLine, String word, float allowedLineWidth) throws IOException {
@@ -106,7 +108,7 @@ public class DefaultLineBuilderStrategy implements LineBuilderStrategy {
     private boolean isLineFitInLineWidth(String currentLine, float allowedLineWidth) throws IOException {
         float fontWidth = PdfUtils.getFontWidth(
                 currentLine,
-                pdfConfiguration.getFont(),
+                new PDType1Font(Standard14Fonts.FontName.valueOf(pdfConfiguration.getFont())),
                 pdfConfiguration.getFontSize());
 
         return fontWidth <= allowedLineWidth;
@@ -114,11 +116,13 @@ public class DefaultLineBuilderStrategy implements LineBuilderStrategy {
 
     public float getAllowedLineWidth() {
         float result = pdfConfiguration.getPageSize().getWidth()
-                - pdfConfiguration.getMarginLeft()
-                - pdfConfiguration.getMarginRight();
+                       - pdfConfiguration.getMarginLeft()
+                       - pdfConfiguration.getMarginRight();
         if (result < MIN_CONTENT_WIDTH) {
-            throw new IllegalStateException(String.format("Allowed line width cannot be < %d, make sure"
-                    + " (marginLeft + marginRight) < pageSize", MIN_CONTENT_WIDTH));
+            throw new IllegalStateException(
+                    String.format("Allowed line width cannot be < %d, make sure"
+                                  + " (marginLeft + marginRight) < pageSize",
+                            MIN_CONTENT_WIDTH));
         }
         return result;
     }
@@ -127,7 +131,8 @@ public class DefaultLineBuilderStrategy implements LineBuilderStrategy {
         private StringBuilder line = new StringBuilder();
         private int wordsCount;
 
-        LineBuilder() { }
+        LineBuilder() {
+        }
 
         LineBuilder(String line, int wordsCount) {
             this.line = new StringBuilder(line);
@@ -141,9 +146,9 @@ public class DefaultLineBuilderStrategy implements LineBuilderStrategy {
         }
 
         public String buildLine() {
-            String line = this.line.toString();
+            String savedLine = this.line.toString();
             reset();
-            return line;
+            return savedLine;
         }
 
         public int getWordsCount() {
@@ -155,6 +160,7 @@ public class DefaultLineBuilderStrategy implements LineBuilderStrategy {
             wordsCount = 0;
         }
 
+        @Override
         public LineBuilder clone() {
             return new LineBuilder(this.line.toString(), this.wordsCount);
         }

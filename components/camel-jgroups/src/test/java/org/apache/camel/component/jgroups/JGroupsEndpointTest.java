@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,8 +17,11 @@
 package org.apache.camel.component.jgroups;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class JGroupsEndpointTest extends CamelTestSupport {
 
@@ -29,10 +32,10 @@ public class JGroupsEndpointTest extends CamelTestSupport {
     // Routes fixture
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("jgroups:" + CLUSTER_NAME).to("mock:test");
             }
         };
@@ -41,7 +44,7 @@ public class JGroupsEndpointTest extends CamelTestSupport {
     // Tests
 
     @Test
-    public void shouldSetClusterName() throws Exception {
+    public void shouldSetClusterName() {
         // When
         JGroupsEndpoint endpoint = getMandatoryEndpoint("jgroups:" + CLUSTER_NAME, JGroupsEndpoint.class);
 
@@ -50,7 +53,7 @@ public class JGroupsEndpointTest extends CamelTestSupport {
     }
 
     @Test
-    public void shouldResolveDefaultChannel() throws Exception {
+    public void shouldResolveDefaultChannel() {
         // When
         JGroupsEndpoint endpoint = getMandatoryEndpoint("jgroups:" + CLUSTER_NAME, JGroupsEndpoint.class);
 

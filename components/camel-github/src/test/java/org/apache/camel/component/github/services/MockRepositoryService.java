@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,13 +16,13 @@
  */
 package org.apache.camel.component.github.services;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
 import org.eclipse.egit.github.core.IRepositoryIdProvider;
 import org.eclipse.egit.github.core.Repository;
 import org.eclipse.egit.github.core.RepositoryTag;
+import org.eclipse.egit.github.core.User;
 import org.eclipse.egit.github.core.service.RepositoryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,7 +30,7 @@ import org.slf4j.LoggerFactory;
 public class MockRepositoryService extends RepositoryService {
     protected static final Logger LOG = LoggerFactory.getLogger(MockRepositoryService.class);
 
-    private List<RepositoryTag> tags = new ArrayList<RepositoryTag>();
+    private List<RepositoryTag> tags = new ArrayList<>();
 
     public RepositoryTag addTag(String tagName) {
         RepositoryTag tag = new RepositoryTag();
@@ -41,15 +41,19 @@ public class MockRepositoryService extends RepositoryService {
     }
 
     @Override
-    public Repository getRepository(final String owner, final String name) throws IOException {
+    public Repository getRepository(final String owner, final String name) {
         Repository repository = new Repository();
+        User user = new User();
+        user.setName(owner);
+        user.setLogin(owner);
+        repository.setOwner(user);
         repository.setName(name);
         return repository;
     }
 
     @Override
-    public List<RepositoryTag> getTags(IRepositoryIdProvider repository) throws IOException {
-        LOG.debug("in MockRepositoryService returning " + tags.size() + " tags");
+    public List<RepositoryTag> getTags(IRepositoryIdProvider repository) {
+        LOG.debug("in MockRepositoryService returning {} tags", tags.size());
         return tags;
     }
 }

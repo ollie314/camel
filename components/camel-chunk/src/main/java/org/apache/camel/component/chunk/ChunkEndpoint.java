@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,6 +17,7 @@
 package org.apache.camel.component.chunk;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.Reader;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -25,14 +26,16 @@ import java.util.Map;
 
 import com.x5.template.Chunk;
 import com.x5.template.Theme;
+import org.apache.camel.Category;
 import org.apache.camel.Component;
 import org.apache.camel.Exchange;
 import org.apache.camel.ExchangePattern;
-import org.apache.camel.Message;
 import org.apache.camel.component.ResourceEndpoint;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
-import org.apache.camel.util.ExchangeHelper;
+import org.apache.camel.support.ExchangeHelper;
+import org.apache.camel.support.ResourceHelper;
+import org.apache.camel.util.IOHelper;
 import org.apache.commons.io.IOUtils;
 
 import static org.apache.camel.component.chunk.ChunkConstants.CHUNK_ENDPOINT_URI_PREFIX;
@@ -41,26 +44,25 @@ import static org.apache.camel.component.chunk.ChunkConstants.CHUNK_RESOURCE_URI
 import static org.apache.camel.component.chunk.ChunkConstants.CHUNK_TEMPLATE;
 
 /**
- * Transforms the message using a Chunk template.
+ * Transform messages using Chunk templating engine.
  */
-@UriEndpoint(scheme = "chunk", title = "Chunk", syntax = "chunk:resourceUri", producerOnly = true, label = "transformation")
+@UriEndpoint(firstVersion = "2.15.0", scheme = "chunk", title = "Chunk", syntax = "chunk:resourceUri", producerOnly = true,
+             remote = false, category = { Category.TRANSFORMATION }, headersClass = ChunkConstants.class)
 public class ChunkEndpoint extends ResourceEndpoint {
 
     private Theme theme;
     private Chunk chunk;
-    
+
+    @UriParam(defaultValue = "false")
+    private boolean allowTemplateFromHeader;
     @UriParam(description = "Define the encoding of the body")
     private String encoding;
-    
     @UriParam(description = "Define the themes folder to scan")
     private String themeFolder;
-    
     @UriParam(description = "Define the themes subfolder to scan")
     private String themeSubfolder;
-    
     @UriParam(description = "Define the theme layer to elaborate")
     private String themeLayer;
-    
     @UriParam(description = "Define the file extension of the template")
     private String extension;
 
@@ -72,8 +74,8 @@ public class ChunkEndpoint extends ResourceEndpoint {
     }
 
     @Override
-    public boolean isSingleton() {
-        return true;
+    public boolean isRemote() {
+        return false;
     }
 
     @Override
@@ -95,9 +97,16 @@ public class ChunkEndpoint extends ResourceEndpoint {
     @Override
     protected void onExchange(Exchange exchange) throws Exception {
         boolean fromTemplate;
-        String newResourceUri = exchange.getIn().getHeader(CHUNK_RESOURCE_URI, String.class);
+
+        String newResourceUri = null;
+        if (allowTemplateFromHeader) {
+            newResourceUri = exchange.getIn().getHeader(CHUNK_RESOURCE_URI, String.class);
+        }
         if (newResourceUri == null) {
-            String newTemplate = exchange.getIn().getHeader(CHUNK_TEMPLATE, String.class);
+            String newTemplate = null;
+            if (allowTemplateFromHeader) {
+                newTemplate = exchange.getIn().getHeader(CHUNK_TEMPLATE, String.class);
+            }
             Chunk newChunk;
             if (newTemplate == null) {
                 fromTemplate = false;
@@ -109,20 +118,18 @@ public class ChunkEndpoint extends ResourceEndpoint {
             }
 
             // Execute Chunk
-            Map<String, Object> variableMap = ExchangeHelper.createVariableMap(exchange);
+            Map<String, Object> variableMap = ExchangeHelper.createVariableMap(exchange, isAllowContextMapAll());
             StringWriter writer = new StringWriter();
             newChunk.putAll(variableMap);
             newChunk.render(writer);
             writer.flush();
 
             // Fill out message
-            Message out = exchange.getOut();
-            out.setBody(newChunk.toString());
-            out.setHeaders(exchange.getIn().getHeaders());
-            out.setAttachments(exchange.getIn().getAttachments());
+            ExchangeHelper.setInOutBodyPatternAware(exchange, newChunk.toString());
         } else {
             exchange.getIn().removeHeader(ChunkConstants.CHUNK_RESOURCE_URI);
-            ChunkEndpoint newEndpoint = getCamelContext().getEndpoint(CHUNK_ENDPOINT_URI_PREFIX + newResourceUri, ChunkEndpoint.class);
+            ChunkEndpoint newEndpoint
+                    = getCamelContext().getEndpoint(CHUNK_ENDPOINT_URI_PREFIX + newResourceUri, ChunkEndpoint.class);
             newEndpoint.onExchange(exchange);
         }
     }
@@ -130,9 +137,9 @@ public class ChunkEndpoint extends ResourceEndpoint {
     /**
      * Create a Chunk template
      *
-     * @param resourceReader Reader used to get template
-     * @param theme The theme
-     * @return Chunk
+     * @param  resourceReader Reader used to get template
+     * @param  theme          The theme
+     * @return                Chunk
      */
     private Chunk createChunk(Reader resourceReader, Theme theme, boolean fromTemplate) throws IOException {
         ClassLoader oldcl = Thread.currentThread().getContextClassLoader();
@@ -153,23 +160,27 @@ public class ChunkEndpoint extends ResourceEndpoint {
             return newChunk;
         } finally {
             resourceReader.close();
-            if (oldcl != null) {
-                Thread.currentThread().setContextClassLoader(oldcl);
-            }
+            Thread.currentThread().setContextClassLoader(oldcl);
         }
     }
 
     private Chunk getOrCreateChunk(Theme theme, boolean fromTemplate) throws IOException {
         if (chunk == null) {
-            chunk = createChunk(new StringReader(getResourceUriExtended()), theme, fromTemplate);
+            if (ResourceHelper.hasScheme(getResourceUri())) {
+                InputStream is = getResourceAsInputStream();
+                String text = IOHelper.loadText(is);
+                chunk = createChunk(new StringReader(text), theme, true);
+            } else {
+                chunk = createChunk(new StringReader(getResourceUriExtended()), theme, fromTemplate);
+            }
         }
         return chunk;
     }
-    
-    private Theme getOrCreateTheme() throws IOException {
+
+    private Theme getOrCreateTheme() {
         if (theme == null) {
             if (themeFolder == null && themeSubfolder == null) {
-                theme = new Theme(); 
+                theme = new Theme();
             } else if (themeFolder != null && themeSubfolder == null) {
                 URL url = getCamelContext().getClassResolver().loadResourceAsURL(themeFolder);
                 theme = new Theme(url.getPath(), "");
@@ -179,6 +190,11 @@ public class ChunkEndpoint extends ResourceEndpoint {
             }
             if (encoding != null) {
                 theme.setEncoding(encoding);
+            }
+
+            ClassLoader apcl = getCamelContext().getApplicationContextClassLoader();
+            if (apcl != null) {
+                theme.setJarContext(apcl);
             }
         }
         return theme;
@@ -193,8 +209,8 @@ public class ChunkEndpoint extends ResourceEndpoint {
             return uri;
         }
     }
-    
-    private String getResourceUriExtended() throws IOException {
+
+    private String getResourceUriExtended() {
         return themeLayer == null
                 ? getResourceUri()
                 : getResourceUri() + CHUNK_LAYER_SEPARATOR + themeLayer;
@@ -215,7 +231,7 @@ public class ChunkEndpoint extends ResourceEndpoint {
     public void setThemeFolder(String themeFolder) {
         this.themeFolder = themeFolder;
     }
-    
+
     public String getThemeSubfolder() {
         return themeSubfolder;
     }
@@ -231,13 +247,27 @@ public class ChunkEndpoint extends ResourceEndpoint {
     public void setThemeLayer(String themeLayer) {
         this.themeLayer = themeLayer;
     }
-    
+
     public String getExtension() {
         return extension;
     }
 
     public void setExtension(String extension) {
         this.extension = extension;
+    }
+
+    public boolean isAllowTemplateFromHeader() {
+        return allowTemplateFromHeader;
+    }
+
+    /**
+     * Whether to allow to use resource template from header or not (default false).
+     *
+     * Enabling this allows to specify dynamic templates via message header. However this can be seen as a potential
+     * security vulnerability if the header is coming from a malicious user, so use this with care.
+     */
+    public void setAllowTemplateFromHeader(boolean allowTemplateFromHeader) {
+        this.allowTemplateFromHeader = allowTemplateFromHeader;
     }
 
     @Override
@@ -247,12 +277,5 @@ public class ChunkEndpoint extends ResourceEndpoint {
         if (theme == null) {
             theme = getOrCreateTheme();
         }
-    }
-
-    @Override
-    protected void doStop() throws Exception {
-        super.doStop();
-
-        // noop
     }
 }

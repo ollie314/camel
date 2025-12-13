@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,8 +18,8 @@ package org.apache.camel.component.jms;
 
 import java.util.Collections;
 import java.util.List;
-import javax.jms.JMSException;
-import javax.jms.Queue;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.api.management.ManagedAttribute;
@@ -29,28 +29,20 @@ import org.springframework.jms.core.JmsOperations;
 
 /**
  * An endpoint for a JMS Queue which is also browsable
- *
- * @version 
  */
 @ManagedResource(description = "Managed JMS Queue Endpoint")
-public class JmsQueueEndpoint extends JmsEndpoint implements BrowsableEndpoint {
+public class JmsQueueEndpoint extends JmsEndpoint implements JmsBrowsableEndpoint, BrowsableEndpoint {
     private int maximumBrowseSize = -1;
     private final QueueBrowseStrategy queueBrowseStrategy;
 
-    public JmsQueueEndpoint(Queue destination) throws JMSException {
-        this("jms:queue:" + destination.getQueueName(), null);
-        setDestinationType("queue");
-        setDestination(destination);
-    }
-    
     public JmsQueueEndpoint(String uri, JmsComponent component, String destination,
-            JmsConfiguration configuration) {
+                            JmsConfiguration configuration) {
         this(uri, component, destination, configuration, null);
         setDestinationType("queue");
     }
 
     public JmsQueueEndpoint(String uri, JmsComponent component, String destination,
-            JmsConfiguration configuration, QueueBrowseStrategy queueBrowseStrategy) {
+                            JmsConfiguration configuration, QueueBrowseStrategy queueBrowseStrategy) {
         super(uri, component, destination, false, configuration);
         setDestinationType("queue");
         if (queueBrowseStrategy == null) {
@@ -82,21 +74,50 @@ public class JmsQueueEndpoint extends JmsEndpoint implements BrowsableEndpoint {
     }
 
     /**
-     * If a number is set > 0 then this limits the number of messages that are
-     * returned when browsing the queue
+     * If a number is set > 0 then this limits the number of messages that are returned when browsing the queue
      */
     @ManagedAttribute
     public void setMaximumBrowseSize(int maximumBrowseSize) {
         this.maximumBrowseSize = maximumBrowseSize;
     }
 
+    @Override
+    public int getBrowseLimit() {
+        return maximumBrowseSize;
+    }
+
+    @Override
+    public void setBrowseLimit(int browseLimit) {
+        this.maximumBrowseSize = browseLimit;
+    }
+
+    @Override
     public List<Exchange> getExchanges() {
+        return getExchanges(maximumBrowseSize, null);
+    }
+
+    @Override
+    public BrowseStatus getBrowseStatus(int limit) {
+        if (queueBrowseStrategy == null) {
+            return new BrowseStatus(0, 0, 0);
+        }
+        String queue = getDestinationName();
+        JmsOperations template = getConfiguration().createInOnlyTemplate(this, false, queue);
+        return queueBrowseStrategy.browseStatus(template, queue, this, limit);
+    }
+
+    @Override
+    public List<Exchange> getExchanges(int limit, Predicate filter) {
         if (queueBrowseStrategy == null) {
             return Collections.emptyList();
         }
         String queue = getDestinationName();
         JmsOperations template = getConfiguration().createInOnlyTemplate(this, false, queue);
-        return queueBrowseStrategy.browse(template, queue, this);
+        List<Exchange> list = queueBrowseStrategy.browse(template, queue, this, limit);
+        if (filter != null) {
+            list = (List<Exchange>) list.stream().filter(filter).collect(Collectors.toList());
+        }
+        return list;
     }
 
     protected QueueBrowseStrategy createQueueBrowseStrategy() {

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,85 +16,109 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
+import jakarta.jms.Destination;
 
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
 import org.apache.camel.Exchange;
 import org.apache.camel.ExchangePattern;
 import org.apache.camel.Message;
-import org.apache.camel.Processor;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.ProducerTemplate;
+import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.test.infra.artemis.services.ArtemisService;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class JmsRequestReplyReplyToOverrideTest extends CamelTestSupport {
+public class JmsRequestReplyReplyToOverrideTest extends AbstractJMSTest {
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
 
     private static final Logger LOG = LoggerFactory.getLogger(JmsRequestReplyReplyToOverrideTest.class);
 
     private static final String REQUEST_BODY = "Something";
     private static final String EXPECTED_REPLY_BODY = "Re: " + REQUEST_BODY;
-    private static final String EXPECTED_REPLY_HEADER = "queue://bar";
-    
-    @Override
-    public boolean isUseRouteBuilder() {
-        return false;
-    }
+    private static final String EXPECTED_REPLY_HEADER = "ActiveMQQueue[JmsRequestReplyReplyToOverrideTest.reply]";
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
-    public void testJmsRequestReplyReplyToAndReplyToHeader() throws Exception {
+    public void testJmsRequestReplyReplyToAndReplyToHeader() {
         // must start CamelContext because use route builder is false
         context.start();
 
-        // send request to foo, set replyTo to bar, but actually expect reply at baz
+        // send request to JmsRequestReplyReplyToOverrideTest, set replyTo to JmsRequestReplyReplyToOverrideTest.reply, but actually expect reply at baz
         Thread sender = new Thread(new Responder());
         sender.start();
 
-        Exchange reply = template.request("jms:queue:foo", new Processor() {
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setBody(REQUEST_BODY);
-            }
-        });
-        assertEquals(EXPECTED_REPLY_BODY, reply.getOut().getBody());
+        Exchange reply = template.request("jms:queue:JmsRequestReplyReplyToOverrideTest",
+                exchange -> exchange.getIn().setBody(REQUEST_BODY));
+        assertEquals(EXPECTED_REPLY_BODY, reply.getMessage().getBody());
     }
 
     @Override
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        JmsComponent jmsComponent = jmsComponentAutoAcknowledge(connectionFactory);
+    protected String getComponentName() {
+        return "jms";
+    }
+
+    @Override
+    protected JmsComponent setupComponent(CamelContext camelContext, ArtemisService service, String componentName) {
+        final JmsComponent jmsComponent = super.setupComponent(camelContext, service, componentName);
+
         jmsComponent.getConfiguration().setReplyTo("baz");
-        jmsComponent.getConfiguration().setReplyToOverride("bar");
-        camelContext.addComponent("jms", jmsComponent);
-        return camelContext;
+        jmsComponent.getConfiguration().setReplyToOverride("JmsRequestReplyReplyToOverrideTest.reply");
+
+        return jmsComponent;
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
+        return null;
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
     }
 
     private class Responder implements Runnable {
 
+        @Override
         public void run() {
             try {
                 LOG.debug("Waiting for request");
-                Exchange request = consumer.receive("jms:queue:foo", 5000);
+                Exchange request = consumer.receive("jms:queue:JmsRequestReplyReplyToOverrideTest", 5000);
 
                 LOG.debug("Got request, sending reply");
                 final String body = request.getIn().getBody(String.class);
                 final String cid = request.getIn().getHeader("JMSCorrelationID", String.class);
                 final Destination replyTo = request.getIn().getHeader("JMSReplyTo", Destination.class);
-                
-                assertEquals(EXPECTED_REPLY_HEADER, replyTo.toString());
-                
-                // send reply
-                template.send("jms:dummy", ExchangePattern.InOnly, new Processor() {
-                    public void process(Exchange exchange) throws Exception {
 
-                        Message in = exchange.getIn();
-                        in.setBody("Re: " + body);
-                        in.setHeader(JmsConstants.JMS_DESTINATION_NAME, "baz");
-                        in.setHeader("JMSCorrelationID", cid);
-                    }
+                assertEquals(EXPECTED_REPLY_HEADER, replyTo.toString());
+
+                // send reply
+                template.send("jms:dummy", ExchangePattern.InOnly, exchange -> {
+
+                    Message in = exchange.getIn();
+                    in.setBody("Re: " + body);
+                    in.setHeader(JmsConstants.JMS_DESTINATION_NAME, "baz");
+                    in.setHeader("JMSCorrelationID", cid);
                 });
             } catch (Exception e) {
                 // ignore

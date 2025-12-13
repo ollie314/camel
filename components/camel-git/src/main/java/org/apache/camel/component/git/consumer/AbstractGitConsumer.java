@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,29 +16,28 @@
  */
 package org.apache.camel.component.git.consumer;
 
-import java.io.File;
-import java.io.IOException;
+import java.util.Queue;
 
+import org.apache.camel.Exchange;
+import org.apache.camel.ExchangePropertyKey;
 import org.apache.camel.Processor;
 import org.apache.camel.component.git.GitEndpoint;
-import org.apache.camel.impl.ScheduledPollConsumer;
+import org.apache.camel.component.git.RepositoryFactory;
+import org.apache.camel.support.ScheduledBatchPollingConsumer;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public abstract class AbstractGitConsumer extends ScheduledPollConsumer {
+public abstract class AbstractGitConsumer extends ScheduledBatchPollingConsumer {
 
     private static final Logger LOG = LoggerFactory.getLogger(AbstractGitConsumer.class);
 
     private final GitEndpoint endpoint;
-
     private Repository repo;
-
     private Git git;
 
-    public AbstractGitConsumer(GitEndpoint endpoint, Processor processor) {
+    protected AbstractGitConsumer(GitEndpoint endpoint, Processor processor) {
         super(endpoint, processor);
         this.endpoint = endpoint;
     }
@@ -57,21 +56,11 @@ public abstract class AbstractGitConsumer extends ScheduledPollConsumer {
         git.close();
     }
 
-    private Repository getLocalRepository() throws IOException {
-        FileRepositoryBuilder builder = new FileRepositoryBuilder();
-        Repository repo = null;
-        try {
-            repo = builder.setGitDir(new File(endpoint.getLocalPath(), ".git")).readEnvironment() // scan environment GIT_* variables
-                    .findGitDir() // scan up the file system tree
-                    .build();
-        } catch (IOException e) {
-            LOG.error("There was an error, cannot open " + endpoint.getLocalPath() + " repository");
-            throw e;
-        }
-        return repo;
+    private Repository getLocalRepository() {
+        return RepositoryFactory.of(endpoint);
     }
 
-    protected Repository getRepository() {
+    public Repository getRepository() {
         return repo;
     }
 
@@ -79,5 +68,32 @@ public abstract class AbstractGitConsumer extends ScheduledPollConsumer {
         return git;
     }
 
-    protected abstract int poll() throws Exception;
+    @Override
+    public int processBatch(Queue<Object> exchanges) throws Exception {
+        int total = exchanges.size();
+        int answer = total;
+        if (this.maxMessagesPerPoll > 0 && total > this.maxMessagesPerPoll) {
+            LOG.debug("Limiting to maximum messages to poll {} as there were {} messages in this poll.",
+                    this.maxMessagesPerPoll, total);
+            total = this.maxMessagesPerPoll;
+        }
+
+        for (int index = 0; index < total && this.isBatchAllowed(); ++index) {
+            Exchange exchange = (Exchange) exchanges.poll();
+            exchange.setProperty(ExchangePropertyKey.BATCH_INDEX, index);
+            exchange.setProperty(ExchangePropertyKey.BATCH_SIZE, total);
+            exchange.setProperty(ExchangePropertyKey.BATCH_COMPLETE, index == total - 1);
+            this.pendingExchanges = total - index - 1;
+            Object value = onPreProcessed(exchange);
+            getProcessor().process(exchange);
+            onProcessed(exchange, value);
+        }
+
+        return answer;
+    }
+
+    public abstract Object onPreProcessed(Exchange exchange);
+
+    public abstract void onProcessed(Exchange exchange, Object value);
+
 }

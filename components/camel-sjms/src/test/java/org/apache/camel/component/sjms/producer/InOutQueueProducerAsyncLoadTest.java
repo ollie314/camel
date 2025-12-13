@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,56 +19,54 @@ package org.apache.camel.component.sjms.producer;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.TextMessage;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.TextMessage;
 
+import org.apache.camel.ExchangePattern;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.sjms.support.JmsTestSupport;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class InOutQueueProducerAsyncLoadTest extends JmsTestSupport {
-    
-    private static final String TEST_DESTINATION_NAME = "in.out.queue.producer.test";
+
+    private static final String TEST_DESTINATION_NAME = "in.out.queue.producer.test.InOutQueueProducerAsyncLoadTest";
     private MessageConsumer mc1;
     private MessageConsumer mc2;
 
     public InOutQueueProducerAsyncLoadTest() {
     }
-    
-    @Override
-    protected boolean useJmx() {
-        return false;
-    }
-    
-    @Override
-    public void setUp() throws Exception {
-        super.setUp();
+
+    @BeforeEach
+    public void setupConsumers() throws Exception {
         mc1 = createQueueConsumer(TEST_DESTINATION_NAME + ".request");
         mc2 = createQueueConsumer(TEST_DESTINATION_NAME + ".request");
         mc1.setMessageListener(new MyMessageListener());
         mc2.setMessageListener(new MyMessageListener());
     }
-    
-    @Override
-    public void tearDown() throws Exception {
-        MyMessageListener l1 = (MyMessageListener)mc1.getMessageListener();
+
+    @AfterEach
+    public void cleanupConsumers() throws JMSException {
+        MyMessageListener l1 = (MyMessageListener) mc1.getMessageListener();
         l1.close();
         mc1.close();
-        MyMessageListener l2 = (MyMessageListener)mc2.getMessageListener();
+        MyMessageListener l2 = (MyMessageListener) mc2.getMessageListener();
         l2.close();
         mc2.close();
-        super.tearDown();
     }
 
     /**
-     * Test to verify that when using the consumer listener for the InOut
-     * producer we get the correct message back.
-     * 
+     * Test to verify that when using the consumer listener for the InOut producer we get the correct message back.
+     *
      * @throws Exception
      */
     @Test
@@ -104,23 +102,17 @@ public class InOutQueueProducerAsyncLoadTest extends JmsTestSupport {
         }
     }
 
-    /**
-     * @see org.apache.camel.test.junit4.CamelTestSupport#createRouteBuilder()
-     * 
-     * @return
-     * 
-     * @throws Exception
-     */
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
                 from("direct:start")
-                    .to("log:" + TEST_DESTINATION_NAME + ".in.log?showBody=true")
-                    .inOut("sjms:queue:" + TEST_DESTINATION_NAME + ".request" + "?namedReplyTo="
-                               + TEST_DESTINATION_NAME
-                               + ".response&consumerCount=10&producerCount=20&synchronous=false").threads(20)
-                    .to("log:" + TEST_DESTINATION_NAME + ".out.log?showBody=true");
+                        .to("log:" + TEST_DESTINATION_NAME + ".in.log?showBody=true")
+                        .to(ExchangePattern.InOut, "sjms:queue:" + TEST_DESTINATION_NAME + ".request" + "?replyTo="
+                                                   + TEST_DESTINATION_NAME
+                                                   + ".response&concurrentConsumers=10")
+                        .threads(20)
+                        .to("log:" + TEST_DESTINATION_NAME + ".out.log?showBody=true");
             }
         };
     }
@@ -131,7 +123,7 @@ public class InOutQueueProducerAsyncLoadTest extends JmsTestSupport {
         @Override
         public void onMessage(Message message) {
             try {
-                TextMessage request = (TextMessage)message;
+                TextMessage request = (TextMessage) message;
                 String text = request.getText();
 
                 TextMessage response = getSession().createTextMessage();

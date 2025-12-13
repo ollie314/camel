@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -25,25 +25,28 @@ import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.ironmq.IronMQConstants;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Before;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 
-@Ignore("Integration test that requires ironmq account.")
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+@Disabled("Integration test that requires ironmq account.")
 public class IronMQFIFOTest extends CamelTestSupport {
     private String projectId = "replace-this";
     private String token = "replace-this";
 
-    private final String ironMQEndpoint = "ironmq:testqueue?projectId=" + projectId + "&token=" + token + "&maxMessagesPerPoll=20&ironMQCloud=https://mq-v3-aws-us-east-1.iron.io";
+    private final String ironMQEndpoint = "ironmq:testqueue?projectId=" + projectId + "&token=" + token
+                                          + "&maxMessagesPerPoll=20&ironMQCloud=https://mq-v3-aws-us-east-1.iron.io";
 
-    @EndpointInject(uri = "direct:start")
+    @EndpointInject("direct:start")
     private ProducerTemplate template;
 
-    @EndpointInject(uri = "mock:result")
+    @EndpointInject("mock:result")
     private MockEndpoint result;
 
-    @Before
+    @BeforeEach
     public void clearQueue() {
         template.sendBodyAndHeader(ironMQEndpoint, "fo", IronMQConstants.OPERATION, IronMQConstants.CLEARQUEUE);
         for (int i = 1; i <= 50; i++) {
@@ -54,7 +57,7 @@ public class IronMQFIFOTest extends CamelTestSupport {
     @Test
     public void testIronMQFifo() throws Exception {
         result.setExpectedMessageCount(50);
-        assertMockEndpointsSatisfied(30, TimeUnit.SECONDS);
+        MockEndpoint.assertIsSatisfied(context, 30, TimeUnit.SECONDS);
         int i = 1;
         List<Exchange> exchanges = result.getExchanges();
         for (Exchange exchange : exchanges) {
@@ -64,7 +67,7 @@ public class IronMQFIFOTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
                 from(ironMQEndpoint).log("got message ${body}").to("mock:result");

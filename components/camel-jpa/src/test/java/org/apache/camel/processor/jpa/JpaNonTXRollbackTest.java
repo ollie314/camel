@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,12 +21,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.examples.SendEmail;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 public class JpaNonTXRollbackTest extends AbstractJpaTest {
 
     protected static final String SELECT_ALL_STRING = "select x from " + SendEmail.class.getName() + " x";
@@ -47,27 +48,27 @@ public class JpaNonTXRollbackTest extends AbstractJpaTest {
         getMockEndpoint("mock:result").expectedMessageCount(2);
 
         // start route
-        context.startRoute("foo");
+        context.getRouteController().startRoute("foo");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         assertEquals(1, foo.intValue());
         assertEquals(1, bar.intValue());
 
         // kaboom fails and we retry it again
-        assertTrue("Should be >= 2, was: " + kaboom.intValue(), kaboom.intValue() >= 2);
+        assertTrue(kaboom.intValue() >= 2, "Should be >= 2, was: " + kaboom.intValue());
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("jpa://" + SendEmail.class.getName() + "?consumer.transacted=false&delay=100").routeId("foo").noAutoStartup()
+            public void configure() {
+                from("jpa://" + SendEmail.class.getName() + "?transacted=false&delay=100").routeId("foo").autoStartup(false)
                         .to("mock:start")
                         .process(new Processor() {
                             @Override
-                            public void process(Exchange exchange) throws Exception {
+                            public void process(Exchange exchange) {
                                 SendEmail send = exchange.getIn().getBody(SendEmail.class);
                                 if ("kaboom@beer.org".equals(send.getAddress())) {
                                     kaboom.incrementAndGet();

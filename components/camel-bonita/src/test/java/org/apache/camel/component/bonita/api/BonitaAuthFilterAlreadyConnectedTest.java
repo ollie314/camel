@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -14,32 +14,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.camel.component.bonita.api;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
-import javax.ws.rs.client.ClientRequestContext;
-import javax.ws.rs.core.Cookie;
+import jakarta.ws.rs.client.ClientRequestContext;
+import jakarta.ws.rs.core.Cookie;
 
 import org.apache.camel.component.bonita.api.filter.BonitaAuthFilter;
 import org.apache.camel.component.bonita.api.util.BonitaAPIConfig;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.powermock.modules.junit4.PowerMockRunner;
+import org.mockito.MockitoAnnotations;
 
-@RunWith(PowerMockRunner.class)
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+
 public class BonitaAuthFilterAlreadyConnectedTest {
 
     @Mock
     private ClientRequestContext requestContext;
 
-    @Before
+    @BeforeEach
     public void setup() {
+        MockitoAnnotations.initMocks(this);
         Map<String, Cookie> resultCookies = new HashMap<>();
         resultCookies.put("JSESSIONID", new Cookie("JSESSIONID", "something"));
         Mockito.when(requestContext.getCookies()).thenReturn(resultCookies);
@@ -47,9 +48,12 @@ public class BonitaAuthFilterAlreadyConnectedTest {
     }
 
     @Test
-    public void testAlreadyConnected() throws Exception {
-        BonitaAPIConfig bonitaApiConfig =
-                new BonitaAPIConfig("hostname", "port", "username", "password");
+    public void testAlreadyConnected() {
+        assertDoesNotThrow(() -> runAlreadyConnectedTest());
+    }
+
+    private void runAlreadyConnectedTest() throws IOException {
+        BonitaAPIConfig bonitaApiConfig = new BonitaAPIConfig("hostname", "port", "username", "password");
         BonitaAuthFilter bonitaAuthFilter = new BonitaAuthFilter(bonitaApiConfig);
         bonitaAuthFilter.filter(requestContext);
     }

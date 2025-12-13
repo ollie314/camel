@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,7 +20,9 @@ import java.util.List;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class MyBatisSelectListTest extends MyBatisTestSupport {
 
@@ -31,7 +33,7 @@ public class MyBatisSelectListTest extends MyBatisTestSupport {
 
         template.sendBody("direct:start", null);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         List<?> list = mock.getReceivedExchanges().get(0).getIn().getBody(List.class);
         Account james = (Account) list.get(0);
@@ -41,14 +43,14 @@ public class MyBatisSelectListTest extends MyBatisTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: e1
                 from("direct:start")
-                    .to("mybatis:selectAllAccounts?statementType=SelectList")
-                    .to("mock:result");
+                        .to("mybatis:selectAllAccounts?statementType=SelectList")
+                        .to("mock:result");
                 // END SNIPPET: e1
             }
         };

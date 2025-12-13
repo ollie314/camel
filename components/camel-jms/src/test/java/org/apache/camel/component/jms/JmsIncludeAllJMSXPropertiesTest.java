@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,20 +18,28 @@ package org.apache.camel.component.jms;
 
 import java.util.HashMap;
 import java.util.Map;
-import javax.jms.ConnectionFactory;
 
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.infra.artemis.services.ArtemisService;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+public class JmsIncludeAllJMSXPropertiesTest extends AbstractJMSTest {
 
-/**
- *
- * @version 
- */
-public class JmsIncludeAllJMSXPropertiesTest extends CamelTestSupport {
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
     public void testIncludeAll() throws Exception {
@@ -40,32 +48,47 @@ public class JmsIncludeAllJMSXPropertiesTest extends CamelTestSupport {
         getMockEndpoint("mock:result").expectedHeaderReceived("JMSXUserID", "Donald");
         getMockEndpoint("mock:result").expectedHeaderReceived("JMSXAppID", "MyApp");
 
-        Map headers = new HashMap();
+        Map<String, Object> headers = new HashMap<>();
         headers.put("foo", "bar");
         headers.put("JMSXUserID", "Donald");
         headers.put("JMSXAppID", "MyApp");
 
-        template.sendBodyAndHeaders("activemq:queue:in", "Hello World", headers);
+        template.sendBodyAndHeaders("activemq:queue:JmsIncludeAllJMSXPropertiesTest", "Hello World", headers);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        JmsComponent jms = jmsComponentAutoAcknowledge(connectionFactory);
-        jms.setIncludeAllJMSXProperties(true);
-        camelContext.addComponent("activemq", jms);
-        return camelContext;
+    @Override
+    protected String getComponentName() {
+        return "activemq";
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected JmsComponent setupComponent(CamelContext camelContext, ArtemisService service, String componentName) {
+        final JmsComponent jms = super.setupComponent(camelContext, service, componentName);
+        jms.getConfiguration().setIncludeAllJMSXProperties(true);
+        return jms;
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("activemq:queue:in")
-                    .to("mock:result");
+            public void configure() {
+                from("activemq:queue:JmsIncludeAllJMSXPropertiesTest")
+                        .to("mock:result");
             }
         };
     }
 
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
+    }
 }

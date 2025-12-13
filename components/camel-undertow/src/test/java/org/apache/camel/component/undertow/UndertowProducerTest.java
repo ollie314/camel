@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,9 +16,15 @@
  */
 package org.apache.camel.component.undertow;
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class UndertowProducerTest extends BaseUndertowTest {
 
@@ -29,7 +35,7 @@ public class UndertowProducerTest extends BaseUndertowTest {
         String out = template.requestBody("undertow:http://localhost:{{port}}/foo", null, String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -40,7 +46,7 @@ public class UndertowProducerTest extends BaseUndertowTest {
         String out = template.requestBody("undertow:http://localhost:{{port}}/foo?name=me", null, String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -48,20 +54,22 @@ public class UndertowProducerTest extends BaseUndertowTest {
         getMockEndpoint("mock:input").expectedHeaderReceived(Exchange.HTTP_METHOD, "GET");
         getMockEndpoint("mock:input").expectedHeaderReceived("name", "me");
 
-        String out = template.requestBodyAndHeader("undertow:http://localhost:{{port}}/foo", null, Exchange.HTTP_QUERY, "name=me", String.class);
+        String out = template.requestBodyAndHeader("undertow:http://localhost:{{port}}/foo", null, Exchange.HTTP_QUERY,
+                "name=me", String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
     public void testHttpSimpleHeader() throws Exception {
         getMockEndpoint("mock:input").expectedHeaderReceived(Exchange.HTTP_METHOD, "POST");
 
-        String out = template.requestBodyAndHeader("undertow:http://localhost:{{port}}/foo", null, Exchange.HTTP_METHOD, "POST", String.class);
+        String out = template.requestBodyAndHeader("undertow:http://localhost:{{port}}/foo", null, Exchange.HTTP_METHOD, "POST",
+                String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -69,20 +77,39 @@ public class UndertowProducerTest extends BaseUndertowTest {
         getMockEndpoint("mock:input").expectedBodiesReceived("Hello World");
         getMockEndpoint("mock:input").expectedHeaderReceived(Exchange.HTTP_METHOD, "POST");
 
-        String out = template.requestBodyAndHeader("undertow:http://localhost:{{port}}/foo", "Hello World", Exchange.HTTP_METHOD, "POST", String.class);
+        String out = template.requestBodyAndHeader("undertow:http://localhost:{{port}}/foo", "Hello World",
+                Exchange.HTTP_METHOD, "POST", String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
+    }
+
+    @Test
+    public void testHttpInputStream() throws Exception {
+        getMockEndpoint("mock:input").expectedBodiesReceived("Hello World");
+        getMockEndpoint("mock:input").expectedHeaderReceived(Exchange.HTTP_METHOD, "POST");
+
+        String out = template.requestBodyAndHeader("undertow:http://localhost:{{port2}}/bar", "Hello World",
+                Exchange.HTTP_METHOD, "POST", String.class);
+        assertEquals("This is the InputStream", out);
+
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
+            private final InputStream is = new ByteArrayInputStream("This is the InputStream".getBytes());
+
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("undertow:http://localhost:{{port}}/foo")
-                    .to("mock:input")
-                    .transform().constant("Bye World");
+                        .to("mock:input")
+                        .transform().constant("Bye World");
+
+                from("undertow:http://localhost:{{port2}}/bar")
+                        .to("mock:input")
+                        .transform().constant(is);
             }
         };
     }

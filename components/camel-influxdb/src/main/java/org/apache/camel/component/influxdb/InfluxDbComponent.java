@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,42 +19,43 @@ package org.apache.camel.component.influxdb;
 import java.util.Map;
 
 import org.apache.camel.Endpoint;
-import org.apache.camel.impl.UriEndpointComponent;
-import org.apache.camel.util.CamelContextHelper;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.spi.annotations.Component;
+import org.apache.camel.support.CamelContextHelper;
+import org.apache.camel.support.DefaultComponent;
 import org.influxdb.InfluxDB;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+@Component("influxdb")
+public class InfluxDbComponent extends DefaultComponent {
 
-public class InfluxDbComponent extends UriEndpointComponent {
-
-    private static final Logger LOG = LoggerFactory.getLogger(InfluxDbComponent.class);
-
-    InfluxDB influxDbConnection;
-
+    @Metadata(autowired = true)
+    private InfluxDB influxDB;
 
     public InfluxDbComponent() {
-        super(InfluxDbEndpoint.class);
-        this.influxDbConnection = null;
     }
-
-
-
 
     @Override
     protected Endpoint createEndpoint(String uri, String remaining, Map<String, Object> parameters) throws Exception {
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Creating influx db endpoint");
+        InfluxDbEndpoint endpoint = new InfluxDbEndpoint(uri, this);
+        endpoint.setConnectionBean(remaining);
+        InfluxDB target = influxDB;
+        if (target == null) {
+            // if not using a shared db then lookup
+            target = CamelContextHelper.mandatoryLookup(getCamelContext(), remaining, InfluxDB.class);
         }
+        endpoint.setInfluxDB(target);
+        setProperties(endpoint, parameters);
+        return endpoint;
+    }
 
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Looking for influxDb connection bean, remaining {}", remaining);
-        }
+    public InfluxDB getInfluxDB() {
+        return influxDB;
+    }
 
-        if (influxDbConnection == null) {
-            influxDbConnection = CamelContextHelper.mandatoryLookup(getCamelContext(), remaining, InfluxDB.class);
-        }
-
-        return new InfluxDbEndpoint(uri, this, influxDbConnection);
+    /**
+     * The shared Influx DB to use for all endpoints
+     */
+    public void setInfluxDB(InfluxDB influxDB) {
+        this.influxDB = influxDB;
     }
 }

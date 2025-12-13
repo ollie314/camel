@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,23 +18,31 @@ package org.apache.camel.component.jms;
 
 import java.util.HashMap;
 import java.util.Map;
-import javax.jms.ConnectionFactory;
 
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
 import org.apache.camel.Exchange;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.spi.HeaderFilterStrategy;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import org.apache.camel.test.infra.artemis.services.ArtemisService;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-/**
- * @version 
- */
-public class JmsCustomHeaderFilterStrategyTest extends CamelTestSupport {
+public class JmsCustomHeaderFilterStrategyTest extends AbstractJMSTest {
 
-    protected String componentName = "activemq";
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected final String componentName = "activemq";
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
     public void testCustomHeaderFilterStrategy() throws Exception {
@@ -43,43 +51,59 @@ public class JmsCustomHeaderFilterStrategyTest extends CamelTestSupport {
         mock.message(0).header("foo").isEqualTo("bar");
         mock.message(0).header("skipme").isNull();
 
-        Map<String, Object> headers = new HashMap<String, Object>();
+        Map<String, Object> headers = new HashMap<>();
         headers.put("foo", "bar");
         headers.put("skipme", 123);
 
-        template.sendBodyAndHeaders("activemq:queue:foo", "Hello World", headers);
+        template.sendBodyAndHeaders("activemq:queue:JmsCustomHeaderFilterStrategyTest", "Hello World", headers);
 
-        assertMockEndpointsSatisfied();
-    }
-
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent(componentName, jmsComponentAutoAcknowledge(connectionFactory));
-
-        JmsComponent jms = camelContext.getComponent(componentName, JmsComponent.class);
-        jms.setHeaderFilterStrategy(new MyHeaderFilterStrategy());
-
-        return camelContext;
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected JmsComponent setupComponent(CamelContext camelContext, ArtemisService service, String componentName) {
+        final JmsComponent jms = super.setupComponent(camelContext, service, componentName);
+
+        jms.setHeaderFilterStrategy(new MyHeaderFilterStrategy());
+
+        return jms;
+    }
+
+    @Override
+    public String getComponentName() {
+        return componentName;
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("activemq:queue:foo?eagerLoadingOfProperties=true").to("mock:result");
+            public void configure() {
+                from("activemq:queue:JmsCustomHeaderFilterStrategyTest?eagerLoadingOfProperties=true").to("mock:result");
             }
         };
     }
 
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
+    }
+
     private static class MyHeaderFilterStrategy implements HeaderFilterStrategy {
 
+        @Override
         public boolean applyFilterToCamelHeaders(String s, Object o, Exchange exchange) {
             return false;
         }
 
+        @Override
         public boolean applyFilterToExternalHeaders(String s, Object o, Exchange exchange) {
             return s.equals("skipme");
         }

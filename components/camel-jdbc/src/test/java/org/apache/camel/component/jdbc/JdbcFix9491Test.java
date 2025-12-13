@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,25 +16,25 @@
  */
 package org.apache.camel.component.jdbc;
 
-import java.util.Collection;
 import java.util.List;
 
 import org.apache.camel.EndpointInject;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Unit test based on user forum request about this component
  */
 public class JdbcFix9491Test extends AbstractJdbcTestSupport {
 
-    @EndpointInject(uri = "mock:result")
+    @EndpointInject("mock:result")
     private MockEndpoint mock;
 
-    @EndpointInject(uri = "direct:start")
+    @EndpointInject("direct:start")
     private ProducerTemplate direct;
 
     @Test
@@ -44,17 +44,16 @@ public class JdbcFix9491Test extends AbstractJdbcTestSupport {
         direct.sendBody("select * from customer");
         direct.sendBody("select * from customer");
 
-        assertMockEndpointsSatisfied();
-        Assert.assertEquals(2, mock.getReceivedExchanges().get(1).getIn().getBody(List.class).size());
+        MockEndpoint.assertIsSatisfied(context);
+        assertEquals(2, mock.getReceivedExchanges().get(1).getIn().getBody(List.class).size());
 
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("direct:start").
-                to("jdbc:testdb?statement.maxRows=2").to("mock:result");
+            public void configure() {
+                from("direct:start").to("jdbc:testdb?statement.maxRows=2").to("mock:result");
             }
         };
     }

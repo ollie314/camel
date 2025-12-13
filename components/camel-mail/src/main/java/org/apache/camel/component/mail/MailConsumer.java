@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,40 +16,51 @@
  */
 package org.apache.camel.component.mail;
 
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
-import javax.mail.Flags;
-import javax.mail.Folder;
-import javax.mail.FolderNotFoundException;
-import javax.mail.Message;
-import javax.mail.MessagingException;
-import javax.mail.Store;
-import javax.mail.search.SearchTerm;
 
-import com.sun.mail.imap.IMAPFolder;
-import com.sun.mail.imap.IMAPStore;
-import com.sun.mail.imap.SortTerm;
+import jakarta.mail.Flags;
+import jakarta.mail.Folder;
+import jakarta.mail.FolderNotFoundException;
+import jakarta.mail.Message;
+import jakarta.mail.MessagingException;
+import jakarta.mail.PasswordAuthentication;
+import jakarta.mail.Store;
+import jakarta.mail.search.SearchTerm;
+
 import org.apache.camel.Exchange;
+import org.apache.camel.ExchangePropertyKey;
 import org.apache.camel.Processor;
-import org.apache.camel.impl.ScheduledBatchPollingConsumer;
+import org.apache.camel.RuntimeCamelException;
+import org.apache.camel.attachment.Attachment;
+import org.apache.camel.attachment.AttachmentMessage;
+import org.apache.camel.spi.BeanIntrospection;
+import org.apache.camel.support.PluginHelper;
+import org.apache.camel.support.ScheduledBatchPollingConsumer;
 import org.apache.camel.support.SynchronizationAdapter;
 import org.apache.camel.util.CastUtils;
-import org.apache.camel.util.IntrospectionSupport;
 import org.apache.camel.util.KeyValueHolder;
 import org.apache.camel.util.ObjectHelper;
+import org.eclipse.angus.mail.imap.IMAPFolder;
+import org.eclipse.angus.mail.imap.IMAPStore;
+import org.eclipse.angus.mail.imap.SortTerm;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * A {@link org.apache.camel.Consumer Consumer} which consumes messages from JavaMail using a
- * {@link javax.mail.Transport Transport} and dispatches them to the {@link Processor}
+ * {@link jakarta.mail.Transport Transport} and dispatches them to the {@link Processor}
  */
 public class MailConsumer extends ScheduledBatchPollingConsumer {
     public static final String MAIL_MESSAGE_UID = "CamelMailMessageId";
 
     public static final long DEFAULT_CONSUMER_DELAY = 60 * 1000L;
+
     private static final Logger LOG = LoggerFactory.getLogger(MailConsumer.class);
 
     private final JavaMailSender sender;
@@ -85,6 +96,28 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
         super.doStop();
     }
 
+    /**
+     * Returns the max number of messages to be processed. Will return -1 if no maximum is set
+     */
+    private int getMaxNumberOfMessages() {
+        int fetchSize = getEndpoint().getConfiguration().getFetchSize();
+        if (hasMessageLimit(fetchSize)) {
+            return fetchSize;
+        }
+
+        int maximumMessagesPerPoll = (getMaxMessagesPerPoll() == 0) ? -1 : getMaxMessagesPerPoll();
+        if (hasMessageLimit(maximumMessagesPerPoll)) {
+            return maximumMessagesPerPoll;
+        }
+
+        return -1;
+    }
+
+    private boolean hasMessageLimit(int limitValue) {
+        return limitValue >= 0;
+    }
+
+    @Override
     protected int poll() throws Exception {
         // must reset for each poll
         shutdownRunningTask = null;
@@ -94,38 +127,45 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
         ensureIsConnected();
 
         if (store == null || folder == null) {
-            throw new IllegalStateException("MailConsumer did not connect properly to the MailStore: "
-                    + getEndpoint().getConfiguration().getMailStoreLogInformation());
+            throw new IllegalStateException(
+                    "MailConsumer did not connect properly to the MailStore: "
+                                            + getEndpoint().getConfiguration().getMailStoreLogInformation());
         }
 
         if (LOG.isDebugEnabled()) {
-            LOG.debug("Polling mailbox folder: " + getEndpoint().getConfiguration().getMailStoreLogInformation());
+            LOG.debug("Polling mailbox folder: {}", getEndpoint().getConfiguration().getMailStoreLogInformation());
         }
 
         if (getEndpoint().getConfiguration().getFetchSize() == 0) {
-            LOG.warn("Fetch size is 0 meaning the configuration is set to poll no new messages at all. Camel will skip this poll.");
+            LOG.warn(
+                    "Fetch size is 0 meaning the configuration is set to poll no new messages at all. Camel will skip this poll.");
             return 0;
         }
 
         // ensure folder is open
-        if (!folder.isOpen()) {
-            folder.open(Folder.READ_WRITE);
+        try {
+            if (!folder.isOpen()) {
+                folder.open(Folder.READ_WRITE);
+            }
+        } catch (MessagingException e) {
+            // some kind of connectivity error, so lets re-create connection
+            String msg = "Error opening mail folder due to " + e.getMessage() + ". Will re-create connection on next poll.";
+            LOG.warn(msg);
+            if (LOG.isDebugEnabled()) {
+                LOG.debug(msg, e);
+            }
+            disconnect();
+            return 0; // return since we cannot poll mail messages, but will re-connect on next poll.
         }
+
+        // okay consumer is connected to the mail server
+        forceConsumerAsReady();
 
         try {
             int count = folder.getMessageCount();
             if (count > 0) {
-                List<KeyValueHolder<String, Message>> messages = retrieveMessages();
-
-                // need to call setPeek on java-mail to avoid the message being flagged eagerly as SEEN on the server in case
-                // we process the message and rollback due an exception
-                if (getEndpoint().getConfiguration().isPeek()) {
-                    for (KeyValueHolder<String, Message> entry : messages) {
-                        Message message = entry.getValue();
-                        peekMessage(message);
-                    }
-                }
-                polledMessages = processBatch(CastUtils.cast(createExchanges(messages)));
+                Queue<Exchange> messages = retrieveMessages();
+                polledMessages = processBatch(CastUtils.cast(messages));
 
                 final MailBoxPostProcessAction postProcessor = getEndpoint().getPostProcessAction();
                 if (postProcessor != null) {
@@ -139,16 +179,17 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
         } finally {
             // need to ensure we release resources, but only if closeFolder or disconnect = true
             if (getEndpoint().getConfiguration().isCloseFolder() || getEndpoint().getConfiguration().isDisconnect()) {
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug("Close mailbox folder {} from {}", folder.getName(), getEndpoint().getConfiguration().getMailStoreLogInformation());
-                }
                 try {
-                    if (folder.isOpen()) {
+                    if (folder != null && folder.isOpen()) {
+                        if (LOG.isDebugEnabled()) {
+                            LOG.debug("Close mailbox folder {} from {}", folder.getName(),
+                                    getEndpoint().getConfiguration().getMailStoreLogInformation());
+                        }
                         folder.close(true);
                     }
                 } catch (Exception e) {
                     // some mail servers will lock the folder so we ignore in this case (CAMEL-1263)
-                    LOG.debug("Could not close mailbox folder: " + folder.getName() + ". This exception is ignored.", e);
+                    LOG.debug("Could not close mailbox folder: {}. This exception is ignored.", folder.getName(), e);
                 }
             }
         }
@@ -156,50 +197,54 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
         // should we disconnect, the header can override the configuration
         boolean disconnect = getEndpoint().getConfiguration().isDisconnect();
         if (disconnect) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Disconnecting from {}", getEndpoint().getConfiguration().getMailStoreLogInformation());
-            }
-            try {
-                store.close();
-            } catch (Exception e) {
-                LOG.debug("Could not disconnect from {}: " + getEndpoint().getConfiguration().getMailStoreLogInformation() + ". This exception is ignored.", e);
-            }
-            store = null;
-            folder = null;
+            disconnect();
         }
 
         return polledMessages;
     }
 
+    private void disconnect() {
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Disconnecting from {}", getEndpoint().getConfiguration().getMailStoreLogInformation());
+        }
+        try {
+            if (store != null) {
+                store.close();
+            }
+        } catch (Exception e) {
+            LOG.debug("Could not disconnect from {}. This exception is ignored.",
+                    getEndpoint().getConfiguration().getMailStoreLogInformation(), e);
+        }
+        store = null;
+        folder = null;
+    }
+
+    @Override
     public int processBatch(Queue<Object> exchanges) throws Exception {
         int total = exchanges.size();
-
-        // limit if needed
-        if (maxMessagesPerPoll > 0 && total > maxMessagesPerPoll) {
-            LOG.debug("Limiting to maximum messages to poll {} as there were {} messages in this poll.", maxMessagesPerPoll, total);
-            total = maxMessagesPerPoll;
-        }
-
         for (int index = 0; index < total && isBatchAllowed(); index++) {
             // only loop if we are started (allowed to run)
             Exchange exchange = ObjectHelper.cast(Exchange.class, exchanges.poll());
             // add current index and total as properties
-            exchange.setProperty(Exchange.BATCH_INDEX, index);
-            exchange.setProperty(Exchange.BATCH_SIZE, total);
-            exchange.setProperty(Exchange.BATCH_COMPLETE, index == total - 1);
+            exchange.setProperty(ExchangePropertyKey.BATCH_INDEX, index);
+            exchange.setProperty(ExchangePropertyKey.BATCH_SIZE, total);
+            exchange.setProperty(ExchangePropertyKey.BATCH_COMPLETE, index == total - 1);
 
             // update pending number of exchanges
             pendingExchanges = total - index - 1;
 
-            // must use the original message in case we need to workaround a charset issue when extracting mail content
-            final Message mail = exchange.getIn(MailMessage.class).getOriginalMessage();
+            // must use the original message in case we need to work around a charset issue when extracting mail content
+            var msg = exchange.getIn();
+            final Message mail = ((MailMessage) msg).getOriginalMessage();
 
             // add on completion to handle after work when the exchange is done
-            exchange.addOnCompletion(new SynchronizationAdapter() {
+            exchange.getExchangeExtension().addOnCompletion(new SynchronizationAdapter() {
+                @Override
                 public void onComplete(Exchange exchange) {
                     processCommit(mail, exchange);
                 }
 
+                @Override
                 public void onFailure(Exchange exchange) {
                     processRollback(mail, exchange);
                 }
@@ -229,20 +274,23 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
         if (mail.getClass().getSimpleName().startsWith("IMAP")) {
             try {
                 LOG.trace("Calling setPeek(true) on mail message {}", mail);
-                IntrospectionSupport.setProperty(mail, "peek", true);
-            } catch (Throwable e) {
+                BeanIntrospection beanIntrospection
+                        = PluginHelper.getBeanIntrospection(getEndpoint().getCamelContext());
+                beanIntrospection.setProperty(getEndpoint().getCamelContext(), mail, "peek", true);
+            } catch (Exception e) {
                 // ignore
-                LOG.trace("Error setting peak property to true on: " + mail + ". This exception is ignored.", e);
+                LOG.trace("Error setting peak property to true on: {}. This exception is ignored.", mail, e);
             }
         }
     }
 
     /**
-     * @return Messages from input folder according to the search and sort criteria stored in the endpoint
+     * @return                    Messages from input folder according to the search and sort criteria stored in the
+     *                            endpoint
      * @throws MessagingException If message retrieval fails
      */
-    private List<KeyValueHolder<String, Message>> retrieveMessages() throws MessagingException {
-        List<KeyValueHolder<String, Message>> answer = new ArrayList<>();
+    private Queue<Exchange> retrieveMessages() throws MessagingException {
+        Queue<Exchange> answer = new LinkedList<>();
 
         Message[] messages;
         final SortTerm[] sortTerm = getEndpoint().getSortTerm();
@@ -268,11 +316,28 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
             }
         }
 
+        int maxMessage = getMaxNumberOfMessages();
+        boolean hasMessageLimit = hasMessageLimit(maxMessage);
         for (Message message : messages) {
+            if (hasMessageLimit && answer.size() >= maxMessage) {
+                break;
+            }
             String key = getEndpoint().getMailUidGenerator().generateUuid(getEndpoint(), message);
             if (isValidMessage(key, message)) {
-                answer.add(new KeyValueHolder<>(key, message));
+                // need to call setPeek on java-mail to avoid the message being flagged eagerly as SEEN on the server in case
+                // we process the message and rollback due an exception
+                if (getEndpoint().getConfiguration().isPeek()) {
+                    peekMessage(message);
+                }
+                Exchange exchange = createExchange(new KeyValueHolder<>(key, message));
+                if (exchange != null) {
+                    answer.add(exchange);
+                }
             }
+        }
+
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Fetching {} messages. Total {} messages.", answer.size(), messages.length);
         }
 
         return answer;
@@ -280,16 +345,16 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
 
     private Message[] retrieveAllMessages() throws MessagingException {
         int total = folder.getMessageCount();
-        List<Message> msgs = new ArrayList<Message>();
+        List<Message> msgs = new ArrayList<>();
 
         // Note that message * numbers start at 1, not 0
         for (int i = 1; i <= total; i++) {
             try {
                 Message msg = folder.getMessage(i);
                 msgs.add(msg);
-            } catch (MessagingException e) {
+            } catch (Exception e) {
                 if (skipFailedMessage) {
-                    LOG.debug("Skipping failed message at index " + i + " due " + e.getMessage(), e);
+                    LOG.debug("Skipping failed message at index {} due {}", i, e.getMessage(), e);
                 } else if (handleFailedMessage) {
                     handleException(e);
                 } else {
@@ -297,7 +362,7 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
                 }
             }
         }
-        return msgs.toArray(new Message[msgs.size()]);
+        return msgs.toArray(new Message[0]);
     }
 
     private boolean isValidMessage(String key, Message msg) {
@@ -305,12 +370,14 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
 
         if (getEndpoint().getIdempotentRepository() != null) {
             if (!getEndpoint().getIdempotentRepository().add(key)) {
-                log.trace("This consumer is idempotent and the mail message has been consumed before matching idempotentKey: {}. Will skip this message: {}", key, msg);
+                LOG.trace(
+                        "This consumer is idempotent and the mail message has been consumed before matching idempotentKey: {}. Will skip this message: {}",
+                        key, msg);
                 answer = false;
             }
         }
 
-        log.debug("Message: {} with key: {} is valid: {}", msg, key, answer);
+        LOG.debug("Message: {} with key: {} is valid: {}", msg, key, answer);
         return answer;
     }
 
@@ -326,59 +393,57 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
         return null;
     }
 
-    protected Queue<Exchange> createExchanges(List<KeyValueHolder<String, Message>> messages) throws MessagingException {
-        Queue<Exchange> answer = new LinkedList<Exchange>();
+    protected Exchange createExchange(KeyValueHolder<String, Message> holder) throws MessagingException {
+        try {
+            String key = holder.getKey();
+            Message message = holder.getValue();
 
-        int fetchSize = getEndpoint().getConfiguration().getFetchSize();
-        int count = fetchSize == -1 ? messages.size() : Math.min(fetchSize, messages.size());
+            if (LOG.isTraceEnabled()) {
+                LOG.trace("Mail is of type: {} - {}", ObjectHelper.classCanonicalName(message), message);
+            }
 
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Fetching {} messages. Total {} messages.", count, messages.size());
-        }
-
-        for (int i = 0; i < count; i++) {
-            try {
-                KeyValueHolder<String, Message> holder = messages.get(i);
-                String key = holder.getKey();
-                Message message = holder.getValue();
-
-                if (LOG.isTraceEnabled()) {
-                    LOG.trace("Mail #{} is of type: {} - {}", new Object[]{i, ObjectHelper.classCanonicalName(message), message});
-                }
-
-                if (!message.getFlags().contains(Flags.Flag.DELETED)) {
-                    Exchange exchange = getEndpoint().createExchange(message);
-                    if (getEndpoint().getConfiguration().isMapMailMessage()) {
-                        // ensure the mail message is mapped, which can be ensured by touching the body/header/attachment
-                        LOG.trace("Mapping #{} from javax.mail.Message to Camel MailMessage", i);
-                        exchange.getIn().getBody();
-                        exchange.getIn().getHeaders();
-                        exchange.getIn().getAttachments();
-                    }
-
-                    // If the protocol is POP3 we need to remember the uid on the exchange
-                    // so we can find the mail message again later to be able to delete it
-                    // we also need to remember the UUID for idempotent repository
-                    exchange.setProperty(MAIL_MESSAGE_UID, key);
-
-                    answer.add(exchange);
-                } else {
-                    if (LOG.isDebugEnabled()) {
-                        LOG.debug("Skipping message as it was flagged as deleted: {}", MailUtils.dumpMessage(message));
+            if (!message.getFlags().contains(Flags.Flag.DELETED)) {
+                Exchange exchange = createExchange(message);
+                if (getEndpoint().getConfiguration().isMapMailMessage()) {
+                    // ensure the mail message is mapped, which can be ensured by touching the body/header/attachment
+                    LOG.trace("Mapping from jakarta.mail.Message to Camel MailMessage");
+                    exchange.getIn().getBody();
+                    exchange.getIn().getHeaders();
+                    // must also map attachments
+                    try {
+                        Map<String, Attachment> att = new HashMap<>();
+                        getEndpoint().getBinding().extractAttachmentsFromMail(message, att);
+                        if (!att.isEmpty()) {
+                            exchange.getIn(AttachmentMessage.class).setAttachmentObjects(att);
+                        }
+                    } catch (MessagingException | IOException e) {
+                        // must release exchange before throwing exception
+                        releaseExchange(exchange, true);
+                        throw new RuntimeCamelException("Error accessing attachments due to: " + e.getMessage(), e);
                     }
                 }
-            } catch (MessagingException e) {
-                if (skipFailedMessage) {
-                    LOG.debug("Skipping failed message at index " + i + " due " + e.getMessage(), e);
-                } else if (handleFailedMessage) {
-                    handleException(e);
-                } else {
-                    throw e;
+
+                // If the protocol is POP3 we need to remember the uid on the exchange
+                // so we can find the mail message again later to be able to delete it
+                // we also need to remember the UUID for idempotent repository
+                exchange.setProperty(MAIL_MESSAGE_UID, key);
+
+                return exchange;
+            } else {
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Skipping message as it was flagged as deleted: {}", MailUtils.dumpMessage(message));
                 }
             }
+        } catch (Exception e) {
+            if (skipFailedMessage) {
+                LOG.debug("Skipping failed message due {}", e.getMessage(), e);
+            } else if (handleFailedMessage) {
+                handleException(e);
+            } else {
+                throw e;
+            }
         }
-
-        return answer;
+        return null;
     }
 
     /**
@@ -386,8 +451,10 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
      */
     protected void processExchange(Exchange exchange) throws Exception {
         if (LOG.isDebugEnabled()) {
-            MailMessage msg = (MailMessage) exchange.getIn();
-            LOG.debug("Processing message: {}", MailUtils.dumpMessage(msg.getMessage()));
+            var msg = exchange.getIn();
+            if (msg instanceof MailMessage mm) {
+                LOG.debug("Processing message: {}", MailUtils.dumpMessage(mm.getMessage()));
+            }
         }
         getProcessor().process(exchange);
     }
@@ -424,7 +491,8 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
 
                 if (found == null) {
                     boolean delete = getEndpoint().getConfiguration().isDelete();
-                    LOG.warn("POP3message not found in folder. Message cannot be marked as " + (delete ? "DELETED" : "SEEN"));
+                    LOG.warn("POP3message not found in folder. Message cannot be marked as {}",
+                            delete ? "DELETED" : "SEEN");
                 } else {
                     mail = found;
                 }
@@ -433,28 +501,20 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
             org.apache.camel.Message in = exchange.getIn();
             MailConfiguration config = getEndpoint().getConfiguration();
             // header values override configuration values
-            String copyTo = in.getHeader("copyTo", config.getCopyTo(), String.class);
-            boolean delete = in.getHeader("delete", config.isDelete(), boolean.class);
+            String copyTo = in.getHeader(MailConstants.MAIL_COPY_TO, config.getCopyTo(), String.class);
+            String moveTo = in.getHeader(MailConstants.MAIL_MOVE_TO, config.getMoveTo(), String.class);
+            boolean delete = in.getHeader(MailConstants.MAIL_DELETE, config.isDelete(), boolean.class);
 
-            // Copy message into different imap folder if asked
-            if (config.getProtocol().equals(MailUtils.PROTOCOL_IMAP) || config.getProtocol().equals(MailUtils.PROTOCOL_IMAPS)) {
-                if (copyTo != null) {
-                    LOG.trace("IMAP message needs to be copied to {}", copyTo);
-                    Folder destFolder = store.getFolder(copyTo);
-                    if (!destFolder.exists()) {
-                        destFolder.create(Folder.HOLDS_MESSAGES);
-                    }
-                    folder.copyMessages(new Message[]{mail}, destFolder);
-                    LOG.trace("IMAP message {} copied to {}", mail, copyTo);
-                }
-            }
+            copyOrMoveMessageIfRequired(config, mail, copyTo, false);
 
             if (delete) {
                 LOG.trace("Exchange processed, so flagging message as DELETED");
+                copyOrMoveMessageIfRequired(config, mail, moveTo, true);
                 mail.setFlag(Flags.Flag.DELETED, true);
             } else {
                 LOG.trace("Exchange processed, so flagging message as SEEN");
                 mail.setFlag(Flags.Flag.SEEN, true);
+                copyOrMoveMessageIfRequired(config, mail, moveTo, true);
             }
 
             // need to confirm or remove on commit at last
@@ -468,6 +528,32 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
 
         } catch (MessagingException e) {
             getExceptionHandler().handleException("Error occurred during committing mail message: " + mail, exchange, e);
+        }
+    }
+
+    private Exchange createExchange(Message message) {
+        Exchange exchange = createExchange(true);
+        exchange.setProperty(Exchange.BINDING, getEndpoint().getBinding());
+        exchange.setIn(new MailMessage(exchange, message, getEndpoint().getConfiguration().isMapMailMessage()));
+        return exchange;
+    }
+
+    private void copyOrMoveMessageIfRequired(
+            MailConfiguration config, Message mail, String destinationFolder, boolean moveMessage)
+            throws MessagingException {
+        if (config.getProtocol().equals(MailUtils.PROTOCOL_IMAP) || config.getProtocol().equals(MailUtils.PROTOCOL_IMAPS)) {
+            if (destinationFolder != null) {
+                LOG.trace("IMAP message needs to be {} to {}", moveMessage ? "moved" : "copied", destinationFolder);
+                Folder destFolder = store.getFolder(destinationFolder);
+                if (!destFolder.exists()) {
+                    destFolder.create(Folder.HOLDS_MESSAGES);
+                }
+                folder.copyMessages(new Message[] { mail }, destFolder);
+                if (moveMessage) {
+                    mail.setFlag(Flags.Flag.DELETED, true);
+                }
+                LOG.trace("IMAP message {} {} to {}", mail, moveMessage ? "moved" : "copied", destinationFolder);
+            }
         }
     }
 
@@ -488,9 +574,9 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
 
         Exception cause = exchange.getException();
         if (cause != null) {
-            LOG.warn("Exchange failed, so rolling back message status: " + exchange, cause);
+            LOG.warn("Exchange failed, so rolling back message status: {}", exchange, cause);
         } else {
-            LOG.warn("Exchange failed, so rolling back message status: " + exchange);
+            LOG.warn("Exchange failed, so rolling back message status: {}", exchange);
         }
     }
 
@@ -503,9 +589,8 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
                 connected = true;
             }
         } catch (Exception e) {
-            LOG.debug("Exception while testing for is connected to MailStore: "
-                    + getEndpoint().getConfiguration().getMailStoreLogInformation()
-                    + ". Caused by: " + e.getMessage(), e);
+            LOG.debug("Exception while testing for is connected to MailStore: {}. Caused by: {}",
+                    getEndpoint().getConfiguration().getMailStoreLogInformation(), e.getMessage(), e);
         }
 
         if (!connected) {
@@ -517,7 +602,8 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
                 LOG.debug("Connecting to MailStore: {}", getEndpoint().getConfiguration().getMailStoreLogInformation());
             }
             store = sender.getSession().getStore(config.getProtocol());
-            store.connect(config.getHost(), config.getPort(), config.getUsername(), config.getPassword());
+            PasswordAuthentication passwordAuth = config.getPasswordAuthentication();
+            store.connect(config.getHost(), config.getPort(), passwordAuth.getUserName(), passwordAuth.getPassword());
 
             serverCanSort = hasSortCapability(store);
         }
@@ -536,8 +622,8 @@ public class MailConsumer extends ScheduledBatchPollingConsumer {
     /**
      * Check whether the email store has the sort capability or not.
      *
-     * @param store Email store
-     * @return true if the store is an IMAP store and it has the store capability
+     * @param  store              Email store
+     * @return                    true if the store is an IMAP store and it has the store capability
      * @throws MessagingException In case capability check fails
      */
     private static boolean hasSortCapability(Store store) throws MessagingException {

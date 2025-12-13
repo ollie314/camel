@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,64 +18,15 @@ package org.apache.camel.component.exec.impl;
 
 import java.util.List;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.apache.camel.component.exec.impl.ExecParseUtils.isDoubleQuoted;
-import static org.apache.camel.component.exec.impl.ExecParseUtils.isSingleQuoted;
 import static org.apache.camel.component.exec.impl.ExecParseUtils.splitToWhiteSpaceSeparatedTokens;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Tests for {@link ExecParseUtils}
  */
 public class ExecParseUtilsTest {
-
-    @Test
-    public void testSingleQuoted() {
-        assertTrue(isSingleQuoted("\"c:\\program files\\test\""));
-    }
-
-    @Test
-    public void testSingleQuoted2() {
-        assertTrue(isSingleQuoted("\"with space\""));
-    }
-
-    @Test
-    public void testSingleQuotedNegative() {
-        assertFalse(isSingleQuoted("arg 0"));
-    }
-
-    @Test
-    public void testSingleQuotedNegative2() {
-        assertFalse(isSingleQuoted("\" \" space not allowed between quotes \""));
-    }
-
-    @Test
-    public void testSingleQuotedNegative3() {
-        assertFalse(isSingleQuoted("\"\"double quoted is not single quoted\"\""));
-    }
-
-    @Test
-    public void testEmptySingleQuotedNegative() {
-        assertFalse(isSingleQuoted("\"\""));
-    }
-
-    @Test
-    public void testEmptySingleQuotedNegative2() {
-        assertFalse(isSingleQuoted("\""));
-    }
-
-    @Test
-    public void testDoubleQuoted() {
-        assertTrue(isDoubleQuoted("\"\"c:\\program files\\test\\\"\""));
-    }
-
-    @Test
-    public void testEmptyDoubleQuotedNegative() {
-        assertFalse(isDoubleQuoted("\"\"\"\""));
-    }
 
     @Test
     public void testWhiteSpaceSeparatedArgs() {
@@ -101,7 +52,7 @@ public class ExecParseUtilsTest {
     @Test
     public void testWhitespaceSeparatedArgsWithSpaces() {
         List<String> args = splitToWhiteSpaceSeparatedTokens("\"arg 0 \"   arg1 \"arg 2\"");
-        assertEquals("arg 0 ", args.get(0));
+        assertEquals("arg 0", args.get(0));
         assertEquals("arg1", args.get(1));
         assertEquals("arg 2", args.get(2));
     }
@@ -114,25 +65,25 @@ public class ExecParseUtilsTest {
 
     @Test
     public void testDoubleQuoteAndSpace() {
-        List<String> args = splitToWhiteSpaceSeparatedTokens("\"\"arg0\"\" arg1");
+        List<String> args = splitToWhiteSpaceSeparatedTokens("'\"arg0\"' arg1");
         assertEquals("\"arg0\"", args.get(0));
         assertEquals("arg1", args.get(1));
     }
 
     @Test
     public void testTwoDoubleQuotes() {
-        List<String> args = splitToWhiteSpaceSeparatedTokens("\"\"arg0\"\" \"\"arg1\"\"");
+        List<String> args = splitToWhiteSpaceSeparatedTokens("'\"arg0\"' '\"arg1\"'");
         assertEquals("\"arg0\"", args.get(0));
         assertEquals("\"arg1\"", args.get(1));
     }
 
-    @Test(expected = IllegalArgumentException.class)
-    public void testWhiteSpaceSeparatedArgsNotClosed() {
-        splitToWhiteSpaceSeparatedTokens("arg 0 \" arg1 \"arg 2\"");
+    @Test
+    public void testRuby() {
+        List<String> args = splitToWhiteSpaceSeparatedTokens("ruby -e 'puts \"Hello, world!\"'");
+        assertEquals(3, args.size());
+        assertEquals("ruby", args.get(0));
+        assertEquals("-e", args.get(1));
+        assertEquals("puts \"Hello, world!\"", args.get(2));
     }
 
-    @Test(expected = IllegalArgumentException.class)
-    public void testInvalidQuotes() {
-        splitToWhiteSpaceSeparatedTokens("\"\"arg 0 \" arg1 \"arg 2\"");
-    }
 }

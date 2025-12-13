@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,24 +16,25 @@
  */
 package org.apache.camel.component.mail;
 
-import javax.mail.Folder;
-import javax.mail.Store;
+import jakarta.mail.Folder;
+import jakarta.mail.Store;
 
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mail.Mailbox.MailboxUser;
+import org.apache.camel.component.mail.Mailbox.Protocol;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import org.jvnet.mock_javamail.Mailbox;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
 /**
  * Unit test with poll enrich
  */
 public class MailPollEnrichNoMailTest extends CamelTestSupport {
+    private static final MailboxUser bill = Mailbox.getOrCreateUser("bill", "secret");
 
     @Override
-    public void setUp() throws Exception {
+    public void doPreSetup() throws Exception {
         prepareMailbox();
-        super.setUp();
     }
 
     @Test
@@ -60,19 +61,20 @@ public class MailPollEnrichNoMailTest extends CamelTestSupport {
         // connect to mailbox
         Mailbox.clearAll();
         JavaMailSender sender = new DefaultJavaMailSender();
-        Store store = sender.getSession().getStore("pop3");
-        store.connect("localhost", 25, "bill", "secret");
+        Store store = sender.getSession().getStore("imap");
+        store.connect("localhost", Mailbox.getPort(Protocol.imap), bill.getLogin(), bill.getPassword());
         Folder folder = store.getFolder("INBOX");
         folder.open(Folder.READ_WRITE);
         folder.expunge();
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .pollEnrich("pop3://bill@localhost?password=secret&delay=1000", 0)
-                    .to("log:mail", "mock:result");
+                        .pollEnrich(bill.uriPrefix(Protocol.pop3) + "&initialDelay=100&delay=100", 0)
+                        .to("log:mail", "mock:result");
             }
         };
     }

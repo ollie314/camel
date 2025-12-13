@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,35 +16,35 @@
  */
 package org.apache.camel.example;
 
-import javax.xml.bind.annotation.XmlAccessType;
-import javax.xml.bind.annotation.XmlAccessorType;
-import javax.xml.bind.annotation.XmlAttribute;
-import javax.xml.bind.annotation.XmlRootElement;
+import jakarta.xml.bind.annotation.XmlAccessType;
+import jakarta.xml.bind.annotation.XmlAccessorType;
+import jakarta.xml.bind.annotation.XmlAttribute;
+import jakarta.xml.bind.annotation.XmlRootElement;
 
 @XmlRootElement
 @XmlAccessorType(XmlAccessType.FIELD)
 public class Bar {
-    
+
     @XmlAttribute
     private String name;
     @XmlAttribute
     private String value;
-    
+
     public Bar() {
     }
-    
+
     public void setName(String name) {
         this.name = name;
     }
-    
+
     public void setValue(String value) {
         this.value = value;
     }
-    
+
     public String getName() {
         return name;
     }
-    
+
     public String getValue() {
         return value;
     }

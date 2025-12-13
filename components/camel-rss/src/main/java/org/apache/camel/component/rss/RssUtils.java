@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,14 +16,13 @@
  */
 package org.apache.camel.component.rss;
 
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.io.IOException;
+import java.net.URI;
 
-import com.sun.syndication.feed.synd.SyndFeed;
-import com.sun.syndication.io.SyndFeedInput;
-import com.sun.syndication.io.XmlReader;
-import org.apache.commons.codec.binary.Base64;
+import com.rometools.rome.feed.synd.SyndFeed;
+import com.rometools.rome.io.FeedException;
+import com.rometools.rome.io.SyndFeedInput;
+import com.rometools.rome.io.XmlReader;
 
 public final class RssUtils {
 
@@ -39,30 +38,17 @@ public final class RssUtils {
         ClassLoader tccl = Thread.currentThread().getContextClassLoader();
         try {
             Thread.currentThread().setContextClassLoader(classLoader);
-            InputStream in = new URL(feedUri).openStream();
-            SyndFeedInput input = new SyndFeedInput();
-            return input.build(new XmlReader(in));
+            return createSyndFeed(feedUri);
         } finally {
             Thread.currentThread().setContextClassLoader(tccl);
         }
     }
 
-    public static SyndFeed createFeed(String feedUri, String username, String password) throws Exception {
-        return createFeed(feedUri, username, password, Thread.currentThread().getContextClassLoader());
-    }
-
-    public static SyndFeed createFeed(String feedUri, String username, String password, ClassLoader classLoader) throws Exception {
-        ClassLoader tccl = Thread.currentThread().getContextClassLoader();
-        try {
-            Thread.currentThread().setContextClassLoader(classLoader);
-            URL feedUrl = new URL(feedUri);
-            HttpURLConnection httpcon = (HttpURLConnection) feedUrl.openConnection();
-            String encoding = Base64.encodeBase64String(username.concat(":").concat(password).getBytes());
-            httpcon.setRequestProperty("Authorization", "Basic " + encoding);
+    private static SyndFeed createSyndFeed(String feedUri) throws IOException, FeedException {
+        try (XmlReader reader = new XmlReader(URI.create(feedUri).toURL())) {
             SyndFeedInput input = new SyndFeedInput();
-            return input.build(new XmlReader(httpcon));
-        } finally {
-            Thread.currentThread().setContextClassLoader(tccl);
+            return input.build(reader);
         }
     }
+
 }

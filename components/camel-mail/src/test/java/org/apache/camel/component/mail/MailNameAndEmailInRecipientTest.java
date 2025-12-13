@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,44 +20,48 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mail.Mailbox.MailboxUser;
+import org.apache.camel.component.mail.Mailbox.Protocol;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import org.jvnet.mock_javamail.Mailbox;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
 public class MailNameAndEmailInRecipientTest extends CamelTestSupport {
+    private static final MailboxUser davsclaus = Mailbox.getOrCreateUser("davsclaus", "secret");
+    private static final MailboxUser jstrachan = Mailbox.getOrCreateUser("jstrachan", "secret");
 
     @Test
     public void testSendWithNameAndEmailInRecipient() throws Exception {
         Mailbox.clearAll();
 
         // START SNIPPET: e1
-        Map<String, Object> headers = new HashMap<String, Object>();
+        Map<String, Object> headers = new HashMap<>();
         headers.put("to", "Claus Ibsen <davsclaus@localhost>");
         headers.put("cc", "James Strachan <jstrachan@localhost>");
 
         assertMailbox("davsclaus");
         assertMailbox("jstrachan");
 
-        template.sendBodyAndHeaders("smtp://localhost", "Hello World", headers);
+        template.sendBodyAndHeaders(davsclaus.uriPrefix(Protocol.smtp), "Hello World", headers);
         // END SNIPPET: e1
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
-    private void assertMailbox(String name) throws Exception {
+    private void assertMailbox(String name) {
         MockEndpoint mock = getMockEndpoint("mock:" + name);
-        mock.expectedBodiesReceived("Hello World");
+        mock.expectedBodiesReceived("Hello World\r\n");
         mock.message(0).header("to").isEqualTo("Claus Ibsen <davsclaus@localhost>");
         mock.message(0).header("cc").isEqualTo("James Strachan <jstrachan@localhost>");
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("pop3://davsclaus@localhost?consumer.delay=1000").to("mock:davsclaus");
+            public void configure() {
+                from(davsclaus.uriPrefix(Protocol.pop3) + "&initialDelay=100&delay=100").to("mock:davsclaus");
 
-                from("pop3://jstrachan@localhost?consumer.delay=1000").to("mock:jstrachan");
+                from(jstrachan.uriPrefix(Protocol.pop3) + "&initialDelay=100&delay=100").to("mock:jstrachan");
             }
         };
     }

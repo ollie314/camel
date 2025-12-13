@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,443 +17,599 @@
 package org.apache.camel.maven.packaging;
 
 import java.io.File;
-import java.io.FileFilter;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.nio.channels.FileChannel;
+import java.net.URI;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.function.BinaryOperator;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
+import javax.inject.Inject;
+
+import org.apache.camel.tooling.model.BaseModel;
+import org.apache.camel.tooling.model.BaseOptionModel;
+import org.apache.camel.tooling.model.ComponentModel;
+import org.apache.camel.tooling.model.DataFormatModel;
+import org.apache.camel.tooling.model.DevConsoleModel;
+import org.apache.camel.tooling.model.EipModel;
+import org.apache.camel.tooling.model.JsonMapper;
+import org.apache.camel.tooling.model.LanguageModel;
+import org.apache.camel.tooling.model.OtherModel;
+import org.apache.camel.tooling.model.PojoBeanModel;
+import org.apache.camel.tooling.model.TransformerModel;
+import org.apache.camel.tooling.util.FileUtil;
+import org.apache.camel.tooling.util.PackageHelper;
+import org.apache.camel.tooling.util.Strings;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
-import org.apache.maven.project.MavenProjectHelper;
+import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.RepositorySystemSession;
+import org.eclipse.aether.artifact.DefaultArtifact;
+import org.eclipse.aether.repository.RemoteRepository;
+import org.eclipse.aether.resolution.ArtifactRequest;
+import org.eclipse.aether.resolution.ArtifactResult;
 
-import static org.apache.camel.maven.packaging.PackageHelper.loadText;
+import static org.apache.camel.maven.packaging.MojoHelper.getComponentPath;
+import static org.apache.camel.tooling.util.PackageHelper.loadText;
 
 /**
- * Prepares the camel catalog to include component, data format, and eip descriptors,
- * and generates a report.
- *
- * @goal prepare-catalog
+ * Prepares the camel catalog to include component, data format, and eip descriptors, and generates a report.
  */
+@Mojo(name = "prepare-catalog", threadSafe = true)
 public class PrepareCatalogMojo extends AbstractMojo {
 
-    public static final int BUFFER_SIZE = 128 * 1024;
-
-    private static final String[] EXCLUDE_DOC_FILES = {"camel-core-osgi", "camel-core-xml", "camel-hystrix",
-        "camel-http-common", "camel-jetty", "camel-jetty-common", "camel-jetty8", 
-        "camel-linkedin", "camel-olingo2", "camel-ribbon", "camel-salesforce", "camel-spring-boot-starter",  
-        "camel-spring-dm", "camel-test-karaf", "camel-test-spring", "camel-testng", "camel-test-spring3", 
-        "camel-test-spring40", "camel-zipkin-starter"};
-
-    private static final Pattern LABEL_PATTERN = Pattern.compile("\\\"label\\\":\\s\\\"([\\w,]+)\\\"");
-
     private static final int UNUSED_LABELS_WARN = 15;
+    public static final String SEPARATOR = "================================================================================";
+    public static final String ADOC = ".adoc";
+    public static final String SRC_GENERATED_RESOURCES = "src/generated/resources";
 
     /**
      * The maven project.
-     *
-     * @parameter property="project"
-     * @required
-     * @readonly
      */
+    @Parameter(property = "project", required = true, readonly = true)
     protected MavenProject project;
 
     /**
-     * Whether to validate if the components, data formats, and languages are properly documented and have all the needed details.
-     *
-     * @parameter default-value="true"
+     * Whether to validate if the components, data formats, and languages are properly documented and have all the
+     * needed details.
      */
+    @Parameter(defaultValue = "true")
     protected Boolean validate;
 
     /**
-     * The output directory for components catalog
-     *
-     * @parameter default-value="${project.build.directory}/classes/org/apache/camel/catalog/components"
+     * The output directory for generated component catalog
      */
+    @Parameter(defaultValue = "${project.basedir}/src/generated/resources/org/apache/camel/catalog/components")
     protected File componentsOutDir;
 
     /**
-     * The output directory for dataformats catalog
-     *
-     * @parameter default-value="${project.build.directory}/classes/org/apache/camel/catalog/dataformats"
+     * The output directory for the data format catalog
      */
+    @Parameter(defaultValue = "${project.basedir}/src/generated/resources/org/apache/camel/catalog/dataformats")
     protected File dataFormatsOutDir;
 
     /**
-     * The output directory for languages catalog
-     *
-     * @parameter default-value="${project.build.directory}/classes/org/apache/camel/catalog/languages"
+     * The output directory for generated language catalog
      */
+    @Parameter(defaultValue = "${project.basedir}/src/generated/resources/org/apache/camel/catalog/languages")
     protected File languagesOutDir;
 
     /**
-     * The output directory for documents catalog
-     *
-     * @parameter default-value="${project.build.directory}/classes/org/apache/camel/catalog/docs"
+     * The output directory for generated transformer catalog
      */
-    protected File documentsOutDir;
+    @Parameter(defaultValue = "${project.basedir}/src/generated/resources/org/apache/camel/catalog/transformers")
+    protected File transformersOutDir;
 
     /**
-     * The output directory for models catalog
-     *
-     * @parameter default-value="${project.build.directory}/classes/org/apache/camel/catalog/models"
+     * The output directory for generated pojo beans catalog
      */
+    @Parameter(defaultValue = "${project.basedir}/src/generated/resources/org/apache/camel/catalog/beans")
+    protected File beansOutDir;
+
+    /**
+     * The output directory for generated dev-consoles catalog
+     */
+    @Parameter(defaultValue = "${project.basedir}/src/generated/resources/org/apache/camel/catalog/dev-consoles")
+    protected File consolesOutDir;
+
+    /**
+     * The output directory for generate others catalog
+     */
+    @Parameter(defaultValue = "${project.basedir}/src/generated/resources/org/apache/camel/catalog/others")
+    protected File othersOutDir;
+
+    /**
+     * The output directory for generated model catalog
+     */
+    @Parameter(defaultValue = "${project.basedir}/src/generated/resources/org/apache/camel/catalog/models")
     protected File modelsOutDir;
 
     /**
-     * The output directory for archetypes catalog
-     *
-     * @parameter default-value="${project.build.directory}/classes/org/apache/camel/catalog/archetypes"
+     * The output directory for models-app catalog
      */
-    protected File archetypesOutDir;
+    @Parameter(defaultValue = "${project.basedir}/src/generated/resources/org/apache/camel/catalog/models-app")
+    protected File modelsAppOutDir;
 
     /**
-     * The output directory for XML schemas catalog
-     *
-     * @parameter default-value="${project.build.directory}/classes/org/apache/camel/catalog/schemas"
+     * The output directory for generated XML schemas catalog
      */
+    @Parameter(defaultValue = "${project.basedir}/src/generated/resources/org/apache/camel/catalog/schemas")
     protected File schemasOutDir;
 
     /**
-     * The components directory where all the Apache Camel components are
-     *
-     * @parameter default-value="${project.build.directory}/../../../components"
+     * The output directory for generated main
      */
+    @Parameter(defaultValue = "${project.basedir}/src/generated/resources/org/apache/camel/catalog/main")
+    protected File mainOutDir;
+
+    /**
+     * The output directory for generated jbang
+     */
+    @Parameter(defaultValue = "${project.basedir}/src/generated/resources/org/apache/camel/catalog/jbang")
+    protected File jbangOutDir;
+
+    /**
+     * The components directory where all the Apache Camel components are
+     */
+    @Parameter(defaultValue = "${project.basedir}/../../components")
     protected File componentsDir;
 
     /**
-     * The camel-core directory where camel-core components are
-     *
-     * @parameter default-value="${project.build.directory}/../../../camel-core"
+     * The camel-core directory
      */
+    @Parameter(defaultValue = "${project.basedir}/../../core/")
     protected File coreDir;
 
     /**
-     * The directory where the camel-spring XML models are
-     *
-     * @parameter default-value="${project.build.directory}/../../../components/camel-spring"
+     * The camel-model directory
      */
+    @Parameter(defaultValue = "${project.basedir}/../../core/camel-core-model")
+    protected File modelDir;
+
+    /**
+     * The DSL directory
+     */
+    @Parameter(defaultValue = "${project.basedir}/../../dsl")
+    protected File dslDir;
+
+    /**
+     * The camel-core-languages directory
+     */
+    @Parameter(defaultValue = "${project.basedir}/../../core/camel-core-languages")
+    protected File languagesDir;
+
+    /**
+     * The directory where the camel-spring XML models are
+     */
+    @Parameter(defaultValue = "${project.basedir}/../../components/camel-spring-parent/camel-spring-xml")
     protected File springDir;
 
     /**
-     * The archetypes directory where all the Apache Camel Maven archetypes are
-     *
-     * @parameter default-value="${project.build.directory}/../../../tooling/archetypes"
-     */
-    protected File archetypesDir;
-
-    /**
      * The directory where the camel-spring XML schema are
-     *
-     * @parameter default-value="${project.build.directory}/../../../components/camel-spring/target/schema"
      */
+    @Parameter(defaultValue = "${project.basedir}/../../components/camel-spring-parent/camel-spring-xml/target/schema")
     protected File springSchemaDir;
 
     /**
-     * The directory where the camel-blueprint XML schema are
-     *
-     * @parameter default-value="${project.build.directory}/../../../components/camel-blueprint/target/schema"
+     * The directory where the camel-xml-io XML schema are
      */
-    protected File blueprintSchemaDir;
+    @Parameter(defaultValue = "${project.basedir}/../../core/camel-xml-io/target/classes")
+    protected File xmlioSchemaDir;
 
     /**
-     * Maven ProjectHelper.
-     *
-     * @component
-     * @readonly
+     * The directory where the camel-main metadata are
      */
-    private MavenProjectHelper projectHelper;
+    @Parameter(defaultValue = "${project.basedir}/../../core/camel-main/target/classes/META-INF")
+    protected File mainDir;
+
+    /**
+     * The directory where the camel-jbang metadata are
+     */
+    @Parameter(defaultValue = "${project.basedir}/../../dsl/camel-jbang/camel-jbang-core/target/classes/META-INF")
+    protected File jbangDir;
+
+    /**
+     * Skip the execution of this mojo
+     */
+    @Parameter(defaultValue = "false", property = "camel.prepare-catalog.skip")
+    protected boolean skip;
+
+    private final RepositorySystem repoSystem;
+
+    @Parameter(defaultValue = "${repositorySystemSession}", readonly = true, required = true)
+    private RepositorySystemSession repoSession;
+
+    @Parameter(defaultValue = "${project.remoteProjectRepositories}", readonly = true, required = true)
+    private List<RemoteRepository> repositories;
+
+    private Collection<Path> allJsonFiles;
+    private Collection<Path> allPropertiesFiles;
+    private final Map<Path, BaseModel<?>> allModels = new HashMap<>();
+
+    @Inject
+    public PrepareCatalogMojo(RepositorySystem repoSystem) {
+        this.repoSystem = repoSystem;
+    }
+
+    private static String asComponentName(Path file) {
+        String name = file.getFileName().toString();
+        if (name.endsWith(PackageHelper.JSON_SUFIX)) {
+            return name.substring(0, name.length() - PackageHelper.JSON_SUFIX.length());
+        } else if (name.endsWith(ADOC)) {
+            return name.substring(0, name.length() - ADOC.length());
+        }
+        return name;
+    }
+
+    /**
+     * Gives the {@code target/classes} directory if it already exists, otherwise downloads the corresponding artifact
+     * and unzips its content into the {@code target/classes} directory to support incremental build.
+     *
+     * @param  componentRootDirectory the root directory of a given component
+     * @return                        the path to the {@code target/classes} directory.
+     */
+    private Path getComponentClassesDirectory(Path componentRootDirectory) {
+        Path result = componentRootDirectory.resolve("target/classes");
+        if (Files.exists(result)) {
+            return result;
+        }
+        String artifactId = componentRootDirectory.getFileName().toString();
+        ArtifactRequest req = new ArtifactRequest()
+                .setRepositories(this.repositories)
+                .setArtifact(new DefaultArtifact("org.apache.camel", artifactId, "jar", project.getVersion()));
+        try {
+            ArtifactResult resolutionResult = this.repoSystem.resolveArtifact(this.repoSession, req);
+            File file = resolutionResult.getArtifact().getFile();
+            if (file != null && file.exists()) {
+                unzipArtifact(result, file);
+            }
+        } catch (Exception e) {
+            getLog().warn("Artifact %s could not be resolved.".formatted(artifactId), e);
+        }
+
+        return result;
+    }
+
+    /**
+     * Unzips the given jar file into the given target directory.
+     *
+     * @param  targetDirectory the target directory
+     * @param  jarFile         the jar file to unzip
+     * @throws IOException     if an error occurs while unzipping the file.
+     */
+    private void unzipArtifact(Path targetDirectory, File jarFile) throws IOException {
+        Path targetRoot = targetDirectory.normalize();
+        try (FileSystem fs = FileSystems.newFileSystem(URI.create("jar:%s".formatted(jarFile.toURI())), Map.of())) {
+            for (Path root : fs.getRootDirectories()) {
+                try (Stream<Path> walk = Files.walk(root)) {
+                    walk.forEach(
+                            source -> {
+                                Path target = targetRoot.resolve(root.relativize(source).toString()).normalize();
+                                if (target.startsWith(targetRoot)) {
+                                    try {
+                                        if (Files.isDirectory(source)) {
+                                            Files.createDirectories(target);
+                                        } else {
+                                            Files.copy(source, target);
+                                        }
+                                    } catch (IOException e) {
+                                        getLog().warn("Could not copy %s to %s.".formatted(source, target), e);
+                                    }
+                                }
+                            });
+                }
+            }
+        }
+    }
 
     /**
      * Execute goal.
      *
-     * @throws org.apache.maven.plugin.MojoExecutionException execution of the main class or one of the
-     *                                                        threads it generated failed.
+     * @throws org.apache.maven.plugin.MojoExecutionException execution of the main class or one of the threads it
+     *                                                        generated failed.
      * @throws org.apache.maven.plugin.MojoFailureException   something bad happened...
      */
+    @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
-        executeModel();
-        Set<String> components = executeComponents();
-        Set<String> dataformats = executeDataFormats();
-        Set<String> languages = executeLanguages();
-        executeDocuments(components, dataformats, languages);
-        executeArchetypes();
-        executeXmlSchemas();
+        try {
+            allJsonFiles = new TreeSet<>();
+            allPropertiesFiles = new TreeSet<>();
+
+            try (Stream<Path> paths
+                    = Stream.of(list(coreDir.toPath()), list(componentsDir.toPath())).flatMap(s -> s);
+                 Stream<Path> stream = Stream.concat(paths,
+                         Stream.of(languagesDir.toPath(), springDir.toPath()))
+                         .filter(dir -> !"target".equals(dir.getFileName().toString()))
+                         .flatMap(p -> getComponentPath(p).stream())
+                         .filter(dir -> Files.isDirectory(dir.resolve("src")))
+                         .map(this::getComponentClassesDirectory)
+                         .flatMap(PackageHelper::walk)
+                         .filter(Files::isRegularFile)) {
+                stream
+                        .forEach(p -> {
+                            String f = p.getFileName().toString();
+                            if (f.endsWith(PackageHelper.JSON_SUFIX)) {
+                                allJsonFiles.add(p);
+                            } else if (f.equals("component.properties") || f.equals("dataformat.properties")
+                                    || f.equals("language.properties") || f.equals("other.properties")
+                                    || f.equals("transformer.properties") || f.equals("bean.properties")) {
+                                allPropertiesFiles.add(p);
+                            }
+                        });
+            }
+
+            for (Path p : allJsonFiles) {
+                var m = JsonMapper.generateModel(p);
+                if (m != null) {
+                    allModels.put(p, m);
+                }
+            }
+
+            // special for dsl-dir as its built after camel-catalog, so we can only look inside src/generated
+            try (Stream<Path> stream = Stream.of(list(dslDir.toPath())).flatMap(s -> s)
+                    .flatMap(p -> getComponentPath(p).stream())
+                    .filter(dir -> Files.isDirectory(dir.resolve(SRC_GENERATED_RESOURCES)))
+                    .map(p -> p.resolve(SRC_GENERATED_RESOURCES))
+                    .flatMap(PackageHelper::walk)
+                    .filter(Files::isRegularFile)) {
+                stream
+                        .forEach(p -> {
+                            String f = p.getFileName().toString();
+                            if (f.endsWith(PackageHelper.JSON_SUFIX)) {
+                                allJsonFiles.add(p);
+                                var m = JsonMapper.generateModel(p);
+                                if (m instanceof OtherModel om) {
+                                    if (!project.getVersion().equals(om.getVersion())) {
+                                        // update version in model and file because we prepare catalog before we build DSL
+                                        // so their previous generated model files may use previous version (eg 3.x.0-SNAPSHOT -> 3.15.0)
+                                        try {
+                                            String s = Files.readString(p);
+                                            s = s.replaceAll(om.getVersion(), project.getVersion());
+                                            FileUtil.updateFile(p, s);
+                                        } catch (IOException e) {
+                                            // ignore
+                                        }
+                                        om.setVersion(project.getVersion());
+                                    }
+                                    allModels.put(p, m);
+                                }
+                            }
+                        });
+            }
+
+            executeModel();
+            executeModelApps();
+            Set<String> components = executeComponents();
+            Set<String> dataformats = executeDataFormats();
+            Set<String> languages = executeLanguages();
+            Set<String> transformers = executeTransformers();
+            Set<String> beans = executeBeans();
+            Set<String> consoles = executeDevConsoles();
+            Set<String> others = executeOthers();
+            executeDocuments(components, dataformats, languages, others);
+            executeXmlSchemas();
+            executeMain();
+            executeJBang();
+        } catch (Exception e) {
+            throw new MojoFailureException("Error preparing catalog", e);
+        }
     }
 
-    protected void executeModel() throws MojoExecutionException, MojoFailureException {
-        getLog().info("================================================================================");
+    protected void executeModel() throws Exception {
+        Path modelDir = this.modelDir.toPath();
+        this.springDir.toPath();
+        Path modelsOutDir = this.modelsOutDir.toPath();
+
+        getLog().info(SEPARATOR);
         getLog().info("Copying all Camel model json descriptors");
 
         // lets use sorted set/maps
-        Set<File> jsonFiles = new TreeSet<File>();
-        Set<File> duplicateJsonFiles = new TreeSet<File>();
-        Set<File> missingLabels = new TreeSet<File>();
-        Set<File> missingJavaDoc = new TreeSet<File>();
-        Map<String, Set<String>> usedLabels = new TreeMap<String, Set<String>>();
+        Set<Path> jsonFiles;
+        Set<Path> duplicateJsonFiles;
+        Set<Path> missingLabels = new TreeSet<>();
+        Set<Path> missingJavaDoc = new TreeSet<>();
+        Map<String, Set<String>> usedLabels = new TreeMap<>();
 
         // find all json files in camel-core
-        if (coreDir != null && coreDir.isDirectory()) {
-            File target = new File(coreDir, "target/classes/org/apache/camel/model");
-            PackageHelper.findJsonFiles(target, jsonFiles, new PackageHelper.CamelComponentsModelFilter());
-        }
-
-        // find all json files in camel-spring
-        if (springDir != null && springDir.isDirectory()) {
-            File target = new File(springDir, "target/classes/org/apache/camel/spring");
-            PackageHelper.findJsonFiles(target, jsonFiles, new PackageHelper.CamelComponentsModelFilter());
-            File target2 = new File(springDir, "target/classes/org/apache/camel/core/xml");
-            PackageHelper.findJsonFiles(target2, jsonFiles, new PackageHelper.CamelComponentsModelFilter());
-        }
-
+        Path coreDirTarget = modelDir.resolve("target/classes/META-INF/org/apache/camel/model");
+        Path coreModelAppDirTarget = modelDir.resolve("target/classes/META-INF/org/apache/camel/model/app");
+        jsonFiles = allJsonFiles.stream()
+                .filter(p -> p.startsWith(coreDirTarget))
+                .filter(p -> !p.startsWith(coreModelAppDirTarget))
+                .collect(Collectors.toCollection(TreeSet::new));
         getLog().info("Found " + jsonFiles.size() + " model json files");
 
         // make sure to create out dir
-        modelsOutDir.mkdirs();
+        Files.createDirectories(modelsOutDir);
 
-        for (File file : jsonFiles) {
-            File to = new File(modelsOutDir, file.getName());
-            if (to.exists()) {
-                duplicateJsonFiles.add(to);
-                getLog().warn("Duplicate model name detected: " + to);
-            }
-            try {
-                copyFile(file, to);
-            } catch (IOException e) {
-                throw new MojoFailureException("Cannot copy file from " + file + " -> " + to, e);
-            }
+        duplicateJsonFiles = getDuplicates(jsonFiles);
 
-            try {
-                // check if we have a label as we want the eip to include labels
-                String text = loadText(new FileInputStream(file));
-                // just do a basic label check
-                if (text.contains("\"label\": \"\"")) {
-                    missingLabels.add(file);
-                } else {
-                    String name = asComponentName(file);
-                    Matcher matcher = LABEL_PATTERN.matcher(text);
-                    // grab the label, and remember it in the used labels
-                    if (matcher.find()) {
-                        String label = matcher.group(1);
-                        String[] labels = label.split(",");
-                        for (String s : labels) {
-                            Set<String> models = usedLabels.get(s);
-                            if (models == null) {
-                                models = new TreeSet<String>();
-                                usedLabels.put(s, models);
-                            }
-                            models.add(name);
-                        }
-                    }
+        // Copy all descriptors
+        Map<Path, Path> newJsons = map(jsonFiles, p -> p, p -> modelsOutDir.resolve(p.getFileName()));
+        try (Stream<Path> stream = list(modelsOutDir).filter(p -> !newJsons.containsValue(p))) {
+            stream.forEach(this::delete);
+        }
+        newJsons.forEach(this::copy);
+
+        for (Path file : jsonFiles) {
+            // check if we have a label as we want the eip to include labels
+            EipModel model = (EipModel) allModels.get(file);
+
+            String name = asComponentName(file);
+
+            // grab the label, and remember it in the used labels
+            String label = model.getLabel();
+            if (Strings.isNullOrEmpty(label)) {
+                missingLabels.add(file);
+            } else {
+                String[] labels = label.split(",");
+                for (String s : labels) {
+                    usedLabels.computeIfAbsent(s, k -> new TreeSet<>()).add(name);
                 }
+            }
 
-                // check all the properties if they have description
-                List<Map<String, String>> rows = JSonSchemaHelper.parseJsonSchema("properties", text, true);
-                for (Map<String, String> row : rows) {
-                    String name = row.get("name");
-                    // skip checking these as they have no documentation
-                    if ("outputs".equals(name)) {
-                        continue;
-                    }
-
-                    String doc = row.get("description");
-                    if (doc == null || doc.isEmpty()) {
-                        missingJavaDoc.add(file);
-                        break;
-                    }
-                }
-            } catch (IOException e) {
-                // ignore
+            // check all the properties if they have description
+            if (model.getOptions().stream()
+                    .filter(option -> !"outputs".equals(option.getName()) && !"transforms".equals(option.getName()))
+                    .map(BaseOptionModel::getDescription)
+                    .anyMatch(Strings::isNullOrEmpty)) {
+                missingJavaDoc.add(file);
             }
         }
 
-        File all = new File(modelsOutDir, "../models.properties");
-        try {
-            FileOutputStream fos = new FileOutputStream(all, false);
-
-            String[] names = modelsOutDir.list();
-            List<String> models = new ArrayList<String>();
-            // sort the names
-            for (String name : names) {
-                if (name.endsWith(".json")) {
-                    // strip out .json from the name
-                    String modelName = name.substring(0, name.length() - 5);
-                    models.add(modelName);
-                }
-            }
-
-            Collections.sort(models);
-            for (String name : models) {
-                fos.write(name.getBytes());
-                fos.write("\n".getBytes());
-            }
-
-            fos.close();
-
-        } catch (IOException e) {
-            throw new MojoFailureException("Error writing to file " + all);
-        }
+        Path all = modelsOutDir.resolve("../models.properties");
+        Set<String> modelNames
+                = jsonFiles.stream().map(PrepareCatalogMojo::asComponentName).collect(Collectors.toCollection(TreeSet::new));
+        FileUtil.updateFile(all, String.join("\n", modelNames) + "\n");
 
         printModelsReport(jsonFiles, duplicateJsonFiles, missingLabels, usedLabels, missingJavaDoc);
     }
 
-    protected Set<String> executeComponents() throws MojoExecutionException, MojoFailureException {
+    protected void executeModelApps() throws Exception {
+        Path modelDir = this.modelDir.toPath();
+        Path modelsOutDir = this.modelsAppOutDir.toPath();
+
+        getLog().info(SEPARATOR);
+        getLog().info("Copying all Camel model-app json descriptors");
+
+        // lets use sorted set/maps
+        Set<Path> jsonFiles;
+
+        // find all json files in camel-core
+        Path coreDirTarget = modelDir.resolve("target/classes/META-INF/org/apache/camel/model/app");
+        jsonFiles = allJsonFiles.stream()
+                .filter(p -> p.startsWith(coreDirTarget))
+                .collect(Collectors.toCollection(TreeSet::new));
+        getLog().info("Found " + jsonFiles.size() + " model-app json files");
+
+        // make sure to create out dir
+        Files.createDirectories(modelsOutDir);
+
+        // Copy all descriptors
+        Map<Path, Path> newJsons = map(jsonFiles, p -> p, p -> modelsOutDir.resolve(p.getFileName()));
+        try (Stream<Path> stream = list(modelsOutDir).filter(p -> !newJsons.containsValue(p))) {
+            stream.forEach(this::delete);
+        }
+        newJsons.forEach(this::copy);
+
+        Path all = modelsOutDir.resolve("../models-app.properties");
+        Set<String> modelNames
+                = jsonFiles.stream().map(PrepareCatalogMojo::asComponentName).collect(Collectors.toCollection(TreeSet::new));
+        FileUtil.updateFile(all, String.join("\n", modelNames) + "\n");
+    }
+
+    protected Set<String> executeComponents() throws Exception {
+        Path componentsOutDir = this.componentsOutDir.toPath();
+
         getLog().info("Copying all Camel component json descriptors");
 
         // lets use sorted set/maps
-        Set<File> jsonFiles = new TreeSet<File>();
-        Set<File> duplicateJsonFiles = new TreeSet<File>();
-        Set<File> componentFiles = new TreeSet<File>();
-        Set<File> missingComponents = new TreeSet<File>();
-        Map<String, Set<String>> usedComponentLabels = new TreeMap<String, Set<String>>();
-        Set<String> usedOptionLabels = new TreeSet<String>();
-        Set<String> unlabeledOptions = new TreeSet<String>();
+        Set<Path> jsonFiles;
+        Set<Path> duplicateJsonFiles;
+        Set<Path> componentFiles;
+        Set<Path> missingComponents = new TreeSet<>();
+        Map<String, Set<String>> usedComponentLabels = new TreeMap<>();
+        Set<String> usedOptionLabels = new TreeSet<>();
+        Set<String> unlabeledOptions = new TreeSet<>();
+        Set<Path> missingFirstVersions = new TreeSet<>();
 
         // find all json files in components and camel-core
-        if (componentsDir != null && componentsDir.isDirectory()) {
-            File[] components = componentsDir.listFiles();
-            if (components != null) {
-                for (File dir : components) {
-                    // skip camel-spring-dm
-                    if (dir.isDirectory() && "camel-spring-dm".equals(dir.getName())) {
-                        continue;
-                    }
-                    if (dir.isDirectory() && !"target".equals(dir.getName())) {
-                        File target = new File(dir, "target/classes");
-
-                        // special for camel-salesforce which is in a sub dir
-                        if ("camel-salesforce".equals(dir.getName())) {
-                            target = new File(dir, "camel-salesforce-component/target/classes");
-                        } else if ("camel-linkedin".equals(dir.getName())) {
-                            target = new File(dir, "camel-linkedin-component/target/classes");
-                        }
-
-                        int before = componentFiles.size();
-                        int before2 = jsonFiles.size();
-
-                        findComponentFilesRecursive(target, jsonFiles, componentFiles, new CamelComponentsFileFilter());
-
-                        int after = componentFiles.size();
-                        int after2 = jsonFiles.size();
-                        if (before != after && before2 == after2) {
-                            missingComponents.add(dir);
-                        }
-
-                    }
-                }
+        componentFiles = allPropertiesFiles.stream().filter(p -> p.endsWith("component.properties"))
+                .collect(Collectors.toCollection(TreeSet::new));
+        jsonFiles = allJsonFiles.stream().filter(p -> allModels.get(p) instanceof ComponentModel)
+                .collect(Collectors.toCollection(TreeSet::new));
+        componentFiles.stream().filter(p -> p.endsWith("component.properties")).forEach(p -> {
+            Path parent = getModule(p);
+            List<Path> jsons = jsonFiles.stream().filter(f -> f.startsWith(parent)).toList();
+            if (jsons.isEmpty()) {
+                missingComponents.add(parent);
             }
-        }
-        if (coreDir != null && coreDir.isDirectory()) {
-            File target = new File(coreDir, "target/classes");
-
-            int before = componentFiles.size();
-            int before2 = jsonFiles.size();
-
-            findComponentFilesRecursive(target, jsonFiles, componentFiles, new CamelComponentsFileFilter());
-
-            int after = componentFiles.size();
-            int after2 = jsonFiles.size();
-            if (before != after && before2 == after2) {
-                missingComponents.add(coreDir);
-            }
-        }
+        });
 
         getLog().info("Found " + componentFiles.size() + " component.properties files");
         getLog().info("Found " + jsonFiles.size() + " component json files");
 
         // make sure to create out dir
-        componentsOutDir.mkdirs();
+        Files.createDirectories(componentsOutDir);
+
+        // Check duplicates
+        duplicateJsonFiles = getDuplicates(jsonFiles);
+
+        // Copy all descriptors
+        Map<Path, Path> newJsons = map(jsonFiles, p -> p, p -> componentsOutDir.resolve(p.getFileName()));
+        try (Stream<Path> stream = list(componentsOutDir).filter(p -> !newJsons.containsValue(p))) {
+            stream.forEach(this::delete);
+        }
+        newJsons.forEach(this::copy);
 
         Set<String> alternativeSchemes = new HashSet<>();
 
-        for (File file : jsonFiles) {
-            File to = new File(componentsOutDir, file.getName());
-            if (to.exists()) {
-                duplicateJsonFiles.add(to);
-                getLog().warn("Duplicate component name detected: " + to);
-            }
+        for (Path file : jsonFiles) {
+            // check if we have a component label as we want the components to
+            // include labels
             try {
-                copyFile(file, to);
-            } catch (IOException e) {
-                throw new MojoFailureException("Cannot copy file from " + file + " -> " + to, e);
-            }
+                String text = loadText(file);
+                ComponentModel model = JsonMapper.generateComponentModel(text);
 
-            // check if we have a component label as we want the components to include labels
-            try {
-                String text = loadText(new FileInputStream(file));
                 String name = asComponentName(file);
-                Matcher matcher = LABEL_PATTERN.matcher(text);
+
                 // grab the label, and remember it in the used labels
-                if (matcher.find()) {
-                    String label = matcher.group(1);
-                    String[] labels = label.split(",");
-                    for (String s : labels) {
-                        Set<String> components = usedComponentLabels.get(s);
-                        if (components == null) {
-                            components = new TreeSet<String>();
-                            usedComponentLabels.put(s, components);
-                        }
-                        components.add(name);
-                    }
+                String label = model.getLabel();
+                String[] labels = label.split(",");
+                for (String s : labels) {
+                    Set<String> components = usedComponentLabels.computeIfAbsent(s, k -> new TreeSet<>());
+                    components.add(name);
                 }
 
-                // check all the component options and grab the label(s) they use
-                List<Map<String, String>> rows = JSonSchemaHelper.parseJsonSchema("componentProperties", text, true);
-                for (Map<String, String> row : rows) {
-                    String label = row.get("label");
-
-                    if (label != null && !label.isEmpty()) {
-                        String[] parts = label.split(",");
-                        for (String part : parts) {
-                            usedOptionLabels.add(part);
-                        }
-                    }
-                }
+                // check all the component options and grab the label(s) they
+                // use
+                model.getComponentOptions().stream().map(BaseOptionModel::getLabel).filter(l -> !Strings.isNullOrEmpty(l))
+                        .flatMap(l -> Stream.of(label.split(",")))
+                        .forEach(usedOptionLabels::add);
 
                 // check all the endpoint options and grab the label(s) they use
-                int unused = 0;
-                rows = JSonSchemaHelper.parseJsonSchema("properties", text, true);
-                for (Map<String, String> row : rows) {
-                    String label = row.get("label");
-                    if (label != null && !label.isEmpty()) {
-                        String[] parts = label.split(",");
-                        for (String part : parts) {
-                            usedOptionLabels.add(part);
-                        }
-                    } else {
-                        unused++;
-                    }
-                }
+                model.getEndpointOptions().stream().map(BaseOptionModel::getLabel).filter(l -> !Strings.isNullOrEmpty(l))
+                        .flatMap(l -> Stream.of(label.split(",")))
+                        .forEach(usedOptionLabels::add);
 
+                long unused = model.getEndpointOptions().stream().map(BaseOptionModel::getLabel).filter(Strings::isNullOrEmpty)
+                        .count();
                 if (unused >= UNUSED_LABELS_WARN) {
                     unlabeledOptions.add(name);
                 }
 
                 // remember alternative schemes
-                rows = JSonSchemaHelper.parseJsonSchema("component", text, false);
-                for (Map<String, String> row : rows) {
-                    String alternativeScheme = row.get("alternativeSchemes");
-                    if (alternativeScheme != null && !alternativeScheme.isEmpty()) {
-                        String[] parts = alternativeScheme.split(",");
-                        for (int i = 1; i < parts.length; i++) {
-                            // skip first as that is the regular scheme
-                            String part = parts[i];
-                            alternativeSchemes.add(part);
-                        }
-                    }
+                String alternativeScheme = model.getAlternativeSchemes();
+                if (!Strings.isNullOrEmpty(alternativeScheme)) {
+                    String[] parts = alternativeScheme.split(",");
+                    // skip first as that is the regular scheme
+                    alternativeSchemes.addAll(Arrays.asList(parts).subList(1, parts.length));
+                }
+
+                // detect missing first version
+                String firstVersion = model.getFirstVersion();
+                if (Strings.isNullOrEmpty(firstVersion)) {
+                    missingFirstVersions.add(file);
                 }
 
             } catch (IOException e) {
@@ -461,395 +617,464 @@ public class PrepareCatalogMojo extends AbstractMojo {
             }
         }
 
-        Set<String> componentNames = new LinkedHashSet<>();
+        Path all = componentsOutDir.resolve("../components.properties");
+        Set<String> componentNames
+                = jsonFiles.stream().map(PrepareCatalogMojo::asComponentName).collect(Collectors.toCollection(TreeSet::new));
+        FileUtil.updateFile(all, String.join("\n", componentNames) + "\n");
 
-        File all = new File(componentsOutDir, "../components.properties");
-        try {
-            FileOutputStream fos = new FileOutputStream(all, false);
+        printComponentsReport(jsonFiles, duplicateJsonFiles, missingComponents, usedComponentLabels, usedOptionLabels,
+                unlabeledOptions, missingFirstVersions);
 
-            String[] names = componentsOutDir.list();
-            List<String> components = new ArrayList<String>();
-            // sort the names
-            for (String name : names) {
-                if (name.endsWith(".json")) {
-                    // strip out .json from the name
-                    String componentName = name.substring(0, name.length() - 5);
-                    components.add(componentName);
-                }
-            }
-
-            Collections.sort(components);
-            for (String name : components) {
-                fos.write(name.getBytes());
-                fos.write("\n".getBytes());
-
-                // remember component name
-                componentNames.add(name);
-            }
-
-            fos.close();
-
-        } catch (IOException e) {
-            throw new MojoFailureException("Error writing to file " + all);
-        }
-
-        printComponentsReport(jsonFiles, duplicateJsonFiles, missingComponents, usedComponentLabels, usedOptionLabels, unlabeledOptions);
-
-        // filter out duplicate component names that are alternative scheme names
-        Set<String> answer = new LinkedHashSet<>();
-        for (String componentName : componentNames) {
-            if (!alternativeSchemes.contains(componentName)) {
-                answer.add(componentName);
-            }
-        }
-
-        return answer;
+        // filter out duplicate component names that are alternative scheme
+        // names
+        componentNames.removeAll(alternativeSchemes);
+        return componentNames;
     }
 
-    protected Set<String> executeDataFormats() throws MojoExecutionException, MojoFailureException {
+    protected Set<String> executeDataFormats() throws Exception {
+        Path dataFormatsOutDir = this.dataFormatsOutDir.toPath();
+
         getLog().info("Copying all Camel dataformat json descriptors");
 
         // lets use sorted set/maps
-        Set<File> jsonFiles = new TreeSet<File>();
-        Set<File> duplicateJsonFiles = new TreeSet<File>();
-        Set<File> dataFormatFiles = new TreeSet<File>();
-        Map<String, Set<String>> usedLabels = new TreeMap<String, Set<String>>();
+        Set<Path> jsonFiles;
+        Set<Path> duplicateJsonFiles;
+        Set<Path> dataFormatFiles;
+        Map<String, Set<String>> usedLabels = new TreeMap<>();
+        Set<Path> missingFirstVersions = new TreeSet<>();
 
         // find all data formats from the components directory
-        if (componentsDir != null && componentsDir.isDirectory()) {
-            File[] dataFormats = componentsDir.listFiles();
-            if (dataFormats != null) {
-                for (File dir : dataFormats) {
-                    if (dir.isDirectory() && !"target".equals(dir.getName())) {
-                        File target = new File(dir, "target/classes");
-                        findDataFormatFilesRecursive(target, jsonFiles, dataFormatFiles, new CamelDataFormatsFileFilter());
-                    }
-                }
-            }
-        }
-        if (coreDir != null && coreDir.isDirectory()) {
-            File target = new File(coreDir, "target/classes");
-            findDataFormatFilesRecursive(target, jsonFiles, dataFormatFiles, new CamelDataFormatsFileFilter());
-        }
+        dataFormatFiles = allPropertiesFiles.stream().filter(p -> p.endsWith("dataformat.properties"))
+                .collect(Collectors.toCollection(TreeSet::new));
+        jsonFiles = allJsonFiles.stream().filter(p -> allModels.get(p) instanceof DataFormatModel)
+                .collect(Collectors.toCollection(TreeSet::new));
 
         getLog().info("Found " + dataFormatFiles.size() + " dataformat.properties files");
         getLog().info("Found " + jsonFiles.size() + " dataformat json files");
 
         // make sure to create out dir
-        dataFormatsOutDir.mkdirs();
+        Files.createDirectories(dataFormatsOutDir);
 
-        for (File file : jsonFiles) {
-            File to = new File(dataFormatsOutDir, file.getName());
-            if (to.exists()) {
-                duplicateJsonFiles.add(to);
-                getLog().warn("Duplicate dataformat name detected: " + to);
-            }
-            try {
-                copyFile(file, to);
-            } catch (IOException e) {
-                throw new MojoFailureException("Cannot copy file from " + file + " -> " + to, e);
+        // Check duplicates
+        duplicateJsonFiles = getDuplicates(jsonFiles);
+
+        // Copy all descriptors
+        Map<Path, Path> newJsons = map(jsonFiles, p -> p, p -> dataFormatsOutDir.resolve(p.getFileName()));
+        try (Stream<Path> stream = list(dataFormatsOutDir).filter(p -> !newJsons.containsValue(p))) {
+            stream.forEach(this::delete);
+        }
+        newJsons.forEach(this::copy);
+
+        for (Path file : jsonFiles) {
+
+            DataFormatModel model = (DataFormatModel) allModels.get(file);
+
+            // Check labels
+            String name = asComponentName(file);
+            for (String s : model.getLabel().split(",")) {
+                usedLabels.computeIfAbsent(s, k -> new TreeSet<>()).add(name);
             }
 
-            // check if we have a label as we want the data format to include labels
-            try {
-                String text = loadText(new FileInputStream(file));
-                String name = asComponentName(file);
-                Matcher matcher = LABEL_PATTERN.matcher(text);
-                // grab the label, and remember it in the used labels
-                if (matcher.find()) {
-                    String label = matcher.group(1);
-                    String[] labels = label.split(",");
-                    for (String s : labels) {
-                        Set<String> dataFormats = usedLabels.get(s);
-                        if (dataFormats == null) {
-                            dataFormats = new TreeSet<String>();
-                            usedLabels.put(s, dataFormats);
-                        }
-                        dataFormats.add(name);
-                    }
-                }
-            } catch (IOException e) {
-                // ignore
+            // detect missing first version
+            String firstVersion = model.getFirstVersion();
+            if (Strings.isNullOrEmpty(firstVersion)) {
+                missingFirstVersions.add(file);
             }
         }
 
-        Set<String> answer = new LinkedHashSet<>();
+        Path all = dataFormatsOutDir.resolve("../dataformats.properties");
+        Set<String> dataFormatNames
+                = jsonFiles.stream().map(PrepareCatalogMojo::asComponentName).collect(Collectors.toCollection(TreeSet::new));
+        FileUtil.updateFile(all, String.join("\n", dataFormatNames) + "\n");
 
-        File all = new File(dataFormatsOutDir, "../dataformats.properties");
-        try {
-            FileOutputStream fos = new FileOutputStream(all, false);
+        printDataFormatsReport(jsonFiles, duplicateJsonFiles, usedLabels, missingFirstVersions);
 
-            String[] names = dataFormatsOutDir.list();
-            List<String> dataFormats = new ArrayList<String>();
-            // sort the names
-            for (String name : names) {
-                if (name.endsWith(".json")) {
-                    // strip out .json from the name
-                    String dataFormatName = name.substring(0, name.length() - 5);
-                    dataFormats.add(dataFormatName);
-                }
-            }
-
-            Collections.sort(dataFormats);
-            for (String name : dataFormats) {
-                fos.write(name.getBytes());
-                fos.write("\n".getBytes());
-
-                // remember dataformat name
-                answer.add(name);
-            }
-
-            fos.close();
-
-        } catch (IOException e) {
-            throw new MojoFailureException("Error writing to file " + all);
-        }
-
-        printDataFormatsReport(jsonFiles, duplicateJsonFiles, usedLabels);
-
-        return answer;
+        return dataFormatNames;
     }
 
-    protected Set<String> executeLanguages() throws MojoExecutionException, MojoFailureException {
+    protected Set<String> executeLanguages() throws Exception {
+        Path languagesOutDir = this.languagesOutDir.toPath();
+
         getLog().info("Copying all Camel language json descriptors");
 
         // lets use sorted set/maps
-        Set<File> jsonFiles = new TreeSet<File>();
-        Set<File> duplicateJsonFiles = new TreeSet<File>();
-        Set<File> languageFiles = new TreeSet<File>();
-        Map<String, Set<String>> usedLabels = new TreeMap<String, Set<String>>();
+        Set<Path> jsonFiles;
+        Set<Path> duplicateJsonFiles;
+        Set<Path> languageFiles;
+        Map<String, Set<String>> usedLabels = new TreeMap<>();
+        Set<Path> missingFirstVersions = new TreeSet<>();
 
         // find all languages from the components directory
-        if (componentsDir != null && componentsDir.isDirectory()) {
-            File[] languages = componentsDir.listFiles();
-            if (languages != null) {
-                for (File dir : languages) {
-                    // skip camel-spring-dm
-                    if (dir.isDirectory() && "camel-spring-dm".equals(dir.getName())) {
-                        continue;
-                    }
-                    if (dir.isDirectory() && !"target".equals(dir.getName())) {
-                        File target = new File(dir, "target/classes");
-                        findLanguageFilesRecursive(target, jsonFiles, languageFiles, new CamelLanguagesFileFilter());
-                    }
-                }
-            }
-        }
-        if (coreDir != null && coreDir.isDirectory()) {
-            File target = new File(coreDir, "target/classes");
-            findLanguageFilesRecursive(target, jsonFiles, languageFiles, new CamelLanguagesFileFilter());
-        }
+        languageFiles = allPropertiesFiles.stream().filter(p -> p.endsWith("language.properties"))
+                .collect(Collectors.toCollection(TreeSet::new));
+        jsonFiles = allJsonFiles.stream().filter(p -> allModels.get(p) instanceof LanguageModel)
+                .collect(Collectors.toCollection(TreeSet::new));
 
         getLog().info("Found " + languageFiles.size() + " language.properties files");
         getLog().info("Found " + jsonFiles.size() + " language json files");
 
         // make sure to create out dir
-        languagesOutDir.mkdirs();
+        Files.createDirectories(languagesOutDir);
 
-        for (File file : jsonFiles) {
-            File to = new File(languagesOutDir, file.getName());
-            if (to.exists()) {
-                duplicateJsonFiles.add(to);
-                getLog().warn("Duplicate language name detected: " + to);
-            }
-            try {
-                copyFile(file, to);
-            } catch (IOException e) {
-                throw new MojoFailureException("Cannot copy file from " + file + " -> " + to, e);
+        // Check duplicates
+        duplicateJsonFiles = getDuplicates(jsonFiles);
+
+        // Copy all descriptors
+        Map<Path, Path> newJsons = map(jsonFiles, p -> p, p -> languagesOutDir.resolve(p.getFileName()));
+        try (Stream<Path> stream = list(languagesOutDir).filter(p -> !newJsons.containsValue(p))) {
+            stream.forEach(this::delete);
+        }
+        newJsons.forEach(this::copy);
+
+        for (Path file : jsonFiles) {
+
+            LanguageModel model = (LanguageModel) allModels.get(file);
+
+            // Check labels
+            String name = asComponentName(file);
+            for (String s : model.getLabel().split(",")) {
+                usedLabels.computeIfAbsent(s, k -> new TreeSet<>()).add(name);
             }
 
-            // check if we have a label as we want the data format to include labels
-            try {
-                String text = loadText(new FileInputStream(file));
-                String name = asComponentName(file);
-                Matcher matcher = LABEL_PATTERN.matcher(text);
-                // grab the label, and remember it in the used labels
-                if (matcher.find()) {
-                    String label = matcher.group(1);
-                    String[] labels = label.split(",");
-                    for (String s : labels) {
-                        Set<String> languages = usedLabels.get(s);
-                        if (languages == null) {
-                            languages = new TreeSet<String>();
-                            usedLabels.put(s, languages);
-                        }
-                        languages.add(name);
-                    }
-                }
-            } catch (IOException e) {
-                // ignore
+            // detect missing first version
+            String firstVersion = model.getFirstVersion();
+            if (Strings.isNullOrEmpty(firstVersion)) {
+                missingFirstVersions.add(file);
             }
         }
 
-        Set<String> answer = new LinkedHashSet<>();
+        Path all = languagesOutDir.resolve("../languages.properties");
+        Set<String> languagesNames
+                = jsonFiles.stream().map(PrepareCatalogMojo::asComponentName).collect(Collectors.toCollection(TreeSet::new));
+        FileUtil.updateFile(all, String.join("\n", languagesNames) + "\n");
 
-        File all = new File(languagesOutDir, "../languages.properties");
-        try {
-            FileOutputStream fos = new FileOutputStream(all, false);
+        printLanguagesReport(jsonFiles, duplicateJsonFiles, usedLabels, missingFirstVersions);
 
-            String[] names = languagesOutDir.list();
-            List<String> languages = new ArrayList<String>();
-            // sort the names
-            for (String name : names) {
-                if (name.endsWith(".json")) {
-                    // strip out .json from the name
-                    String languageName = name.substring(0, name.length() - 5);
-                    languages.add(languageName);
-                }
-            }
-
-            Collections.sort(languages);
-            for (String name : languages) {
-                fos.write(name.getBytes());
-                fos.write("\n".getBytes());
-
-                // remember language name
-                answer.add(name);
-            }
-
-            fos.close();
-
-        } catch (IOException e) {
-            throw new MojoFailureException("Error writing to file " + all);
-        }
-
-        printLanguagesReport(jsonFiles, duplicateJsonFiles, usedLabels);
-
-        return answer;
+        return languagesNames;
     }
 
-    protected void executeArchetypes() throws MojoExecutionException, MojoFailureException {
-        getLog().info("Copying Archetype Catalog");
+    protected Set<String> executeTransformers() throws Exception {
+        Path transformersOutDir = this.transformersOutDir.toPath();
 
-        // find the generate catalog
-        File file = new File(archetypesDir, "target/classes/archetype-catalog.xml");
-
-        // make sure to create out dir
-        archetypesOutDir.mkdirs();
-
-        if (file.exists() && file.isFile()) {
-            File to = new File(archetypesOutDir, file.getName());
-            try {
-                copyFile(file, to);
-            } catch (IOException e) {
-                throw new MojoFailureException("Cannot copy file from " + file + " -> " + to, e);
-            }
-        }
-    }
-
-    protected void executeXmlSchemas() throws MojoExecutionException, MojoFailureException {
-        getLog().info("Copying Spring/Blueprint XML schemas");
-
-        schemasOutDir.mkdirs();
-
-        File file = new File(springSchemaDir, "camel-spring.xsd");
-        if (file.exists() && file.isFile()) {
-            File to = new File(schemasOutDir, file.getName());
-            try {
-                copyFile(file, to);
-            } catch (IOException e) {
-                throw new MojoFailureException("Cannot copy file from " + file + " -> " + to, e);
-            }
-        }
-        file = new File(blueprintSchemaDir, "camel-blueprint.xsd");
-        if (file.exists() && file.isFile()) {
-            File to = new File(schemasOutDir, file.getName());
-            try {
-                copyFile(file, to);
-            } catch (IOException e) {
-                throw new MojoFailureException("Cannot copy file from " + file + " -> " + to, e);
-            }
-        }
-    }
-
-    protected void executeDocuments(Set<String> components, Set<String> dataformats, Set<String> languages) throws MojoExecutionException, MojoFailureException {
-        getLog().info("Copying all Camel documents (ascii docs)");
+        getLog().info("Copying all Camel transformer json descriptors");
 
         // lets use sorted set/maps
-        Set<File> adocFiles = new TreeSet<File>();
-        Set<File> missingAdocFiles = new TreeSet<File>();
-        Set<File> duplicateAdocFiles = new TreeSet<File>();
+        Set<Path> jsonFiles;
+        Set<Path> duplicateJsonFiles;
+        Set<Path> transformerFiles;
 
-        // find all camel maven modules
-        if (componentsDir != null && componentsDir.isDirectory()) {
-            File[] componentFiles = componentsDir.listFiles();
-            if (componentFiles != null) {
-                for (File dir : componentFiles) {
-                    if (dir.isDirectory() && !"target".equals(dir.getName()) && !dir.getName().startsWith(".") && !excludeDocumentDir(dir.getName())) {
-                        File target = new File(dir, "src/main/docs");
+        // find all transformers from the components directory
+        transformerFiles = allPropertiesFiles.stream().filter(p -> p.endsWith("transformer.properties"))
+                .collect(Collectors.toCollection(TreeSet::new));
+        jsonFiles = allJsonFiles.stream().filter(p -> allModels.get(p) instanceof TransformerModel)
+                .collect(Collectors.toCollection(TreeSet::new));
 
-                        int before = adocFiles.size();
-                        findAsciiDocFilesRecursive(target, adocFiles, new CamelAsciiDocFileFilter());
-                        int after = adocFiles.size();
+        getLog().info("Found " + transformerFiles.size() + " transformer.properties files");
+        getLog().info("Found " + jsonFiles.size() + " transformer json files");
 
-                        if (before == after) {
-                            missingAdocFiles.add(dir);
-                        }
-                    }
+        // make sure to create out dir
+        Files.createDirectories(transformersOutDir);
+
+        // Check duplicates
+        duplicateJsonFiles = getDuplicates(jsonFiles);
+
+        // Copy all descriptors
+        Map<Path, Path> newJsons = map(jsonFiles, p -> p, p -> transformersOutDir.resolve(p.getFileName()));
+        try (Stream<Path> stream = list(transformersOutDir).filter(p -> !newJsons.containsValue(p))) {
+            stream.forEach(this::delete);
+        }
+        newJsons.forEach(this::copy);
+
+        Path all = transformersOutDir.resolve("../transformers.properties");
+        Set<String> transformerNames
+                = jsonFiles.stream().map(PrepareCatalogMojo::asComponentName).collect(Collectors.toCollection(TreeSet::new));
+        FileUtil.updateFile(all, String.join("\n", transformerNames) + "\n");
+
+        printTransformersReport(jsonFiles, duplicateJsonFiles);
+
+        return transformerNames;
+    }
+
+    protected Set<String> executeBeans() throws Exception {
+        Path beansOutDir = this.beansOutDir.toPath();
+
+        getLog().info("Copying all Camel pojo bean json descriptors");
+
+        // lets use sorted set/maps
+        Set<Path> jsonFiles;
+        Set<Path> duplicateJsonFiles;
+        Set<Path> beanFiles;
+
+        // find all beans from the components directory
+        beanFiles = allPropertiesFiles.stream().filter(p -> p.endsWith("bean.properties"))
+                .collect(Collectors.toCollection(TreeSet::new));
+        jsonFiles = allJsonFiles.stream().filter(p -> allModels.get(p) instanceof PojoBeanModel)
+                .collect(Collectors.toCollection(TreeSet::new));
+
+        getLog().info("Found " + beanFiles.size() + " bean.properties files");
+        getLog().info("Found " + jsonFiles.size() + " bean json files");
+
+        // make sure to create out dir
+        Files.createDirectories(beansOutDir);
+
+        // Check duplicates
+        duplicateJsonFiles = getDuplicates(jsonFiles);
+
+        // Copy all descriptors
+        Map<Path, Path> newJsons = map(jsonFiles, p -> p, p -> beansOutDir.resolve(p.getFileName()));
+        try (Stream<Path> stream = list(beansOutDir).filter(p -> !newJsons.containsValue(p))) {
+            stream.forEach(this::delete);
+        }
+        newJsons.forEach(this::copy);
+
+        Path all = beansOutDir.resolve("../beans.properties");
+        Set<String> beanNames
+                = jsonFiles.stream().map(PrepareCatalogMojo::asComponentName).collect(Collectors.toCollection(TreeSet::new));
+        FileUtil.updateFile(all, String.join("\n", beanNames) + "\n");
+
+        printBeansReport(jsonFiles, duplicateJsonFiles);
+
+        return beanNames;
+    }
+
+    protected Set<String> executeDevConsoles() throws Exception {
+        Path consolesOutDir = this.consolesOutDir.toPath();
+
+        getLog().info("Copying all Camel dev-consoles json descriptors");
+
+        // lets use sorted set/maps
+        Set<Path> jsonFiles;
+        Set<Path> duplicateJsonFiles;
+        Set<Path> consoleFiles;
+
+        // find all consoles from the components directory
+        consoleFiles = allPropertiesFiles.stream().filter(p -> p.endsWith("dev-console.properties"))
+                .collect(Collectors.toCollection(TreeSet::new));
+        jsonFiles = allJsonFiles.stream().filter(p -> allModels.get(p) instanceof DevConsoleModel)
+                .collect(Collectors.toCollection(TreeSet::new));
+
+        getLog().info("Found " + consoleFiles.size() + " dev-console.properties files");
+        getLog().info("Found " + jsonFiles.size() + " dev-console json files");
+
+        // make sure to create out dir
+        Files.createDirectories(consolesOutDir);
+
+        // Check duplicates
+        duplicateJsonFiles = getDuplicates(jsonFiles);
+
+        // Copy all descriptors
+        Map<Path, Path> newJsons = map(jsonFiles, p -> p, p -> consolesOutDir.resolve(p.getFileName()));
+        try (Stream<Path> stream = list(consolesOutDir).filter(p -> !newJsons.containsValue(p))) {
+            stream.forEach(this::delete);
+        }
+        newJsons.forEach(this::copy);
+
+        Path all = consolesOutDir.resolve("../dev-consoles.properties");
+        Set<String> consoleNames
+                = jsonFiles.stream().map(PrepareCatalogMojo::asComponentName).collect(Collectors.toCollection(TreeSet::new));
+        FileUtil.updateFile(all, String.join("\n", consoleNames) + "\n");
+
+        printConsolesReport(jsonFiles, duplicateJsonFiles);
+
+        return consoleNames;
+    }
+
+    private Set<String> executeOthers() throws Exception {
+        Path othersOutDir = this.othersOutDir.toPath();
+
+        getLog().info("Copying all Camel other json descriptors");
+
+        // lets use sorted set/maps
+        Set<Path> jsonFiles;
+        Set<Path> duplicateJsonFiles;
+        Set<Path> otherFiles;
+        Map<String, Set<String>> usedLabels = new TreeMap<>();
+        Set<Path> missingFirstVersions = new TreeSet<>();
+
+        otherFiles = allPropertiesFiles.stream().filter(p -> p.endsWith("other.properties"))
+                .collect(Collectors.toCollection(TreeSet::new));
+        jsonFiles = allJsonFiles.stream().filter(p -> {
+            Path m = getModule(p);
+            switch (m.getFileName().toString()) {
+                // we want to skip some JARs from core
+                case "camel-api":
+                case "camel-base":
+                case "camel-base-engine":
+                case "camel-core":
+                case "camel-core-catalog":
+                case "camel-core-engine":
+                case "camel-core-languages":
+                case "camel-core-model":
+                case "camel-core-processor":
+                case "camel-core-reifier":
+                case "camel-core-xml":
+                case "camel-management-api":
+                case "camel-support":
+                case "camel-util":
+                case "camel-xml-io":
+                case "camel-xml-io-util":
+                case "camel-xml-jaxb":
+                case "camel-xml-jaxp":
+                    // and some from dsl
+                case "dsl-support":
+                case "camel-dsl-support":
+                case "camel-endpointdsl-support":
+                    // and components with middle folders
+                case "camel-ai":
+                case "camel-as2":
+                case "camel-avro-rpc":
+                case "camel-aws":
+                case "camel-azure":
+                case "camel-box":
+                case "camel-cxf":
+                case "camel-debezium":
+                case "camel-debezium-common":
+                case "camel-fhir":
+                case "camel-google":
+                case "camel-http-base":
+                case "camel-http-common":
+                case "camel-huawei":
+                case "camel-ibm":
+                case "camel-infinispan":
+                case "camel-jetty-common":
+                case "camel-knative":
+                case "camel-microprofile":
+                case "camel-olingo2":
+                case "camel-olingo4":
+                case "camel-salesforce":
+                case "camel-servicenow":
+                case "camel-spring-parent":
+                case "camel-spring-ai":
+                case "camel-test":
+                case "camel-vertx":
+                    return false;
+                default:
+                    return true;
+            }
+        }).filter(p -> allModels.get(p) instanceof OtherModel).collect(Collectors.toCollection(TreeSet::new));
+
+        getLog().info("Found " + otherFiles.size() + " other.properties files");
+        getLog().info("Found " + jsonFiles.size() + " other json files");
+
+        // make sure to create out dir
+        Files.createDirectories(othersOutDir);
+
+        // Check duplicates
+        duplicateJsonFiles = getDuplicates(jsonFiles);
+
+        // Copy all descriptors
+        Map<Path, Path> newJsons = map(jsonFiles, p -> p, p -> othersOutDir.resolve(p.getFileName()));
+        try (Stream<Path> stream = list(othersOutDir).filter(p -> !newJsons.containsValue(p))) {
+            stream.forEach(this::delete);
+        }
+        newJsons.forEach(this::copy);
+
+        for (Path file : jsonFiles) {
+            OtherModel model = (OtherModel) allModels.get(file);
+            String name = asComponentName(file);
+
+            // grab the label, and remember it in the used labels
+            String label = model.getLabel();
+            if (!Strings.isNullOrEmpty(label)) {
+                String[] labels = label.split(",");
+                for (String s : labels) {
+                    usedLabels.computeIfAbsent(s, k -> new TreeSet<>()).add(name);
                 }
             }
+
+            // detect missing first version
+            String firstVersion = model.getFirstVersion();
+            if (Strings.isNullOrEmpty(firstVersion)) {
+                missingFirstVersions.add(file);
+            }
         }
-        if (coreDir != null && coreDir.isDirectory()) {
-            File target = new File(coreDir, "src/main/docs");
-            findAsciiDocFilesRecursive(target, adocFiles, new CamelAsciiDocFileFilter());
+
+        Path all = othersOutDir.resolve("../others.properties");
+        Set<String> otherNames
+                = jsonFiles.stream().map(PrepareCatalogMojo::asComponentName).collect(Collectors.toCollection(TreeSet::new));
+        FileUtil.updateFile(all, String.join("\n", otherNames) + "\n");
+
+        printOthersReport(jsonFiles, duplicateJsonFiles, usedLabels, missingFirstVersions);
+        return otherNames;
+    }
+
+    protected void executeXmlSchemas() throws Exception {
+        Path schemasOutDir = this.schemasOutDir.toPath();
+        getLog().info("Copying Spring XML schema");
+        copyFile(this.springSchemaDir.toPath().resolve("camel-spring.xsd"), schemasOutDir);
+        getLog().info("Copying XML-IO schema");
+        copyFile(this.xmlioSchemaDir.toPath().resolve("camel-xml-io.xsd"), schemasOutDir);
+    }
+
+    protected void executeMain() throws Exception {
+        getLog().info("Copying camel-main metadata");
+        copyFile(mainDir.toPath().resolve("camel-main-configuration-metadata.json"), mainOutDir.toPath());
+    }
+
+    protected void executeJBang() throws Exception {
+        getLog().info("Copying camel-jbang metadata");
+        copyFile(jbangDir.toPath().resolve("camel-jbang-configuration-metadata.json"), jbangOutDir.toPath());
+    }
+
+    protected void executeDocuments(
+            Set<String> components, Set<String> dataformats, Set<String> languages, Set<String> others) {
+        // lets use sorted set/maps
+        Set<Path> adocFiles = new TreeSet<>();
+        Set<Path> missingAdocFiles = new TreeSet<>();
+        Set<Path> duplicateAdocFiles;
+
+        // find all camel maven modules
+        try (Stream<Path> stream = Stream.concat(
+                list(componentsDir.toPath())
+                        .filter(dir -> !dir.getFileName().startsWith(".") && !"target".equals(dir.getFileName().toString()))
+                        .flatMap(p -> getComponentPath(p).stream()),
+                Stream.of(coreDir.toPath(), languagesDir.toPath()))) {
+            stream
+                    .forEach(dir -> {
+                        try (Stream<Path> pathStream = PackageHelper.walk(dir.resolve("src/main/docs"))
+                                .filter(f -> f.getFileName().toString().endsWith(ADOC))) {
+                            List<Path> l = pathStream
+                                    .toList();
+
+                            if (l.isEmpty()) {
+                                String n = dir.getFileName().toString();
+                                boolean isDir = dir.toFile().isDirectory();
+                                boolean valid = isDir && !n.startsWith(".") && !n.endsWith("-base") && !n.endsWith("-common")
+                                        && !n.equals("src");
+                                if (valid) {
+                                    // the dir must be active (inactive can be removed component from old branch)
+                                    String[] poms = dir.toFile().list((dir1, name) -> "pom.xml".equals(name));
+                                    valid = poms != null && poms.length == 1;
+                                }
+                                if (valid && "core".equals(n)) {
+                                    // skip camel-core
+                                    valid = false;
+                                }
+                                if (valid) {
+                                    missingAdocFiles.add(dir);
+                                }
+                            } else {
+                                adocFiles.addAll(l);
+                            }
+                        }
+                    });
         }
 
         getLog().info("Found " + adocFiles.size() + " ascii document files");
 
-        // make sure to create out dir
-        documentsOutDir.mkdirs();
-
-        for (File file : adocFiles) {
-            File to = new File(documentsOutDir, file.getName());
-            if (to.exists()) {
-                duplicateAdocFiles.add(to);
-                getLog().warn("Duplicate document name detected: " + to);
-            }
-            try {
-                copyFile(file, to);
-            } catch (IOException e) {
-                throw new MojoFailureException("Cannot copy file from " + file + " -> " + to, e);
-            }
-        }
-
-        Set<String> docs = new LinkedHashSet<>();
-
-        File all = new File(documentsOutDir, "../docs.properties");
-        try {
-            FileOutputStream fos = new FileOutputStream(all, false);
-
-            String[] names = documentsOutDir.list();
-            List<String> documents = new ArrayList<String>();
-            // sort the names
-            for (String name : names) {
-                if (name.endsWith(".adoc")) {
-                    // strip out .adoc from the name
-                    String documentName = name.substring(0, name.length() - 5);
-                    documents.add(documentName);
-                }
-            }
-
-            Collections.sort(documents);
-            for (String name : documents) {
-                fos.write(name.getBytes());
-                fos.write("\n".getBytes());
-
-                docs.add(name);
-            }
-
-            fos.close();
-
-        } catch (IOException e) {
-            throw new MojoFailureException("Error writing to file " + all);
-        }
-
+        // Check duplicates
+        duplicateAdocFiles = getDuplicates(adocFiles);
+        Set<String> docNames
+                = adocFiles.stream().map(PrepareCatalogMojo::asComponentName).collect(Collectors.toCollection(TreeSet::new));
         printDocumentsReport(adocFiles, duplicateAdocFiles, missingAdocFiles);
 
-        // find out if we have documents for each component / dataformat / languages
-        printMissingDocumentsReport(docs, components, dataformats, languages);
+        // find out if we have documents for each component / dataformat /
+        // languages / others
+        printMissingDocumentsReport(docNames, components, dataformats, languages, others);
     }
 
-    private void printMissingDocumentsReport(Set<String> docs, Set<String> components, Set<String> dataformats, Set<String> languages) {
+    private void printMissingDocumentsReport(
+            Set<String> docs, Set<String> components, Set<String> dataformats, Set<String> languages, Set<String> others) {
         getLog().info("");
         getLog().info("Camel missing documents report");
         getLog().info("");
@@ -857,22 +1082,34 @@ public class PrepareCatalogMojo extends AbstractMojo {
         List<String> missing = new ArrayList<>();
         for (String component : components) {
             // special for mail
-            if (component.equals("imap") || component.equals("imaps") || component.equals("pop3") || component.equals("pop3s") || component.equals("smtp") || component.equals("smtps")) {
-                component = "mail";
-            } else if (component.equals("ftp") || component.equals("sftp") || component.equals("ftps")) {
-                component = "ftp";
-            } 
+            switch (component) {
+                case "imap":
+                case "imaps":
+                case "pop3":
+                case "pop3s":
+                case "smtp":
+                case "smtps":
+                    component = "mail";
+                    break;
+                case "ftp":
+                case "sftp":
+                case "ftps":
+                    component = "ftp";
+                    break;
+                default: {
+                    // NO-OP
+                }
+            }
             String name = component + "-component";
-            if (!docs.contains(name) && (!component.equalsIgnoreCase("linkedin") && !component.equalsIgnoreCase("salesforce"))) {
+            if (!docs.contains(name)
+                    && (!component.equalsIgnoreCase("salesforce") && !component.equalsIgnoreCase("servicenow"))) {
                 missing.add(name);
             }
         }
         if (!missing.isEmpty()) {
             getLog().info("");
-            getLog().warn("\tMissing .adoc component documentation  : " + missing.size());
-            for (String name : missing) {
-                getLog().warn("\t\t" + name);
-            }
+            getLog().warn("\tMissing .adoc component documentation: " + missing.size());
+            printMissingWarning(missing);
         }
         missing.clear();
 
@@ -888,10 +1125,8 @@ public class PrepareCatalogMojo extends AbstractMojo {
         }
         if (!missing.isEmpty()) {
             getLog().info("");
-            getLog().warn("\tMissing .adoc dataformat documentation  : " + missing.size());
-            for (String name : missing) {
-                getLog().warn("\t\t" + name);
-            }
+            getLog().warn("\tMissing .adoc dataformat documentation: " + missing.size());
+            printMissingWarning(missing);
         }
         missing.clear();
 
@@ -903,94 +1138,125 @@ public class PrepareCatalogMojo extends AbstractMojo {
         }
         if (!missing.isEmpty()) {
             getLog().info("");
-            getLog().warn("\tMissing .adoc language documentation  : " + missing.size());
-            for (String name : missing) {
-                getLog().warn("\t\t" + name);
+            getLog().warn("\tMissing .adoc language documentation: " + missing.size());
+            printMissingWarning(missing);
+        }
+        missing.clear();
+
+        for (String other : others) {
+
+            if (!docs.contains(other)) {
+                missing.add(other);
             }
+        }
+        if (!missing.isEmpty()) {
+            getLog().info("");
+            getLog().warn("\tMissing .adoc other documentation: " + missing.size());
+            printMissingWarning(missing);
         }
         missing.clear();
 
         getLog().info("");
-        getLog().info("================================================================================");
+        getLog().info(SEPARATOR);
     }
 
-    private void printModelsReport(Set<File> json, Set<File> duplicate, Set<File> missingLabels, Map<String, Set<String>> usedLabels, Set<File> missingJavaDoc) {
-        getLog().info("================================================================================");
+    private void printMissingWarning(List<String> missing) {
+        for (String name : missing) {
+            getLog().warn("\t\t" + name);
+        }
+    }
+
+    private void printModelsReport(
+            Set<Path> json, Set<Path> duplicate, Set<Path> missingLabels, Map<String, Set<String>> usedLabels,
+            Set<Path> missingJavaDoc) {
+        getLog().info(SEPARATOR);
 
         getLog().info("");
         getLog().info("Camel model catalog report");
         getLog().info("");
         getLog().info("\tModels found: " + json.size());
-        for (File file : json) {
-            getLog().info("\t\t" + asComponentName(file));
-        }
+        printComponentDebug(json);
         if (!duplicate.isEmpty()) {
             getLog().info("");
             getLog().warn("\tDuplicate models detected: " + duplicate.size());
-            for (File file : duplicate) {
-                getLog().warn("\t\t" + asComponentName(file));
-            }
+            printComponentWarning(duplicate);
         }
         if (!missingLabels.isEmpty()) {
             getLog().info("");
             getLog().warn("\tMissing labels detected: " + missingLabels.size());
-            for (File file : missingLabels) {
-                getLog().warn("\t\t" + asComponentName(file));
-            }
+            printComponentWarning(missingLabels);
         }
-        if (!usedLabels.isEmpty()) {
-            getLog().info("");
-            getLog().info("\tUsed labels: " + usedLabels.size());
-            for (Map.Entry<String, Set<String>> entry : usedLabels.entrySet()) {
-                getLog().info("\t\t" + entry.getKey() + ":");
-                for (String name : entry.getValue()) {
-                    getLog().info("\t\t\t" + name);
-                }
-            }
-        }
+        printUsedLabels(usedLabels);
         if (!missingJavaDoc.isEmpty()) {
             getLog().info("");
             getLog().warn("\tMissing javadoc on models: " + missingJavaDoc.size());
-            for (File file : missingJavaDoc) {
-                getLog().warn("\t\t" + asComponentName(file));
-            }
+            printComponentWarning(missingJavaDoc);
         }
         getLog().info("");
-        getLog().info("================================================================================");
+        getLog().info(SEPARATOR);
     }
 
-    private void printComponentsReport(Set<File> json, Set<File> duplicate, Set<File> missing, Map<String,
-            Set<String>> usedComponentLabels, Set<String> usedOptionsLabels, Set<String> unusedLabels) {
-        getLog().info("================================================================================");
+    private void printComponentWarning(Set<Path> duplicate) {
+        for (Path file : duplicate) {
+            getLog().warn("\t\t" + asComponentName(file));
+        }
+    }
+
+    private void printComponentDebug(Set<Path> json) {
+        if (getLog().isDebugEnabled()) {
+            for (Path file : json) {
+                getLog().debug("\t\t" + asComponentName(file));
+            }
+        }
+    }
+
+    private void printUsedLabels(Map<String, Set<String>> usedLabels) {
+        if (getLog().isDebugEnabled()) {
+            if (!usedLabels.isEmpty()) {
+                getLog().info("");
+                getLog().info("\tUsed labels: " + usedLabels.size());
+                for (Map.Entry<String, Set<String>> entry : usedLabels.entrySet()) {
+                    getLog().info("\t\t" + entry.getKey() + ":");
+                    for (String name : entry.getValue()) {
+                        getLog().info("\t\t\t" + name);
+                    }
+                }
+            }
+        }
+    }
+
+    private void printComponentsReport(
+            Set<Path> json, Set<Path> duplicate, Set<Path> missing, Map<String, Set<String>> usedComponentLabels,
+            Set<String> usedOptionsLabels,
+            Set<String> unusedLabels, Set<Path> missingFirstVersions) {
+        getLog().info(SEPARATOR);
         getLog().info("");
         getLog().info("Camel component catalog report");
         getLog().info("");
         getLog().info("\tComponents found: " + json.size());
-        for (File file : json) {
-            getLog().info("\t\t" + asComponentName(file));
-        }
+        printComponentDebug(json);
         if (!duplicate.isEmpty()) {
             getLog().info("");
             getLog().warn("\tDuplicate components detected: " + duplicate.size());
-            for (File file : duplicate) {
-                getLog().warn("\t\t" + asComponentName(file));
-            }
+            printComponentWarning(duplicate);
         }
-        if (!usedComponentLabels.isEmpty()) {
-            getLog().info("");
-            getLog().info("\tUsed component labels: " + usedComponentLabels.size());
-            for (Map.Entry<String, Set<String>> entry : usedComponentLabels.entrySet()) {
-                getLog().info("\t\t" + entry.getKey() + ":");
-                for (String name : entry.getValue()) {
-                    getLog().info("\t\t\t" + name);
+        if (getLog().isDebugEnabled()) {
+            if (!usedComponentLabels.isEmpty()) {
+                getLog().info("");
+                getLog().info("\tUsed component labels: " + usedComponentLabels.size());
+                for (Map.Entry<String, Set<String>> entry : usedComponentLabels.entrySet()) {
+                    getLog().debug("\t\t" + entry.getKey() + ":");
+                    for (String name : entry.getValue()) {
+                        getLog().debug("\t\t\t" + name);
+                    }
                 }
             }
-        }
-        if (!usedOptionsLabels.isEmpty()) {
-            getLog().info("");
-            getLog().info("\tUsed component/endpoint options labels: " + usedOptionsLabels.size());
-            for (String name : usedOptionsLabels) {
-                getLog().info("\t\t\t" + name);
+            if (!usedOptionsLabels.isEmpty()) {
+                getLog().info("");
+                getLog().info("\tUsed component/endpoint options labels: " + usedOptionsLabels.size());
+                for (String name : usedOptionsLabels) {
+                    getLog().info("\t\t\t" + name);
+                }
             }
         }
         if (!unusedLabels.isEmpty()) {
@@ -1003,283 +1269,249 @@ public class PrepareCatalogMojo extends AbstractMojo {
         if (!missing.isEmpty()) {
             getLog().info("");
             getLog().warn("\tMissing components detected: " + missing.size());
-            for (File name : missing) {
-                getLog().warn("\t\t" + name.getName());
-            }
+            printWarnings(missing);
+        }
+        if (!missingFirstVersions.isEmpty()) {
+            getLog().info("");
+            getLog().warn("\tComponents without firstVersion defined: " + missingFirstVersions.size());
+            printWarnings(missingFirstVersions);
         }
         getLog().info("");
-        getLog().info("================================================================================");
+        getLog().info(SEPARATOR);
     }
 
-    private void printDataFormatsReport(Set<File> json, Set<File> duplicate, Map<String, Set<String>> usedLabels) {
-        getLog().info("================================================================================");
+    private void printWarnings(Set<Path> missing) {
+        for (Path name : missing) {
+            getLog().warn("\t\t" + name.getFileName().toString());
+        }
+    }
+
+    private void printDataFormatsReport(
+            Set<Path> json, Set<Path> duplicate, Map<String, Set<String>> usedLabels, Set<Path> missingFirstVersions) {
+        getLog().info(SEPARATOR);
         getLog().info("");
         getLog().info("Camel data format catalog report");
         getLog().info("");
         getLog().info("\tDataFormats found: " + json.size());
-        for (File file : json) {
-            getLog().info("\t\t" + asComponentName(file));
-        }
+        printComponentDebug(json);
         if (!duplicate.isEmpty()) {
             getLog().info("");
             getLog().warn("\tDuplicate dataformat detected: " + duplicate.size());
-            for (File file : duplicate) {
-                getLog().warn("\t\t" + asComponentName(file));
-            }
+            printComponentWarning(duplicate);
         }
-        if (!usedLabels.isEmpty()) {
+        printUsedLabels(usedLabels);
+        if (!missingFirstVersions.isEmpty()) {
             getLog().info("");
-            getLog().info("\tUsed labels: " + usedLabels.size());
-            for (Map.Entry<String, Set<String>> entry : usedLabels.entrySet()) {
-                getLog().info("\t\t" + entry.getKey() + ":");
-                for (String name : entry.getValue()) {
-                    getLog().info("\t\t\t" + name);
-                }
-            }
+            getLog().warn("\tDataFormats without firstVersion defined: " + missingFirstVersions.size());
+            printWarnings(missingFirstVersions);
         }
         getLog().info("");
-        getLog().info("================================================================================");
+        getLog().info(SEPARATOR);
     }
 
-    private void printLanguagesReport(Set<File> json, Set<File> duplicate, Map<String, Set<String>> usedLabels) {
-        getLog().info("================================================================================");
+    private void printLanguagesReport(
+            Set<Path> json, Set<Path> duplicate, Map<String, Set<String>> usedLabels, Set<Path> missingFirstVersions) {
+        getLog().info(SEPARATOR);
         getLog().info("");
         getLog().info("Camel language catalog report");
         getLog().info("");
         getLog().info("\tLanguages found: " + json.size());
-        for (File file : json) {
-            getLog().info("\t\t" + asComponentName(file));
-        }
+        printComponentDebug(json);
         if (!duplicate.isEmpty()) {
             getLog().info("");
             getLog().warn("\tDuplicate language detected: " + duplicate.size());
-            for (File file : duplicate) {
-                getLog().warn("\t\t" + asComponentName(file));
-            }
+            printComponentWarning(duplicate);
         }
-        if (!usedLabels.isEmpty()) {
+        printUsedLabels(usedLabels);
+        if (!missingFirstVersions.isEmpty()) {
             getLog().info("");
-            getLog().info("\tUsed labels: " + usedLabels.size());
-            for (Map.Entry<String, Set<String>> entry : usedLabels.entrySet()) {
-                getLog().info("\t\t" + entry.getKey() + ":");
-                for (String name : entry.getValue()) {
-                    getLog().info("\t\t\t" + name);
-                }
-            }
+            getLog().warn("\tLanguages without firstVersion defined: " + missingFirstVersions.size());
+            printWarnings(missingFirstVersions);
         }
         getLog().info("");
-        getLog().info("================================================================================");
+        getLog().info(SEPARATOR);
     }
 
-    private void printDocumentsReport(Set<File> docs, Set<File> duplicate, Set<File> missing) {
-        getLog().info("================================================================================");
+    private void printTransformersReport(
+            Set<Path> json, Set<Path> duplicate) {
+        getLog().info(SEPARATOR);
+        getLog().info("");
+        getLog().info("Camel transformer catalog report");
+        getLog().info("");
+        getLog().info("\tTransformers found: " + json.size());
+        printComponentDebug(json);
+        if (!duplicate.isEmpty()) {
+            getLog().info("");
+            getLog().warn("\tDuplicate transformer detected: " + duplicate.size());
+            printComponentWarning(duplicate);
+        }
+        getLog().info("");
+        getLog().info(SEPARATOR);
+    }
+
+    private void printBeansReport(
+            Set<Path> json, Set<Path> duplicate) {
+        getLog().info(SEPARATOR);
+        getLog().info("");
+        getLog().info("Camel pojo beans catalog report");
+        getLog().info("");
+        getLog().info("\tPojo beans found: " + json.size());
+        printComponentDebug(json);
+        if (!duplicate.isEmpty()) {
+            getLog().info("");
+            getLog().warn("\tDuplicate pojo beans detected: " + duplicate.size());
+            printComponentWarning(duplicate);
+        }
+        getLog().info("");
+        getLog().info(SEPARATOR);
+    }
+
+    private void printConsolesReport(
+            Set<Path> json, Set<Path> duplicate) {
+        getLog().info(SEPARATOR);
+        getLog().info("");
+        getLog().info("Camel dev-console catalog report");
+        getLog().info("");
+        getLog().info("\tConsoles found: " + json.size());
+        printComponentDebug(json);
+        if (!duplicate.isEmpty()) {
+            getLog().info("");
+            getLog().warn("\tDuplicate console detected: " + duplicate.size());
+            printComponentWarning(duplicate);
+        }
+        getLog().info("");
+        getLog().info(SEPARATOR);
+    }
+
+    private void printOthersReport(
+            Set<Path> json, Set<Path> duplicate, Map<String, Set<String>> usedLabels, Set<Path> missingFirstVersions) {
+        getLog().info(SEPARATOR);
+        getLog().info("");
+        getLog().info("Camel other catalog report");
+        getLog().info("");
+        getLog().info("\tOthers found: " + json.size());
+        printComponentDebug(json);
+        if (!duplicate.isEmpty()) {
+            getLog().info("");
+            getLog().warn("\tDuplicate other detected: " + duplicate.size());
+            printComponentWarning(duplicate);
+        }
+        printUsedLabels(usedLabels);
+        if (!missingFirstVersions.isEmpty()) {
+            getLog().info("");
+            getLog().warn("\tOthers without firstVersion defined: " + missingFirstVersions.size());
+            printWarnings(missingFirstVersions);
+        }
+        getLog().info("");
+        getLog().info(SEPARATOR);
+    }
+
+    private void printDocumentsReport(Set<Path> docs, Set<Path> duplicate, Set<Path> missing) {
+        getLog().info(SEPARATOR);
         getLog().info("");
         getLog().info("Camel document catalog report");
         getLog().info("");
         getLog().info("\tDocuments found: " + docs.size());
-        for (File file : docs) {
-            getLog().info("\t\t" + asComponentName(file));
-        }
+        printComponentDebug(docs);
         if (!duplicate.isEmpty()) {
             getLog().info("");
             getLog().warn("\tDuplicate document detected: " + duplicate.size());
-            for (File file : duplicate) {
-                getLog().warn("\t\t" + asComponentName(file));
-            }
+            printComponentWarning(duplicate);
         }
         getLog().info("");
         if (!missing.isEmpty()) {
             getLog().info("");
             getLog().warn("\tMissing document detected: " + missing.size());
-            for (File name : missing) {
-                getLog().warn("\t\t" + name.getName());
-            }
+            printWarnings(missing);
         }
         getLog().info("");
-        getLog().info("================================================================================");
+        getLog().info(SEPARATOR);
     }
 
-    private static String asComponentName(File file) {
-        String name = file.getName();
-        if (name.endsWith(".json") || name.endsWith(".adoc")) {
-            return name.substring(0, name.length() - 5);
-        }
-        return name;
-    }
-
-    private void findComponentFilesRecursive(File dir, Set<File> found, Set<File> components, FileFilter filter) {
-        File[] files = dir.listFiles(filter);
-        if (files != null) {
-            for (File file : files) {
-                // skip files in root dirs as Camel does not store information there but others may do
-                boolean rootDir = "classes".equals(dir.getName()) || "META-INF".equals(dir.getName());
-                boolean jsonFile = !rootDir && file.isFile() && file.getName().endsWith(".json");
-                boolean componentFile = !rootDir && file.isFile() && file.getName().equals("component.properties");
-                if (jsonFile) {
-                    found.add(file);
-                } else if (componentFile) {
-                    components.add(file);
-                } else if (file.isDirectory()) {
-                    findComponentFilesRecursive(file, found, components, filter);
-                }
+    private void copyFile(Path file, Path toDir) throws IOException, MojoFailureException {
+        if (Files.isRegularFile(file)) {
+            // make sure to create out dir
+            Files.createDirectories(toDir);
+            // copy the file
+            Path to = toDir.resolve(file.getFileName());
+            try {
+                FileUtil.updateFile(file, to);
+            } catch (IOException e) {
+                throw new MojoFailureException("Cannot copy file from " + file + " -> " + to, e);
             }
         }
     }
 
-    private void findDataFormatFilesRecursive(File dir, Set<File> found, Set<File> dataFormats, FileFilter filter) {
-        File[] files = dir.listFiles(filter);
-        if (files != null) {
-            for (File file : files) {
-                // skip files in root dirs as Camel does not store information there but others may do
-                boolean rootDir = "classes".equals(dir.getName()) || "META-INF".equals(dir.getName());
-                boolean jsonFile = !rootDir && file.isFile() && file.getName().endsWith(".json");
-                boolean dataFormatFile = !rootDir && file.isFile() && file.getName().equals("dataformat.properties");
-                if (jsonFile) {
-                    found.add(file);
-                } else if (dataFormatFile) {
-                    dataFormats.add(file);
-                } else if (file.isDirectory()) {
-                    findDataFormatFilesRecursive(file, found, dataFormats, filter);
-                }
-            }
-        }
+    private List<Path> concat(List<Path> l1, List<Path> l2) {
+        return Stream.concat(l1.stream(), l2.stream()).collect(Collectors.toList());
     }
 
-    private void findLanguageFilesRecursive(File dir, Set<File> found, Set<File> languages, FileFilter filter) {
-        File[] files = dir.listFiles(filter);
-        if (files != null) {
-            for (File file : files) {
-                // skip files in root dirs as Camel does not store information there but others may do
-                boolean rootDir = "classes".equals(dir.getName()) || "META-INF".equals(dir.getName());
-                boolean jsonFile = !rootDir && file.isFile() && file.getName().endsWith(".json");
-                boolean languageFile = !rootDir && file.isFile() && file.getName().equals("language.properties");
-                if (jsonFile) {
-                    found.add(file);
-                } else if (languageFile) {
-                    languages.add(file);
-                } else if (file.isDirectory()) {
-                    findLanguageFilesRecursive(file, found, languages, filter);
-                }
-            }
-        }
-    }
-
-    private void findAsciiDocFilesRecursive(File dir, Set<File> found, FileFilter filter) {
-        File[] files = dir.listFiles(filter);
-        if (files != null) {
-            for (File file : files) {
-                // skip files in root dirs as Camel does not store information there but others may do
-                boolean rootDir = "classes".equals(dir.getName()) || "META-INF".equals(dir.getName());
-                boolean adocFile = !rootDir && file.isFile() && file.getName().endsWith(".adoc");
-                if (adocFile) {
-                    found.add(file);
-                } else if (file.isDirectory()) {
-                    findAsciiDocFilesRecursive(file, found, filter);
-                }
-            }
-        }
-    }
-
-    private class CamelComponentsFileFilter implements FileFilter {
-
-        @Override
-        public boolean accept(File pathname) {
-            if (pathname.isDirectory() && pathname.getName().equals("model")) {
-                // do not check the camel-core model packages as there is no components there
-                return false;
-            }
-            if (pathname.isFile() && pathname.getName().endsWith(".json")) {
-                // must be a components json file
-                try {
-                    String json = loadText(new FileInputStream(pathname));
-                    return json != null && json.contains("\"kind\": \"component\"");
-                } catch (IOException e) {
-                    // ignore
-                }
-            }
-            return pathname.isDirectory() || (pathname.isFile() && pathname.getName().equals("component.properties"));
-        }
-    }
-
-    private class CamelDataFormatsFileFilter implements FileFilter {
-
-        @Override
-        public boolean accept(File pathname) {
-            if (pathname.isDirectory() && pathname.getName().equals("model")) {
-                // do not check the camel-core model packages as there is no components there
-                return false;
-            }
-            if (pathname.isFile() && pathname.getName().endsWith(".json")) {
-                // must be a dataformat json file
-                try {
-                    String json = loadText(new FileInputStream(pathname));
-                    return json != null && json.contains("\"kind\": \"dataformat\"");
-                } catch (IOException e) {
-                    // ignore
-                }
-            }
-            return pathname.isDirectory() || (pathname.isFile() && pathname.getName().equals("dataformat.properties"));
-        }
-    }
-
-    private class CamelLanguagesFileFilter implements FileFilter {
-
-        @Override
-        public boolean accept(File pathname) {
-            if (pathname.isDirectory() && pathname.getName().equals("model")) {
-                // do not check the camel-core model packages as there is no components there
-                return false;
-            }
-            if (pathname.isFile() && pathname.getName().endsWith(".json")) {
-                // must be a language json file
-                try {
-                    String json = loadText(new FileInputStream(pathname));
-                    return json != null && json.contains("\"kind\": \"language\"");
-                } catch (IOException e) {
-                    // ignore
-                }
-            }
-            return pathname.isDirectory() || (pathname.isFile() && pathname.getName().equals("language.properties"));
-        }
-    }
-
-    private class CamelAsciiDocFileFilter implements FileFilter {
-
-        @Override
-        public boolean accept(File pathname) {
-            return pathname.isFile() && pathname.getName().endsWith(".adoc");
-        }
-    }
-
-    public static void copyFile(File from, File to) throws IOException {
-        FileChannel in = null;
-        FileChannel out = null;
+    private Stream<Path> list(Path dir) {
         try {
-            in = new FileInputStream(from).getChannel();
-            out = new FileOutputStream(to).getChannel();
-
-            long size = in.size();
-            long position = 0;
-            while (position < size) {
-                position += in.transferTo(position, BUFFER_SIZE, out);
+            if (Files.isDirectory(dir)) {
+                return Files.list(dir);
+            } else {
+                return Stream.empty();
             }
-        } finally {
-            if (in != null) {
-                in.close();
-            }
-            if (out != null) {
-                out.close();
-            }
+        } catch (IOException e) {
+            throw new RuntimeException("Unable to list files in directory: " + dir, e);
         }
     }
 
-    private static boolean excludeDocumentDir(String name) {
-        for (String exclude : EXCLUDE_DOC_FILES) {
-            if (exclude.equals(name)) {
-                return true;
-            }
+    private void delete(Path dir) {
+        try {
+            Files.delete(dir);
+        } catch (IOException e) {
+            throw new RuntimeException("Unable to delete file: " + dir, e);
         }
-        return false;
+    }
+
+    private void copy(Path file, Path to) {
+        try {
+            try {
+                BasicFileAttributes af = Files.readAttributes(file, BasicFileAttributes.class);
+                BasicFileAttributes at = Files.readAttributes(to, BasicFileAttributes.class);
+                if (af.isRegularFile() && at.isRegularFile() && af.size() == at.size()
+                        && af.lastModifiedTime().compareTo(at.lastAccessTime()) < 0) {
+                    // if same size and not modified, assume the same
+                    return;
+                }
+            } catch (IOException e) {
+                // ignore and copy
+            }
+            FileUtil.updateFile(file, to);
+        } catch (IOException e) {
+            throw new RuntimeException("Cannot copy file from " + file + " -> " + to, e);
+        }
+    }
+
+    private <U, K, V> Map<K, V> map(Collection<U> col, Function<U, K> key, Function<U, V> value) {
+        return col.stream().collect(Collectors.toMap(key, value));
+    }
+
+    private <U, K, V> Map<K, V> map(Collection<U> col, Function<U, K> key, Function<U, V> value, BinaryOperator<V> merger) {
+        return col.stream().collect(Collectors.toMap(key, value, merger));
+    }
+
+    private Path getModule(Path p) {
+        Path parent = p;
+        while (!parent.endsWith("target") && !parent.endsWith("src")) {
+            parent = parent.getParent();
+        }
+        return parent.getParent();
+    }
+
+    private Set<Path> getDuplicates(Set<Path> jsonFiles) {
+        Map<String, List<Path>> byName = map(jsonFiles, PrepareCatalogMojo::asComponentName, // key
+                // by
+                // component
+                // name
+                Collections::singletonList, // value
+                // as a
+                // singleton
+                // list
+                this::concat); // merge lists
+        return byName.values().stream().flatMap(l -> l.stream().skip(1)).collect(Collectors.toCollection(TreeSet::new));
     }
 
 }

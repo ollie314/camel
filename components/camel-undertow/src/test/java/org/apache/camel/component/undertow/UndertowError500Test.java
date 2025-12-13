@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,7 +19,10 @@ package org.apache.camel.component.undertow;
 import org.apache.camel.CamelExecutionException;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class UndertowError500Test extends BaseUndertowTest {
 
@@ -34,19 +37,19 @@ public class UndertowError500Test extends BaseUndertowTest {
 
         }
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("undertow:http://localhost:{{port}}/foo")
-                    .to("mock:input")
+                        .to("mock:input")
                         // trigger failure by setting error code to 500
-                    .setHeader(Exchange.HTTP_RESPONSE_CODE, constant(500))
-                    .setBody().constant("Camel cannot do this");
+                        .setHeader(Exchange.HTTP_RESPONSE_CODE, constant(500))
+                        .setBody().constant("Camel cannot do this");
             }
         };
     }

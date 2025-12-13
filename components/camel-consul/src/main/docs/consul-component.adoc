@@ -1,15 +1,25 @@
-[[Consul-ConsulComponent]]
-Consul Component
-~~~~~~~~~~~~~~~~
+= Consul Component
+:doctitle: Consul
+:shortname: consul
+:artifactid: camel-consul
+:description: Integrate with Consul service discovery and configuration store.
+:since: 2.18
+:supportlevel: Stable
+:tabs-sync-option:
+:component-header: Both producer and consumer are supported
+//Manually maintained attributes
+:camel-spring-boot-name: consul
 
-*Available as of Camel 2.18*
+*Since Camel {since}*
 
-The *Consul* component is a component for integrating your application with Consul.
+*{component-header}*
+
+The Consul component is a component for integrating your application with https://www.consul.io/[Hashicorp Consul].
 
 Maven users will need to add the following dependency to their pom.xml
 for this component:
 
-[source,java]
+[source,xml]
 -------------------------------------------------
     <dependency>
         <groupId>org.apache.camel</groupId>
@@ -18,95 +28,87 @@ for this component:
     </dependency>
 -------------------------------------------------
 
-[[Consul-URIformat]]
-URI format
-^^^^^^^^^^
-
-[source,java]
----------------------------------------
-    consul://domain?[options]
----------------------------------------
-
-You can append query options to the URI in the following format:
+== URI format
 
 ---------------------------------------
-    ?option=value&option=value&...
+consul://domain?[options]
 ---------------------------------------
-
-[[Consul-Options]]
-Options
-^^^^^^^
-
-
-
 
 // component options: START
-The Consul component has no options.
+include::partial$component-configure-options.adoc[]
+include::partial$component-endpoint-options.adoc[]
+include::partial$component-endpoint-headers.adoc[]
 // component options: END
 
+== Usage
+
+=== Api Endpoint
+
+The `apiEndpoint` denotes the type of https://www.consul.io/api-docs[consul api] which should be addressed.
+
+[width="100%",options="header"]
+|===
+| Domain | Producer | Consumer
+| kv | ConsulKeyValueProducer | ConsulKeyValueConsumer
+| event | ConsulEventProducer | ConsulEventConsumer
+| agent | ConsulAgentProducer | -
+| coordinates | ConsulCoordinatesProducer | -
+| health | ConsulHealthProducer | -
+| status | ConsulStatusProducer | -
+| preparedQuery | ConsulPreparedQueryProducer | -
+| catalog | ConsulCatalogProducer | -
+| session | ConsulSessionProducer | -
+|===
+
+== Examples
+
+=== Producer Examples
+
+As an example, we will show how to use the `ConsulAgentProducer` to register a service by means of the Consul agent api.
+
+Registering and unregistering are examples for possible actions against the Consul agent api.
+
+The desired action can be defined by setting the header `ConsulConstants.CONSUL_ACTION` to a value from the `ConsulXXXActions` interface of the respective Consul api. E.g.  `ConsulAgentActions` contains the actions for the agent api.
+
+If you set `CONSUL_ACTION` to `ConsulAgentActions.REGISTER`, the agent action `REGISTER` will be executed.
+
+[TIP]
+====
+Which producer action invoked by which consul api is defined by the respective producer.
+E.g., the `ConsulAgentProducer` maps `ConsulAgentActions.REGISTER` to an invocation of `AgentClient.register`.
+====
+
+[source,java]
+----
+from("direct:registerFooService")
+    .setBody().constant(ImmutableRegistration.builder()
+        .id("foo-1")
+        .name("foo")
+        .address("localhost")
+        .port(80)
+        .build())
+    .setHeader(ConsulConstants.CONSUL_ACTION, constant(ConsulAgentActions.REGISTER))
+    .to("consul:agent");
+----
+
+It is also possible to set a default action on the consul endpoint and do without the header:
+
+----
+consul:agent?action=REGISTER
+----
+
+== Registering Camel Routes with Consul
+
+You can employ a `ServiceRegistrationRoutePolicy` to register Camel routes as services with Consul automatically.
+
+[source,java]
+----
+from("jetty:http://0.0.0.0:8080/service/endpoint").routeId("foo-1")
+    .routeProperty(ServiceDefinition.SERVICE_META_ID, "foo-1")
+    .routeProperty(ServiceDefinition.SERVICE_META_NAME, "foo")
+    .routePolicy(new ServiceRegistrationRoutePolicy())
+...
+----
 
 
-
-
-
-// endpoint options: START
-The Consul component supports 22 endpoint options which are listed below:
-
-{% raw %}
-[width="100%",cols="2,1,1m,1m,5",options="header"]
-|=======================================================================
-| Name | Group | Default | Java Type | Description
-| apiEndpoint | common |  | String | *Required* The API endpoint
-| connectTimeoutMillis | common |  | Long | Connect timeout for OkHttpClient
-| dc | common |  | String | The data center
-| key | common |  | String | The default key. Can be overridden by CamelConsulKey
-| pingInstance | common | true | boolean | Configure if the AgentClient should attempt a ping before returning the Consul instance
-| readTimeoutMillis | common |  | Long | Read timeout for OkHttpClient
-| tags | common |  | String | Set tags. You can separate multiple tags by comma.
-| url | common |  | String | The Consul agent URL
-| writeTimeoutMillis | common |  | Long | Write timeout for OkHttpClient
-| bridgeErrorHandler | consumer | false | boolean | Allows for bridging the consumer to the Camel routing Error Handler which mean any exceptions occurred while the consumer is trying to pickup incoming messages or the likes will now be processed as a message and handled by the routing Error Handler. By default the consumer will use the org.apache.camel.spi.ExceptionHandler to deal with exceptions that will be logged at WARN/ERROR level and ignored.
-| exceptionHandler | consumer (advanced) |  | ExceptionHandler | To let the consumer use a custom ExceptionHandler. Notice if the option bridgeErrorHandler is enabled then this options is not in use. By default the consumer will deal with exceptions that will be logged at WARN/ERROR level and ignored.
-| exchangePattern | consumer (advanced) |  | ExchangePattern | Sets the exchange pattern when the consumer creates an exchange.
-| action | producer |  | String | The default action. Can be overridden by CamelConsulAction
-| valueAsString | producer | false | boolean | Default to transform values retrieved from Consul i.e. on KV endpoint to string.
-| synchronous | advanced | false | boolean | Sets whether synchronous processing should be strictly used or Camel is allowed to use asynchronous processing (if supported).
-| blockSeconds | watch | 10 | Integer | The second to wait for a watch event default 10 seconds
-| firstIndex | watch | 0 | long | The first index for watch for default 0
-| recursive | watch | false | boolean | Recursively watch default false
-| aclToken | security |  | String | Sets the ACL token to be used with Consul
-| password | security |  | String | Sets the password to be used for basic authentication
-| sslContextParameters | security |  | SSLContextParameters | SSL configuration using an org.apache.camel.util.jsse.SSLContextParameters instance.
-| userName | security |  | String | Sets the username to be used for basic authentication
-|=======================================================================
-{% endraw %}
-// endpoint options: END
-
-
-
-
-[[Consul-Headers]]
-Headers
-^^^^^^^
-
-[width="100%",cols="10%,10%,80%",options="header",]
-|=======================================================================
-|Name |Type |Description
-|CamelConsulAction|String|The Producer action
-|CamelConsulKey|String|The Key on which the action should applied
-|CamelConsulEventId|String|The event id (consumer only)
-|CamelConsulEventName|String|The event name (consumer only)
-|CamelConsulEventLTime|Long|The event LTime
-|CamelConsulNodeFilter|String|The Node filter
-|CamelConsulTagFilter|String|The tag filter
-|CamelConsulSessionFilter|String|The session filter
-|CamelConsulVersion|int|The data version
-|CamelConsulFlags|Long|Flags associated with a value
-|CamelConsulCreateIndex|Long|The internal index value that represents when the entry was created
-|CamelConsulLockIndex|Long|The number of times this key has successfully been acquired in a lock
-|CamelConsulModifyIndex|Long|The last index that modified this key
-|CamelConsulOptions|Object|Options associated to the request
-|CamelConsulResult|boolean|true if the response has a result
-|CamelConsulSession|String|The session id
-|CamelConsulValueAsString|boolean|To transform values retrieved from Consul i.e. on KV endpoint to string.
-|=======================================================================
+include::spring-boot:partial$starter.adoc[]

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,80 +16,92 @@
  */
 package org.apache.camel.component.netty;
 
-import java.io.File;
-import java.io.FileOutputStream;
+import java.util.Collection;
 import java.util.Properties;
 
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.util.ResourceLeakDetector;
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.CamelContext;
-import org.apache.camel.component.properties.PropertiesComponent;
-import org.apache.camel.converter.IOConverter;
-import org.apache.camel.impl.JndiRegistry;
 import org.apache.camel.test.AvailablePortFinder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.apache.logging.log4j.core.LogEvent;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
  */
-public class BaseNettyTest extends CamelTestSupport {
-    private static volatile int port;
+public abstract class BaseNettyTest extends CamelTestSupport {
 
-    @BeforeClass
-    public static void initPort() throws Exception {
-        File file = new File("target/nettyport.txt");
+    private static final Logger LOG = LoggerFactory.getLogger(BaseNettyTest.class);
 
-        if (!file.exists()) {
-            // start from somewhere in the 25xxx range
-            port = AvailablePortFinder.getNextAvailable(25000);
-        } else {
-            // read port number from file
-            String s = IOConverter.toString(file, null);
-            port = Integer.parseInt(s);
-            // use next free port
-            port = AvailablePortFinder.getNextAvailable(port + 1);
-        }
+    @RegisterExtension
+    protected AvailablePortFinder.Port port = AvailablePortFinder.find();
 
+    @BeforeAll
+    public static void startLeakDetection() {
+        System.setProperty("io.netty.leakDetection.maxRecords", "100");
+        System.setProperty("io.netty.leakDetection.acquireAndReleaseOnly", "true");
+        System.setProperty("io.netty.leakDetection.targetRecords", "100");
+        LogCaptureAppender.reset();
     }
 
-    @AfterClass
-    public static void savePort() throws Exception {
-        File file = new File("target/nettyport.txt");
-
-        // save to file, do not append
-        FileOutputStream fos = new FileOutputStream(file, false);
-        try {
-            fos.write(String.valueOf(port).getBytes());
-        } finally {
-            fos.close();
+    @AfterAll
+    public static void verifyNoLeaks() {
+        // Force GC to bring up leaks
+        System.gc();
+        // Kick leak detection logging
+        ByteBufAllocator.DEFAULT.buffer(1).release();
+        Collection<LogEvent> events = LogCaptureAppender.getEvents(ResourceLeakDetector.class);
+        if (!events.isEmpty()) {
+            String message = "Leaks detected while running tests: " + events;
+            // Just write the message into log to help debug
+            for (LogEvent event : events) {
+                LOG.info(event.getMessage().toString());
+            }
+            throw new AssertionError(message);
         }
     }
 
     @Override
     protected CamelContext createCamelContext() throws Exception {
         CamelContext context = super.createCamelContext();
-        context.addComponent("properties", new PropertiesComponent("ref:prop"));
+        context.getPropertiesComponent().setLocation("ref:prop");
         return context;
     }
 
-    @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry jndi = super.createRegistry();
+    @BindToRegistry("prop")
+    public Properties loadProperties() {
 
         Properties prop = new Properties();
-        prop.setProperty("port", "" + getPort());
-        jndi.bind("prop", prop);
+        prop.setProperty("port", Integer.toString(getPort()));
 
-        return jndi;
-    }
-
-    protected int getNextPort() {
-        port = AvailablePortFinder.getNextAvailable(port + 1);
-        return port;
+        return prop;
     }
 
     protected int getPort() {
-        return port;
+        return port.getPort();
+    }
+
+    protected String byteArrayToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b & 0xff));
+        }
+        return sb.toString();
+    }
+
+    protected byte[] fromHexString(String hexstr) {
+        byte data[] = new byte[hexstr.length() / 2];
+        int i = 0;
+        for (int n = hexstr.length(); i < n; i += 2) {
+            data[i / 2] = (Integer.decode("0x" + hexstr.charAt(i) + hexstr.charAt(i + 1))).byteValue();
+        }
+        return data;
     }
 
 }

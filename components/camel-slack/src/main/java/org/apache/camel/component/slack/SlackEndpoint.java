@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,59 +16,98 @@
  */
 package org.apache.camel.component.slack;
 
+import com.slack.api.model.ConversationType;
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
-import org.apache.camel.impl.DefaultEndpoint;
+import org.apache.camel.RuntimeCamelException;
 import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriPath;
+import org.apache.camel.support.ScheduledPollEndpoint;
+import org.apache.camel.util.ObjectHelper;
 
 /**
- * The slack component allows you to send messages to Slack.
+ * Send and receive messages to/from Slack.
  */
-@UriEndpoint(scheme = "slack", title = "Slack", syntax = "slack:channel", producerOnly = true, label = "social")
-public class SlackEndpoint extends DefaultEndpoint {
+@UriEndpoint(firstVersion = "2.16.0", scheme = "slack", title = "Slack", syntax = "slack:channel",
+             category = { Category.SOCIAL })
+public class SlackEndpoint extends ScheduledPollEndpoint {
 
-    @UriPath @Metadata(required = "true")
+    @UriParam(defaultValue = "" + SlackConsumer.DEFAULT_CONSUMER_DELAY, javaType = "java.time.Duration",
+              label = "consumer,scheduler",
+              description = "Milliseconds before the next poll.")
+    private long delay = SlackConsumer.DEFAULT_CONSUMER_DELAY;
+
+    @UriPath
+    @Metadata(required = true)
     private String channel;
-    @UriParam
+    @UriParam(label = "producer")
     private String webhookUrl;
-    @UriParam
+    @UriParam(label = "producer", secret = true)
+    @Deprecated
     private String username;
-    @UriParam
+    @UriParam(label = "producer")
+    @Deprecated
     private String iconUrl;
-    @UriParam
+    @UriParam(label = "producer")
+    @Deprecated
     private String iconEmoji;
+    @UriParam(secret = true)
+    private String token;
+    @UriParam(label = "consumer", defaultValue = "10")
+    private String maxResults = "10";
+    @UriParam(label = "consumer", defaultValue = "https://slack.com")
+    private String serverUrl = "https://slack.com";
+    @UriParam(label = "consumer", defaultValue = "false", javaType = "boolean",
+              description = "Create exchanges in natural order (oldest to newest) or not")
+    private boolean naturalOrder;
+    @UriParam(label = "consumer", enums = "PUBLIC_CHANNEL,PRIVATE_CHANNEL,MPIM,IM", defaultValue = "PUBLIC_CHANNEL",
+              description = "Type of conversation")
+    private ConversationType conversationType = ConversationType.PUBLIC_CHANNEL;
 
     /**
      * Constructor for SlackEndpoint
      *
-     * @param uri the full component url
+     * @param uri         the full component url
      * @param channelName the channel or username the message is directed at
-     * @param component the component that was created
+     * @param component   the component that was created
      */
     public SlackEndpoint(String uri, String channelName, SlackComponent component) {
         super(uri, component);
         this.webhookUrl = component.getWebhookUrl();
+        this.token = component.getToken();
         this.channel = channelName;
+
+        // ScheduledPollConsumer default delay is 500 millis and that is too often for polling slack,
+        // so we override with a new default value. End user can override this value by providing a delay parameter
+        setDelay(SlackConsumer.DEFAULT_CONSUMER_DELAY);
     }
 
     @Override
     public Producer createProducer() throws Exception {
-        SlackProducer producer = new SlackProducer(this);
-        return producer;
+        if (ObjectHelper.isEmpty(token) && ObjectHelper.isEmpty(webhookUrl)) {
+            throw new RuntimeCamelException(
+                    "Missing required endpoint configuration: token or webhookUrl must be defined for Slack producer");
+        }
+        return new SlackProducer(this);
     }
 
     @Override
     public Consumer createConsumer(Processor processor) throws Exception {
-        throw new UnsupportedOperationException("You cannot consume slack messages from this endpoint: " + getEndpointUri());
-    }
-
-    @Override
-    public boolean isSingleton() {
-        return true;
+        if (ObjectHelper.isEmpty(token)) {
+            throw new RuntimeCamelException(
+                    "Missing required endpoint configuration: token must be defined for Slack consumer");
+        }
+        if (ObjectHelper.isEmpty(channel)) {
+            throw new RuntimeCamelException(
+                    "Missing required endpoint configuration: channel must be defined for Slack consumer");
+        }
+        SlackConsumer consumer = new SlackConsumer(this, processor);
+        configureConsumer(consumer);
+        return consumer;
     }
 
     /**
@@ -87,7 +126,7 @@ public class SlackEndpoint extends DefaultEndpoint {
     }
 
     /**
-     * The channel name (syntax #name) or slackuser (syntax @userName) to send a message directly to an user.
+     * The channel name (syntax #name) or slack user (syntax @userName) to send a message directly to an user.
      */
     public void setChannel(String channel) {
         this.channel = channel;
@@ -125,5 +164,70 @@ public class SlackEndpoint extends DefaultEndpoint {
     public void setIconEmoji(String iconEmoji) {
         this.iconEmoji = iconEmoji;
     }
-}
 
+    public String getToken() {
+        return token;
+    }
+
+    /**
+     * The token to access Slack. This app needs to have channels:history, groups:history, im:history, mpim:history,
+     * channels:read, groups:read, im:read and mpim:read permissions. The User OAuth Token is the kind of token needed.
+     */
+    public void setToken(String token) {
+        this.token = token;
+    }
+
+    public String getMaxResults() {
+        return maxResults;
+    }
+
+    /**
+     * The Max Result for the poll
+     */
+    public void setMaxResults(String maxResult) {
+        this.maxResults = maxResult;
+    }
+
+    public String getServerUrl() {
+        return serverUrl;
+    }
+
+    /**
+     * The Server URL of the Slack instance
+     */
+    public void setServerUrl(String serverUrl) {
+        this.serverUrl = serverUrl;
+    }
+
+    /**
+     * Is consuming message in natural order
+     */
+    public void setNaturalOrder(boolean naturalOrder) {
+        this.naturalOrder = naturalOrder;
+    }
+
+    public boolean isNaturalOrder() {
+        return naturalOrder;
+    }
+
+    /**
+     * The type of the conversation
+     */
+    public void setConversationType(ConversationType conversationType) {
+        this.conversationType = conversationType;
+    }
+
+    public ConversationType getConversationType() {
+        return conversationType;
+    }
+
+    /**
+     * Milliseconds before the next poll.
+     */
+    @Override
+    public void setDelay(long delay) {
+        super.setDelay(delay);
+        this.delay = delay;
+    }
+
+}

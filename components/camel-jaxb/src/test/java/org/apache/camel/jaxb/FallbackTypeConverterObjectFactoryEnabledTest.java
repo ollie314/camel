@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,14 +17,14 @@
 package org.apache.camel.jaxb;
 
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.converter.jaxb.FallbackTypeConverter;
 import org.apache.camel.converter.jaxb.message.Message;
-import org.apache.camel.test.junit4.CamelTestSupport;
-
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
 public class FallbackTypeConverterObjectFactoryEnabledTest extends CamelTestSupport {
-    
+
     @Test
     public void testObjectFactoryTrue() throws Exception {
         Message in = new Message("Hello World");
@@ -32,16 +32,16 @@ public class FallbackTypeConverterObjectFactoryEnabledTest extends CamelTestSupp
 
         template.sendBody("direct:a", in);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
-        context.getProperties().put(FallbackTypeConverter.OBJECT_FACTORY, "true");
+    protected RouteBuilder createRouteBuilder() {
+        context.getGlobalOptions().put(FallbackTypeConverter.OBJECT_FACTORY, "true");
         return new RouteBuilder(context) {
 
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:a").convertBodyTo(String.class).to("direct:b");
                 from("direct:b").convertBodyTo(Message.class).to("mock:a");
             }

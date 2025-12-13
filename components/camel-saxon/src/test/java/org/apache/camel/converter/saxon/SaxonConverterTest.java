@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -30,36 +30,36 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
 import net.sf.saxon.om.NodeInfo;
-import net.sf.saxon.trans.XPathException;
 import net.sf.saxon.xpath.XPathEvaluator;
-
 import org.apache.camel.Exchange;
-import org.apache.camel.StringSource;
-import org.apache.camel.builder.xml.DefaultNamespaceContext;
-import org.apache.camel.impl.DefaultExchange;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.language.xpath.DefaultNamespaceContext;
+import org.apache.camel.support.DefaultExchange;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.apache.camel.util.xml.StringSource;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class SaxonConverterTest extends CamelTestSupport {
-    private static final String CONTENT = "<a xmlns=\"http://www.apache.org/test\"><b foo=\"bar\">test</b><c><d>foobar</d></c></a>";
+    private static final String CONTENT
+            = "<a xmlns=\"http://www.apache.org/test\"><b foo=\"bar\">test</b><c><d>foobar</d></c></a>";
     private static final String CONTENT_B = "<b xmlns=\"http://www.apache.org/test\" foo=\"bar\">test</b>";
-    private static final NamespaceContext NS_CONTEXT = (new DefaultNamespaceContext()).add("ns1", "http://www.apache.org/test");
+    private static final NamespaceContext NS_CONTEXT = new DefaultNamespaceContext().add("ns1", "http://www.apache.org/test");
 
     private Exchange exchange;
     private XPathEvaluator evaluator;
     private NodeInfo doc;
 
-    @Before
-    public void setUp() throws Exception {
-        super.setUp();
+    @Override
+    public void doPostSetup() throws Exception {
         exchange = new DefaultExchange(context);
         evaluator = new XPathEvaluator();
         doc = evaluator.getConfiguration().buildDocumentTree(new StringSource(CONTENT)).getRootNode();
     }
 
     @Test
-    public void convertToDOMSource() throws XPathException {
+    public void convertToDOMSource() {
         DOMSource source = context.getTypeConverter().convertTo(DOMSource.class, exchange, doc);
         assertNotNull(source);
         String string = context.getTypeConverter().convertTo(String.class, exchange, source);
@@ -67,7 +67,7 @@ public class SaxonConverterTest extends CamelTestSupport {
     }
 
     @Test
-    public void convertToDocument() throws XPathException {
+    public void convertToDocument() {
         Document document = context.getTypeConverter().convertTo(Document.class, exchange, doc);
         assertNotNull(document);
         String string = context.getTypeConverter().convertTo(String.class, exchange, document);
@@ -75,7 +75,7 @@ public class SaxonConverterTest extends CamelTestSupport {
     }
 
     @Test
-    public void convertSubNodeToDocument() throws XPathException, XPathExpressionException {
+    public void convertSubNodeToDocument() throws XPathExpressionException {
         evaluator.setNamespaceContext(NS_CONTEXT);
         Object nodeObj = evaluator.evaluate("/ns1:a/ns1:b", doc, XPathConstants.NODE);
         assertNotNull(nodeObj);
@@ -86,7 +86,7 @@ public class SaxonConverterTest extends CamelTestSupport {
     }
 
     @Test
-    public void convertSubNodeSetToDocument() throws XPathException, XPathExpressionException {
+    public void convertSubNodeSetToDocument() throws XPathExpressionException {
         evaluator.setNamespaceContext(NS_CONTEXT);
         Object nodeObj = evaluator.evaluate("/ns1:a/ns1:b", doc, XPathConstants.NODESET);
         assertNotNull(nodeObj);
@@ -97,7 +97,7 @@ public class SaxonConverterTest extends CamelTestSupport {
     }
 
     @Test
-    public void convertToNode() throws XPathException {
+    public void convertToNode() {
         Node node = context.getTypeConverter().convertTo(Node.class, exchange, doc);
         assertNotNull(node);
         String string = context.getTypeConverter().convertTo(String.class, exchange, node);
@@ -105,8 +105,8 @@ public class SaxonConverterTest extends CamelTestSupport {
     }
 
     @Test
-    public void convertToNodeList() throws XPathException {
-        List<NodeInfo> nil = new LinkedList<NodeInfo>();
+    public void convertToNodeList() {
+        List<NodeInfo> nil = new LinkedList<>();
         nil.add(doc);
         NodeList nodeList = context.getTypeConverter().convertTo(NodeList.class, exchange, nil);
         assertNotNull(nodeList);
@@ -116,7 +116,7 @@ public class SaxonConverterTest extends CamelTestSupport {
     }
 
     @Test
-    public void convertToInputStream() throws XPathException {
+    public void convertToInputStream() {
         InputStream is = context.getTypeConverter().convertTo(InputStream.class, exchange, doc);
         assertNotNull(is);
         String string = context.getTypeConverter().convertTo(String.class, exchange, is);
@@ -124,7 +124,7 @@ public class SaxonConverterTest extends CamelTestSupport {
     }
 
     @Test
-    public void convertToByteArray() throws XPathException {
+    public void convertToByteArray() {
         byte[] ba = context.getTypeConverter().convertTo(byte[].class, exchange, doc);
         assertNotNull(ba);
         String string = context.getTypeConverter().convertTo(String.class, exchange, ba);
@@ -132,7 +132,7 @@ public class SaxonConverterTest extends CamelTestSupport {
     }
 
     @Test
-    public void convertToNodeAndByteArray() throws XPathException {
+    public void convertToNodeAndByteArray() {
         Node node = context.getTypeConverter().convertTo(Node.class, exchange, doc);
         assertNotNull(node);
         byte[] ba = context.getTypeConverter().convertTo(byte[].class, exchange, node);

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,16 +22,19 @@ import javax.jcr.Workspace;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class JcrProducerDifferentWorkspaceTest extends JcrRouteDifferentWorkspaceTestSupport {
-    
+
     @Test
     public void testJcrProducer() throws Exception {
         Exchange exchange = createExchangeWithBody("<hello>world!</hello>");
         Exchange out = template.send("direct:a", exchange);
         assertNotNull(out);
-        String uuid = out.getOut().getBody(String.class);
+        String uuid = out.getMessage().getBody(String.class);
         Session session = openSession(CUSTOM_WORKSPACE_NAME);
         try {
             Node node = session.getNodeByIdentifier(uuid);
@@ -48,10 +51,10 @@ public class JcrProducerDifferentWorkspaceTest extends JcrRouteDifferentWorkspac
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: jcr-create-node
                 from("direct:a").setHeader(JcrConstants.JCR_NODE_NAME, constant("node"))
                         .setHeader("my.contents.property", body())

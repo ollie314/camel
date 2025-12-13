@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,7 +21,8 @@ import java.util.Map;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
 
 /**
  * To test CAMEL-4118 support for completing all aggregation groups with a signal message
@@ -38,16 +39,16 @@ public class JdbcAggregateForceCompletionHeaderTest extends AbstractJdbcAggregat
         template.sendBodyAndHeader("direct:start", "test3", "id", "1");
         template.sendBodyAndHeader("direct:start", "test4", "id", "2");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         getMockEndpoint("mock:aggregated").expectedMessageCount(2);
         getMockEndpoint("mock:aggregated").expectedBodiesReceivedInAnyOrder("test1test3", "test2test4");
         getMockEndpoint("mock:aggregated").expectedPropertyReceived(Exchange.AGGREGATED_COMPLETED_BY, "force");
 
         //now send the signal message to trigger completion of all groups, message should NOT be aggregated
-        template.sendBodyAndHeader("direct:start", "test5", Exchange.AGGREGATION_COMPLETE_ALL_GROUPS, true);
+        template.sendBodyAndProperty("direct:start", "test5", Exchange.AGGREGATION_COMPLETE_ALL_GROUPS, true);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -60,26 +61,28 @@ public class JdbcAggregateForceCompletionHeaderTest extends AbstractJdbcAggregat
         template.sendBodyAndHeader("direct:start", "test3", "id", "1");
         template.sendBodyAndHeader("direct:start", "test4", "id", "2");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         getMockEndpoint("mock:aggregated").expectedMessageCount(3);
         getMockEndpoint("mock:aggregated").expectedBodiesReceivedInAnyOrder("test1test3", "test2test4", "test5");
         getMockEndpoint("mock:aggregated").expectedPropertyReceived(Exchange.AGGREGATED_COMPLETED_BY, "force");
 
         //now send a message to trigger completion of all groups, message should be aggregated
-        Map<String, Object> headers = new HashMap<String, Object>();
+        Map<String, Object> headers = new HashMap<>();
         headers.put("id", "3");
         headers.put(Exchange.AGGREGATION_COMPLETE_ALL_GROUPS_INCLUSIVE, true);
         template.sendBodyAndHeaders("direct:start", "test5", headers);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
+                configureJdbcAggregationRepository();
+
                 // here is the Camel route where we aggregate
                 from("direct:start")
                         .aggregate(header("id"), new MyAggregationStrategy())

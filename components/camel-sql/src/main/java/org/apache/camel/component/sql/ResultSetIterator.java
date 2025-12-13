@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -30,18 +30,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.RowMapper;
 
-public class ResultSetIterator implements Iterator, Closeable {
+public class ResultSetIterator implements Iterator<Object>, Closeable {
 
     private static final Logger LOG = LoggerFactory.getLogger(ResultSetIterator.class);
 
     private final Connection connection;
     private final Statement statement;
     private final ResultSet resultSet;
-    private final RowMapper rowMapper;
+    private final RowMapper<?> rowMapper;
     private final AtomicBoolean closed = new AtomicBoolean();
     private int rowNum;
 
-    public ResultSetIterator(Connection connection, Statement statement, ResultSet resultSet, RowMapper rowMapper) throws SQLException {
+    public ResultSetIterator(Connection connection, Statement statement, ResultSet resultSet,
+                             RowMapper<?> rowMapper) throws SQLException {
         this.connection = connection;
         this.statement = statement;
         this.resultSet = resultSet;
@@ -91,7 +92,7 @@ public class ResultSetIterator implements Iterator, Closeable {
         try {
             resultSet.close();
         } catch (SQLException e) {
-            LOG.warn("Error by closing result set: " + e, e);
+            LOG.warn("Error by closing result set: {}", e, e);
         }
     }
 
@@ -99,7 +100,7 @@ public class ResultSetIterator implements Iterator, Closeable {
         try {
             statement.close();
         } catch (SQLException e) {
-            LOG.warn("Error by closing statement: " + e, e);
+            LOG.warn("Error by closing statement: {}", e, e);
         }
     }
 
@@ -107,7 +108,7 @@ public class ResultSetIterator implements Iterator, Closeable {
         try {
             connection.close();
         } catch (SQLException e) {
-            LOG.warn("Error by closing connection: " + e, e);
+            LOG.warn("Error by closing connection: {}", e, e);
         }
     }
 

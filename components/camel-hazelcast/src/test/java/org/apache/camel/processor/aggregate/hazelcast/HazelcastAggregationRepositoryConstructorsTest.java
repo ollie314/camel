@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,63 +16,64 @@
  */
 package org.apache.camel.processor.aggregate.hazelcast;
 
-import com.hazelcast.core.HazelcastInstance;
+import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
-import org.apache.camel.impl.DefaultExchange;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.support.DefaultExchange;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class HazelcastAggregationRepositoryConstructorsTest extends CamelTestSupport {
 
-    @Test(expected = UnsupportedOperationException.class)
+    @Test
     public void nonOptimisticRepoFailsOnOptimisticAdd() throws Exception {
         final String repoName = "hzRepoMap";
         HazelcastAggregationRepository repo = new HazelcastAggregationRepository(repoName);
         repo.doStart();
 
         try {
-            Exchange oldOne = new DefaultExchange(context());
-            Exchange newOne = new DefaultExchange(context());
+            final CamelContext context = context();
+            Exchange oldOne = new DefaultExchange(context);
+            Exchange newOne = new DefaultExchange(context);
             final String key = "abrakadabra";
-            repo.add(context(), key, oldOne, newOne);
-            fail("OptimisticLockingException should has been thrown");
+
+            assertThrows(UnsupportedOperationException.class,
+                    () -> repo.add(context, key, oldOne, newOne));
         } finally {
             repo.doStop();
         }
     }
 
-    @Test(expected = UnsupportedOperationException.class)
+    @Test
     public void optimisticRepoFailsForNonOptimisticAdd() throws Exception {
         final String repoName = "hzRepoMap";
         HazelcastAggregationRepository repo = new HazelcastAggregationRepository(repoName, true);
         repo.doStart();
 
         try {
-            Exchange ex = new DefaultExchange(context());
+            final CamelContext context = context();
+            Exchange ex = new DefaultExchange(context);
             final String key = "abrakadabra";
-            repo.add(context(), key, ex);
+            assertThrows(UnsupportedOperationException.class,
+                    () -> repo.add(context, key, ex));
         } finally {
             repo.doStop();
         }
     }
 
-    @Test(expected = IllegalArgumentException.class)
-    public void uninitializedHazelcastInstanceThrows() throws Exception {
-        final String repoName = "hzRepoMap";
-        HazelcastAggregationRepository repo = new HazelcastAggregationRepository(repoName, (HazelcastInstance) null);
-        repo.doStart();
+    @Test
+    public void locallyInitializedHazelcastInstanceAdd() {
+        assertDoesNotThrow(() -> runLocallyInitializedHazelcastInstanceAdd());
     }
 
-    @Test
-    public void locallyInitializedHazelcastInstanceAdd() throws Exception {
+    private void runLocallyInitializedHazelcastInstanceAdd() throws Exception {
         HazelcastAggregationRepository repo = new HazelcastAggregationRepository("hzRepoMap");
         try {
             repo.doStart();
             Exchange ex = new DefaultExchange(context());
             repo.add(context(), "somedefaultkey", ex);
-        //} catch (Throwable e) {
-            //fail(e.getMessage());
         } finally {
             repo.doStop();
         }

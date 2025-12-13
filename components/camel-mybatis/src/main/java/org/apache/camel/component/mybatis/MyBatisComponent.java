@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,24 +21,22 @@ import java.io.InputStream;
 import java.util.Map;
 
 import org.apache.camel.Endpoint;
-import org.apache.camel.impl.UriEndpointComponent;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.spi.annotations.Component;
+import org.apache.camel.support.HealthCheckComponent;
+import org.apache.camel.support.ResourceHelper;
 import org.apache.camel.util.IOHelper;
 import org.apache.camel.util.ObjectHelper;
-import org.apache.camel.util.ResourceHelper;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.session.SqlSessionFactoryBuilder;
 
-/**
- * @version 
- */
-public class MyBatisComponent extends UriEndpointComponent {
+@Component("mybatis")
+public class MyBatisComponent extends HealthCheckComponent {
 
-    private SqlSessionFactory sqlSessionFactory;
+    @Metadata(label = "advanced", autowired = true)
+    private volatile SqlSessionFactory sqlSessionFactory;
+    @Metadata(defaultValue = "SqlMapConfig.xml", supportFileReference = true)
     private String configurationUri = "SqlMapConfig.xml";
-
-    public MyBatisComponent() {
-        super(MyBatisEndpoint.class);
-    }
 
     @Override
     protected Endpoint createEndpoint(String uri, String remaining, Map<String, Object> parameters) throws Exception {
@@ -48,12 +46,20 @@ public class MyBatisComponent extends UriEndpointComponent {
     }
 
     protected SqlSessionFactory createSqlSessionFactory() throws IOException {
-        ObjectHelper.notNull(configurationUri, "configurationUri", this);
-        InputStream is = ResourceHelper.resolveMandatoryResourceAsInputStream(getCamelContext(), configurationUri);
+        lock.lock();
         try {
-            return new SqlSessionFactoryBuilder().build(is);
+            if (sqlSessionFactory == null) {
+                ObjectHelper.notNull(configurationUri, "configurationUri", this);
+                InputStream is = ResourceHelper.resolveMandatoryResourceAsInputStream(getCamelContext(), configurationUri);
+                try {
+                    sqlSessionFactory = new SqlSessionFactoryBuilder().build(is);
+                } finally {
+                    IOHelper.close(is);
+                }
+            }
+            return sqlSessionFactory;
         } finally {
-            IOHelper.close(is);
+            lock.unlock();
         }
     }
 
@@ -81,17 +87,4 @@ public class MyBatisComponent extends UriEndpointComponent {
         this.configurationUri = configurationUri;
     }
 
-    @Override
-    protected void doStart() throws Exception {
-        super.doStart();
-
-        if (sqlSessionFactory == null) {
-            sqlSessionFactory = createSqlSessionFactory();
-        }
-    }
-
-    @Override
-    protected void doStop() throws Exception {
-        super.doStop();
-    }
 }

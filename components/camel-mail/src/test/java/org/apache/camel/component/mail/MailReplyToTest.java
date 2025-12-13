@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,19 +16,23 @@
  */
 package org.apache.camel.component.mail;
 
-import javax.mail.internet.InternetAddress;
+import jakarta.mail.internet.InternetAddress;
 
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mail.Mailbox.MailboxUser;
+import org.apache.camel.component.mail.Mailbox.Protocol;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import org.jvnet.mock_javamail.Mailbox;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Unit test for Mail replyTo support.
  */
 public class MailReplyToTest extends CamelTestSupport {
-    
+    private static final MailboxUser christian = Mailbox.getOrCreateUser("christian", "secret");
+
     @Test
     public void testMailReplyTo() throws Exception {
         Mailbox.clearAll();
@@ -37,20 +41,20 @@ public class MailReplyToTest extends CamelTestSupport {
 
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMessageCount(1);
-        mock.expectedHeaderReceived("Reply-To", "noReply1@localhost,noReply2@localhost");
+        mock.expectedHeaderReceived(MailConstants.MAIL_REPLY_TO, "noReply1@localhost,noReply2@localhost");
         mock.expectedBodiesReceived(body);
 
-        template.sendBodyAndHeader("direct:a", body, "Reply-To", "noReply1@localhost,noReply2@localhost");
+        template.sendBodyAndHeader("direct:a", body, MailConstants.MAIL_REPLY_TO, "noReply1@localhost,noReply2@localhost");
 
         mock.assertIsSatisfied();
 
-        Mailbox mailbox = Mailbox.get("christian@localhost");
-        assertEquals(1, mailbox.size());
+        Mailbox mailbox = christian.getInbox();
+        assertEquals(1, mailbox.getMessageCount());
         assertEquals("noReply1@localhost", ((InternetAddress) mailbox.get(0).getReplyTo()[0]).getAddress());
         assertEquals("noReply2@localhost", ((InternetAddress) mailbox.get(0).getReplyTo()[1]).getAddress());
         assertEquals(body, mailbox.get(0).getContent());
     }
-    
+
     @Test
     public void testMailReplyTo2() throws Exception {
         Mailbox.clearAll();
@@ -59,31 +63,33 @@ public class MailReplyToTest extends CamelTestSupport {
 
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMessageCount(1);
-        mock.expectedHeaderReceived("Reply-To", "noReply1@localhost, noReply2@localhost");
+        mock.expectedHeaderReceived(MailConstants.MAIL_REPLY_TO, "noReply1@localhost, noReply2@localhost");
         mock.expectedBodiesReceived(body);
 
         template.sendBody("direct:b", body);
 
         mock.assertIsSatisfied();
 
-        Mailbox mailbox = Mailbox.get("christian@localhost");
-        assertEquals(1, mailbox.size());
+        Mailbox mailbox = christian.getInbox();
+        assertEquals(1, mailbox.getMessageCount());
         assertEquals("noReply1@localhost", ((InternetAddress) mailbox.get(0).getReplyTo()[0]).getAddress());
         assertEquals("noReply2@localhost", ((InternetAddress) mailbox.get(0).getReplyTo()[1]).getAddress());
         assertEquals(body, mailbox.get(0).getContent());
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:a")
-                    .to("smtp://christian@localhost?subject=Camel");
-                
-                from("direct:b")
-                    .to("smtp://christian@localhost?subject=Camel&replyTo=noReply1@localhost,noReply2@localhost");
+                        .to(christian.uriPrefix(Protocol.smtp) + "&subject=Camel");
 
-                from("pop3://localhost?username=christian&password=secret&consumer.delay=1000")
-                    .to("mock:result");
+                from("direct:b")
+                        .to(christian.uriPrefix(Protocol.smtp)
+                            + "&subject=Camel&replyTo=noReply1@localhost,noReply2@localhost");
+
+                from(christian.uriPrefix(Protocol.imap) + "&initialDelay=100&delay=100")
+                        .to("mock:result");
             }
         };
     }

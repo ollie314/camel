@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,17 +16,20 @@
  */
 package org.apache.camel.component.git.consumer;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Queue;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
+import org.apache.camel.component.git.GitConstants;
 import org.apache.camel.component.git.GitEndpoint;
 import org.eclipse.jgit.lib.Ref;
 
 public class GitTagConsumer extends AbstractGitConsumer {
 
-    private List tagsConsumed = new ArrayList();
+    private final List<String> tagsConsumed = new ArrayList<>();
 
     public GitTagConsumer(GitEndpoint endpoint, Processor processor) {
         super(endpoint, processor);
@@ -34,18 +37,31 @@ public class GitTagConsumer extends AbstractGitConsumer {
 
     @Override
     protected int poll() throws Exception {
-        int count = 0;
+        Queue<Object> exchanges = new ArrayDeque<>();
         List<Ref> call = getGit().tagList().call();
         for (Ref ref : call) {
             if (!tagsConsumed.contains(ref.getName())) {
-                Exchange e = getEndpoint().createExchange();
-                e.getOut().setBody(ref);
-                getProcessor().process(e);
-                tagsConsumed.add(ref.getName());
-                count++;
+                Exchange e = createExchange(true);
+                e.getMessage().setBody(ref.getName());
+                e.getMessage().setHeader(GitConstants.GIT_BRANCH_NAME, ref.getName());
+                e.getMessage().setHeader(GitConstants.GIT_BRANCH_LEAF, ref.getLeaf().getName());
+                e.getMessage().setHeader(GitConstants.GIT_BRANCH_OBJECT_ID, ref.getObjectId().getName());
+                exchanges.add(e);
             }
         }
-        return count;
+        return processBatch(exchanges);
+    }
+
+    @Override
+    public Object onPreProcessed(Exchange exchange) {
+        return exchange.getMessage().getHeader(GitConstants.GIT_BRANCH_NAME, String.class);
+    }
+
+    @Override
+    public void onProcessed(Exchange exchange, Object value) {
+        if (value != null) {
+            tagsConsumed.add(value.toString());
+        }
     }
 
 }

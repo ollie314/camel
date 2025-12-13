@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -32,9 +32,9 @@ import com.univocity.parsers.common.Format;
 import org.apache.camel.Exchange;
 import org.apache.camel.spi.DataFormat;
 import org.apache.camel.spi.DataFormatName;
-import org.apache.camel.support.ServiceSupport;
+import org.apache.camel.support.service.ServiceSupport;
 
-import static org.apache.camel.util.IOHelper.getCharsetName;
+import static org.apache.camel.support.ExchangeHelper.getCharsetName;
 
 /**
  * This abstract class contains all the common parts for all the uniVocity parsers.
@@ -47,15 +47,18 @@ import static org.apache.camel.util.IOHelper.getCharsetName;
  * @param <P>   uniVocity parser class
  * @param <DF>  the data format class (for providing a fluent API)
  */
-public abstract class AbstractUniVocityDataFormat<F extends Format, CWS extends CommonWriterSettings<F>,
-        W extends AbstractWriter<CWS>, CPS extends CommonParserSettings<F>, P extends AbstractParser<CPS>, DF extends AbstractUniVocityDataFormat<F, CWS, W, CPS, P, DF>>
-        extends ServiceSupport implements DataFormat, DataFormatName {
+public abstract class AbstractUniVocityDataFormat<
+        F extends Format, CWS extends CommonWriterSettings<F>,
+        W extends AbstractWriter<CWS>, CPS extends CommonParserSettings<F>, P extends AbstractParser<CPS>,
+        DF extends AbstractUniVocityDataFormat<F, CWS, W, CPS, P, DF>>
+        extends ServiceSupport
+        implements DataFormat, DataFormatName {
     protected String nullValue;
     protected Boolean skipEmptyLines;
     protected Boolean ignoreTrailingWhitespaces;
     protected Boolean ignoreLeadingWhitespaces;
     protected boolean headersDisabled;
-    protected String[] headers;
+    protected String headers;
     protected Boolean headerExtractionEnabled;
     protected Integer numberOfRecordsToRead;
     protected String emptyValue;
@@ -66,395 +69,47 @@ public abstract class AbstractUniVocityDataFormat<F extends Format, CWS extends 
     protected boolean asMap;
 
     private volatile CWS writerSettings;
-    private final Object writerSettingsToken = new Object();
     private volatile Marshaller<W> marshaller;
 
-    // We're using a ThreadLocal for the parser settings because in order to retrieve the headers we need to change the
-    // settings each time we're parsing...
-    private volatile ThreadLocal<CPS> parserSettings;
-    private final Object parserSettingsToken = new Object();
+    private volatile CPS parserSettings;
     private volatile Unmarshaller<P> unmarshaller;
+    private final HeaderRowProcessor headerRowProcessor = new HeaderRowProcessor();
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void marshal(Exchange exchange, Object body, OutputStream stream) throws Exception {
         if (writerSettings == null) {
-            synchronized (writerSettingsToken) {
-                if (writerSettings == null) {
-                    writerSettings = createAndConfigureWriterSettings();
-                    marshaller = new Marshaller<W>(headers, headers == null);
-                }
-            }
+            writerSettings = createAndConfigureWriterSettings();
+        }
+        if (marshaller == null) {
+            marshaller = new Marshaller<>(headersAsArray(), headers == null);
         }
 
-        Writer writer = new OutputStreamWriter(stream, getCharsetName(exchange));
-        try {
+        try (Writer writer = new OutputStreamWriter(stream, getCharsetName(exchange))) {
             marshaller.marshal(exchange, body, createWriter(writer, writerSettings));
-        } finally {
-            writer.close();
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public Object unmarshal(Exchange exchange, InputStream stream) throws Exception {
         if (parserSettings == null) {
-            synchronized (parserSettingsToken) {
-                if (parserSettings == null) {
-                    parserSettings = new ThreadLocal<CPS>() {
-                        @Override
-                        protected CPS initialValue() {
-                            return createAndConfigureParserSettings();
-                        }
-                    };
-                    unmarshaller = new Unmarshaller<P>(lazyLoad, asMap);
-                }
-            }
+            parserSettings = createAndConfigureParserSettings();
+        }
+        if (unmarshaller == null) {
+            unmarshaller = new Unmarshaller<>(lazyLoad, asMap);
         }
 
+        P parser = createParser(parserSettings);
+        // univocity-parsers is responsible for closing the reader, even in case of error
         Reader reader = new InputStreamReader(stream, getCharsetName(exchange));
-        try {
-            HeaderRowProcessor headerRowProcessor = new HeaderRowProcessor();
-            CPS settings = parserSettings.get();
-            settings.setRowProcessor(headerRowProcessor);
-            return unmarshaller.unmarshal(reader, createParser(settings), headerRowProcessor);
-        } finally {
-            reader.close();
+        return unmarshaller.unmarshal(reader, parser, headerRowProcessor);
+    }
+
+    String[] headersAsArray() {
+        if (headers != null) {
+            return headers.split(",");
+        } else {
+            return null;
         }
-    }
-
-    /**
-     * Gets the String representation of a null value.
-     * If {@code null} then the default settings value is used.
-     *
-     * @return the String representation of a null value
-     * @see com.univocity.parsers.common.CommonSettings#getNullValue()
-     */
-    public String getNullValue() {
-        return nullValue;
-    }
-
-    /**
-     * Sets the String representation of a null value.
-     * If {@code null} then the default settings value is used.
-     *
-     * @param nullValue the String representation of a null value
-     * @return current data format instance, fluent API
-     * @see com.univocity.parsers.common.CommonSettings#setNullValue(String)
-     */
-    public DF setNullValue(String nullValue) {
-        this.nullValue = nullValue;
-        return self();
-    }
-
-    /**
-     * Gets whether or not empty lines should be ignored.
-     * If {@code null} then the default settings value is used.
-     *
-     * @return whether or not empty lines should be ignored
-     * @see com.univocity.parsers.common.CommonSettings#getSkipEmptyLines()
-     */
-    public Boolean getSkipEmptyLines() {
-        return skipEmptyLines;
-    }
-
-    /**
-     * Sets whether or not empty lines should be ignored.
-     * If {@code null} then the default settings value is used.
-     *
-     * @param skipEmptyLines whether or not empty lines should be ignored
-     * @return current data format instance, fluent API
-     * @see com.univocity.parsers.common.CommonSettings#setSkipEmptyLines(boolean)
-     */
-    public DF setSkipEmptyLines(Boolean skipEmptyLines) {
-        this.skipEmptyLines = skipEmptyLines;
-        return self();
-    }
-
-    /**
-     * Gets whether or not trailing whitespaces should be ignored.
-     * If {@code null} then the default settings value is used.
-     *
-     * @return whether or not trailing whitespaces should be ignored
-     * @see com.univocity.parsers.common.CommonSettings#getIgnoreTrailingWhitespaces()
-     */
-    public Boolean getIgnoreTrailingWhitespaces() {
-        return ignoreTrailingWhitespaces;
-    }
-
-    /**
-     * Sets whether or not trailing whitespaces should be ignored.
-     * If {@code null} then the default settings value is used.
-     *
-     * @param ignoreTrailingWhitespaces whether or not trailing whitespaces should be ignored
-     * @return current data format instance, fluent API
-     * @see com.univocity.parsers.common.CommonSettings#setIgnoreTrailingWhitespaces(boolean)
-     */
-    public DF setIgnoreTrailingWhitespaces(Boolean ignoreTrailingWhitespaces) {
-        this.ignoreTrailingWhitespaces = ignoreTrailingWhitespaces;
-        return self();
-    }
-
-    /**
-     * Gets whether or not leading whitespaces should be ignored.
-     * If {@code null} then the default settings value is used.
-     *
-     * @return whether or not leading whitespaces should be ignored
-     * @see com.univocity.parsers.common.CommonSettings#getIgnoreLeadingWhitespaces()
-     */
-    public Boolean getIgnoreLeadingWhitespaces() {
-        return ignoreLeadingWhitespaces;
-    }
-
-    /**
-     * Sets whether or not leading whitespaces should be ignored.
-     * If {@code null} then the default settings value is used.
-     *
-     * @param ignoreLeadingWhitespaces whether or not leading whitespaces should be ignored
-     * @return current data format instance, fluent API
-     * @see com.univocity.parsers.common.CommonSettings#setIgnoreLeadingWhitespaces(boolean)
-     */
-    public DF setIgnoreLeadingWhitespaces(Boolean ignoreLeadingWhitespaces) {
-        this.ignoreLeadingWhitespaces = ignoreLeadingWhitespaces;
-        return self();
-    }
-
-    /**
-     * Gets whether or not headers are disabled.
-     * If {@code true} then it passes {@code null} to
-     * {@link com.univocity.parsers.common.CommonSettings#setHeaders(String...)} in order to disabled them.
-     *
-     * @return whether or not headers are disabled
-     * @see com.univocity.parsers.common.CommonSettings#getHeaders()
-     */
-    public boolean isHeadersDisabled() {
-        return headersDisabled;
-    }
-
-    /**
-     * Sets whether or not headers are disabled.
-     * If {@code true} then it passes {@code null} to
-     * {@link com.univocity.parsers.common.CommonSettings#setHeaders(String...)} in order to disabled them.
-     *
-     * @param headersDisabled whether or not headers are disabled
-     * @return current data format instance, fluent API
-     * @see com.univocity.parsers.common.CommonSettings#setHeaders(String...)
-     */
-    public DF setHeadersDisabled(boolean headersDisabled) {
-        this.headersDisabled = headersDisabled;
-        return self();
-    }
-
-    /**
-     * Gets the headers.
-     * If {@code null} then the default settings value is used.
-     *
-     * @return the headers
-     * @see com.univocity.parsers.common.CommonSettings#getHeaders()
-     */
-    public String[] getHeaders() {
-        return headers;
-    }
-
-    /**
-     * Sets the headers.
-     * If {@code null} then the default settings value is used.
-     *
-     * @param headers the headers
-     * @return current data format instance, fluent API
-     * @see com.univocity.parsers.common.CommonSettings#setHeaders(String...)
-     */
-    public DF setHeaders(String[] headers) {
-        this.headers = headers;
-        return self();
-    }
-
-    /**
-     * Gets whether or not the header extraction is enabled.
-     * If {@code null} then the default settings value is used.
-     *
-     * @return whether or not the header extraction is enabled
-     * @see com.univocity.parsers.common.CommonParserSettings#isHeaderExtractionEnabled()
-     */
-    public Boolean getHeaderExtractionEnabled() {
-        return headerExtractionEnabled;
-    }
-
-    /**
-     * Sets whether or not the header extraction is enabled.
-     * If {@code null} then the default settings value is used.
-     *
-     * @param headerExtractionEnabled whether or not the header extraction is enabled
-     * @return current data format instance, fluent API
-     * @see com.univocity.parsers.common.CommonParserSettings#setHeaderExtractionEnabled(boolean)
-     */
-    public DF setHeaderExtractionEnabled(Boolean headerExtractionEnabled) {
-        this.headerExtractionEnabled = headerExtractionEnabled;
-        return self();
-    }
-
-    /**
-     * Gets the number of records to read.
-     * If {@code null} then the default settings value is used.
-     *
-     * @return the number of records to read
-     * @see com.univocity.parsers.common.CommonParserSettings#getNumberOfRecordsToRead()
-     */
-    public Integer getNumberOfRecordsToRead() {
-        return numberOfRecordsToRead;
-    }
-
-    /**
-     * Sets the number of records to read.
-     * If {@code null} then the default settings value is used.
-     *
-     * @param numberOfRecordsToRead the number of records to read
-     * @return current data format instance, fluent API
-     * @see com.univocity.parsers.common.CommonParserSettings#setNumberOfRecordsToRead(int)
-     */
-    public DF setNumberOfRecordsToRead(Integer numberOfRecordsToRead) {
-        this.numberOfRecordsToRead = numberOfRecordsToRead;
-        return self();
-    }
-
-    /**
-     * Gets the String representation of an empty value.
-     * If {@code null} then the default settings value is used.
-     *
-     * @return the String representation of an empty value
-     * @see com.univocity.parsers.common.CommonWriterSettings#getEmptyValue()
-     */
-    public String getEmptyValue() {
-        return emptyValue;
-    }
-
-    /**
-     * Sets the String representation of an empty value.
-     * If {@code null} then the default settings value is used.
-     *
-     * @param emptyValue the String representation of an empty value
-     * @return current data format instance, fluent API
-     * @see com.univocity.parsers.common.CommonWriterSettings#setEmptyValue(String)
-     */
-    public DF setEmptyValue(String emptyValue) {
-        this.emptyValue = emptyValue;
-        return self();
-    }
-
-    /**
-     * Gets the line separator.
-     * If {@code null} then the default format value is used.
-     *
-     * @return the line separator
-     * @see com.univocity.parsers.common.Format#getLineSeparatorString()
-     */
-    public String getLineSeparator() {
-        return lineSeparator;
-    }
-
-    /**
-     * Sets the line separator.
-     * If {@code null} then the default format value is used.
-     *
-     * @param lineSeparator the line separator
-     * @return current data format instance, fluent API
-     * @see Format#setLineSeparator(String)
-     */
-    public DF setLineSeparator(String lineSeparator) {
-        this.lineSeparator = lineSeparator;
-        return self();
-    }
-
-    /**
-     * Gets the normalized line separator.
-     * If {@code null} then the default format value is used.
-     *
-     * @return the normalized line separator
-     * @see com.univocity.parsers.common.Format#getNormalizedNewline()
-     */
-    public Character getNormalizedLineSeparator() {
-        return normalizedLineSeparator;
-    }
-
-    /**
-     * Sets the normalized line separator.
-     * If {@code null} then the default format value is used.
-     *
-     * @param normalizedLineSeparator the normalized line separator
-     * @return current data format instance, fluent API
-     * @see Format#setNormalizedNewline(char)
-     */
-    public DF setNormalizedLineSeparator(Character normalizedLineSeparator) {
-        this.normalizedLineSeparator = normalizedLineSeparator;
-        return self();
-    }
-
-    /**
-     * Gets the comment symbol.
-     * If {@code null} then the default format value is used.
-     *
-     * @return the comment symbol
-     * @see com.univocity.parsers.common.Format#getComment()
-     */
-    public Character getComment() {
-        return comment;
-    }
-
-    /**
-     * Gets the comment symbol.
-     * If {@code null} then the default format value is used.
-     *
-     * @param comment the comment symbol
-     * @return current data format instance, fluent API
-     * @see com.univocity.parsers.common.Format#setComment(char)
-     */
-    public DF setComment(Character comment) {
-        this.comment = comment;
-        return self();
-    }
-
-    /**
-     * Gets whether or not the unmarshalling should read lines lazily.
-     *
-     * @return whether or not the unmarshalling should read lines lazily
-     */
-    public boolean isLazyLoad() {
-        return lazyLoad;
-    }
-
-    /**
-     * Sets whether or not the unmarshalling should read lines lazily.
-     *
-     * @param lazyLoad whether or not the unmarshalling should read lines lazily
-     * @return current data format instance, fluent API
-     */
-    public DF setLazyLoad(boolean lazyLoad) {
-        this.lazyLoad = lazyLoad;
-        return self();
-    }
-
-    /**
-     * Gets whether or not the unmarshalling should produces maps instead of lists.
-     *
-     * @return whether or not the unmarshalling should produces maps instead of lists
-     */
-    public boolean isAsMap() {
-        return asMap;
-    }
-
-    /**
-     * Sets whether or not the unmarshalling should produces maps instead of lists.
-     *
-     * @param asMap whether or not the unmarshalling should produces maps instead of lists
-     * @return current data format instance, fluent API
-     */
-    public DF setAsMap(boolean asMap) {
-        this.asMap = asMap;
-        return self();
     }
 
     /**
@@ -480,9 +135,9 @@ public abstract class AbstractUniVocityDataFormat<F extends Format, CWS extends 
     /**
      * Creates a new instance of the uniVocity writer.
      *
-     * @param writer   Output writer to use
-     * @param settings Writer settings to use
-     * @return New uinstance of the uniVocity writer
+     * @param  writer   Output writer to use
+     * @param  settings Writer settings to use
+     * @return          New uinstance of the uniVocity writer
      */
     protected abstract W createWriter(Writer writer, CWS settings);
 
@@ -512,8 +167,8 @@ public abstract class AbstractUniVocityDataFormat<F extends Format, CWS extends 
     /**
      * Creates a new instance of the uniVocity parser.
      *
-     * @param settings Parser settings to use
-     * @return New instance of the uniVocity parser
+     * @param  settings Parser settings to use
+     * @return          New instance of the uniVocity parser
      */
     protected abstract P createParser(CPS settings);
 
@@ -555,6 +210,7 @@ public abstract class AbstractUniVocityDataFormat<F extends Format, CWS extends 
         CPS settings = createParserSettings();
         configureParserSettings(settings);
         configureFormat(settings.getFormat());
+        settings.setProcessor(headerRowProcessor);
         return settings;
     }
 
@@ -579,18 +235,156 @@ public abstract class AbstractUniVocityDataFormat<F extends Format, CWS extends 
         if (headersDisabled) {
             settings.setHeaders((String[]) null);
         } else if (headers != null) {
-            settings.setHeaders(headers);
+            settings.setHeaders(headersAsArray());
         }
     }
 
-    /**
-     * Returns {@code this} as the proper data format type. It helps the fluent API with inheritance.
-     *
-     * @return {@code this} as the proper data format type
-     */
-    @SuppressWarnings("unchecked")
-    private DF self() {
-        return (DF) this;
+    public String getNullValue() {
+        return nullValue;
+    }
+
+    public void setNullValue(String nullValue) {
+        this.nullValue = nullValue;
+    }
+
+    public Boolean getSkipEmptyLines() {
+        return skipEmptyLines;
+    }
+
+    public void setSkipEmptyLines(Boolean skipEmptyLines) {
+        this.skipEmptyLines = skipEmptyLines;
+    }
+
+    public Boolean getIgnoreTrailingWhitespaces() {
+        return ignoreTrailingWhitespaces;
+    }
+
+    public void setIgnoreTrailingWhitespaces(Boolean ignoreTrailingWhitespaces) {
+        this.ignoreTrailingWhitespaces = ignoreTrailingWhitespaces;
+    }
+
+    public Boolean getIgnoreLeadingWhitespaces() {
+        return ignoreLeadingWhitespaces;
+    }
+
+    public void setIgnoreLeadingWhitespaces(Boolean ignoreLeadingWhitespaces) {
+        this.ignoreLeadingWhitespaces = ignoreLeadingWhitespaces;
+    }
+
+    public boolean isHeadersDisabled() {
+        return headersDisabled;
+    }
+
+    public void setHeadersDisabled(boolean headersDisabled) {
+        this.headersDisabled = headersDisabled;
+    }
+
+    public String getHeaders() {
+        return headers;
+    }
+
+    public void setHeaders(String headers) {
+        this.headers = headers;
+    }
+
+    public Boolean getHeaderExtractionEnabled() {
+        return headerExtractionEnabled;
+    }
+
+    public void setHeaderExtractionEnabled(Boolean headerExtractionEnabled) {
+        this.headerExtractionEnabled = headerExtractionEnabled;
+    }
+
+    public Integer getNumberOfRecordsToRead() {
+        return numberOfRecordsToRead;
+    }
+
+    public void setNumberOfRecordsToRead(Integer numberOfRecordsToRead) {
+        this.numberOfRecordsToRead = numberOfRecordsToRead;
+    }
+
+    public String getEmptyValue() {
+        return emptyValue;
+    }
+
+    public void setEmptyValue(String emptyValue) {
+        this.emptyValue = emptyValue;
+    }
+
+    public String getLineSeparator() {
+        return lineSeparator;
+    }
+
+    public void setLineSeparator(String lineSeparator) {
+        this.lineSeparator = lineSeparator;
+    }
+
+    public Character getNormalizedLineSeparator() {
+        return normalizedLineSeparator;
+    }
+
+    public void setNormalizedLineSeparator(Character normalizedLineSeparator) {
+        this.normalizedLineSeparator = normalizedLineSeparator;
+    }
+
+    public Character getComment() {
+        return comment;
+    }
+
+    public void setComment(Character comment) {
+        this.comment = comment;
+    }
+
+    public boolean isLazyLoad() {
+        return lazyLoad;
+    }
+
+    public void setLazyLoad(boolean lazyLoad) {
+        this.lazyLoad = lazyLoad;
+    }
+
+    public boolean isAsMap() {
+        return asMap;
+    }
+
+    public void setAsMap(boolean asMap) {
+        this.asMap = asMap;
+    }
+
+    public CWS getWriterSettings() {
+        return writerSettings;
+    }
+
+    public void setWriterSettings(CWS writerSettings) {
+        this.writerSettings = writerSettings;
+    }
+
+    public Marshaller<W> getMarshaller() {
+        return marshaller;
+    }
+
+    public void setMarshaller(Marshaller<W> marshaller) {
+        this.marshaller = marshaller;
+    }
+
+    public CPS getParserSettings() {
+        return parserSettings;
+    }
+
+    public void setParserSettings(CPS parserSettings) {
+        this.parserSettings = parserSettings;
+    }
+
+    public Unmarshaller<P> getUnmarshaller() {
+        return unmarshaller;
+    }
+
+    public void setUnmarshaller(Unmarshaller<P> unmarshaller) {
+        this.unmarshaller = unmarshaller;
+    }
+
+    public HeaderRowProcessor getHeaderRowProcessor() {
+        return headerRowProcessor;
     }
 
     @Override

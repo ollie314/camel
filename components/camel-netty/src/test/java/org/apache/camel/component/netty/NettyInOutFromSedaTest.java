@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,11 +18,8 @@ package org.apache.camel.component.netty;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
 public class NettyInOutFromSedaTest extends BaseNettyTest {
 
     @Test
@@ -34,22 +31,22 @@ public class NettyInOutFromSedaTest extends BaseNettyTest {
         template.sendBody("seda:start", "B");
         template.sendBody("seda:start", "C");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("seda:start")
-                    .log("before ${body}")
-                    .to("netty:tcp://localhost:{{port}}?textline=true&sync=true")
-                    .log("after ${body}")
-                    .to("mock:result");
+                        .log("before ${body}")
+                        .to("netty:tcp://localhost:{{port}}?textline=true&sync=true")
+                        .log("after ${body}")
+                        .to("mock:result");
 
                 from("netty:tcp://localhost:{{port}}?textline=true&sync=true")
-                    .transform(body().prepend("Bye "));
+                        .transform(body().prepend("Bye "));
             }
         };
     }

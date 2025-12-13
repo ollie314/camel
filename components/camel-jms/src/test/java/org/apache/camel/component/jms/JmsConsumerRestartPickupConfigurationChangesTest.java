@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,41 +16,44 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
-
 import org.apache.camel.CamelContext;
-import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ProducerTemplate;
+import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-/**
- * @version 
- */
-public class JmsConsumerRestartPickupConfigurationChangesTest extends CamelTestSupport {
+public class JmsConsumerRestartPickupConfigurationChangesTest extends AbstractJMSTest {
+
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
     public void testRestartJmsConsumerPickupChanges() throws Exception {
-        JmsEndpoint endpoint = context.getEndpoint("activemq:queue:foo", JmsEndpoint.class);
-        JmsConsumer consumer = endpoint.createConsumer(new Processor() {
-            public void process(Exchange exchange) throws Exception {
-                template.send("mock:result", exchange);
-            }
-        });
+        JmsEndpoint endpoint = context.getEndpoint("activemq:queue:JmsConsumerRestartPickupConfigurationChangesTest.Request",
+                JmsEndpoint.class);
+        JmsConsumer consumer = endpoint.createConsumer(exchange -> template.send("mock:result", exchange));
 
         consumer.start();
 
         MockEndpoint result = getMockEndpoint("mock:result");
         result.expectedBodiesReceived("Hello World");
-        template.sendBody("activemq:queue:foo", "Hello World");
-        assertMockEndpointsSatisfied();
+        template.sendBody("activemq:queue:JmsConsumerRestartPickupConfigurationChangesTest.Request", "Hello World");
+        MockEndpoint.assertIsSatisfied(context);
 
         consumer.stop();
 
         // change to listen on another queue
-        endpoint.setDestinationName("bar");
+        endpoint.setDestinationName("JmsConsumerRestartPickupConfigurationChangesTest.Destination");
         endpoint.setConcurrentConsumers(2);
 
         // restart it
@@ -58,19 +61,31 @@ public class JmsConsumerRestartPickupConfigurationChangesTest extends CamelTestS
 
         result.reset();
         result.expectedBodiesReceived("Bye World");
-        template.sendBody("activemq:queue:bar", "Bye World");
-        assertMockEndpointsSatisfied();
+        template.sendBody("activemq:queue:JmsConsumerRestartPickupConfigurationChangesTest.Destination", "Bye World");
+        MockEndpoint.assertIsSatisfied(context);
 
         consumer.stop();
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-
-        return camelContext;
+    @Override
+    protected String getComponentName() {
+        return "activemq";
     }
 
+    @Override
+    protected RouteBuilder createRouteBuilder() {
+        return null;
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
+    }
 }

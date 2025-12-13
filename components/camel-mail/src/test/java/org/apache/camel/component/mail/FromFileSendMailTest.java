@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,15 +19,16 @@ package org.apache.camel.component.mail;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.file.GenericFile;
+import org.apache.camel.component.mail.Mailbox.MailboxUser;
+import org.apache.camel.component.mail.Mailbox.Protocol;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import org.jvnet.mock_javamail.Mailbox;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 public class FromFileSendMailTest extends CamelTestSupport {
+    private static final MailboxUser james = Mailbox.getOrCreateUser("james", "secret");
 
     @Test
     public void testSendFileAsMail() throws Exception {
@@ -39,26 +40,26 @@ public class FromFileSendMailTest extends CamelTestSupport {
 
         template.sendBodyAndHeader("file://target/mailtext", "Hi how are you", Exchange.FILE_NAME, "mail.txt");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
-        Mailbox mailbox = Mailbox.get("james@localhost");
-        assertEquals(1, mailbox.size());
-        Object body = mailbox.get(0).getContent(); 
+        Mailbox mailbox = james.getInbox();
+        assertEquals(1, mailbox.getMessageCount());
+        Object body = mailbox.get(0).getContent();
         assertEquals("Hi how are you", body);
         Object subject = mailbox.get(0).getSubject();
         assertEquals("Hello World", subject);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("file://target/mailtext")
-                    .setHeader("Subject", constant("Hello World"))
-                    .setHeader("To", constant("james@localhost"))
-                    .setHeader("From", constant("claus@localhost"))
-                    .to("smtp://localhost?password=secret&username=claus", "mock:result");
+            public void configure() {
+                from("file://target/mailtext?initialDelay=100&delay=100")
+                        .setHeader("Subject", constant("Hello World"))
+                        .setHeader("To", constant("james@localhost"))
+                        .setHeader("From", constant("claus@localhost"))
+                        .to(james.uriPrefix(Protocol.smtp) + "&initialDelay=100&delay=100", "mock:result");
             }
         };
     }

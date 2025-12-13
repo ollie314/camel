@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,6 +16,7 @@
  */
 package org.apache.camel.component.git;
 
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
@@ -24,45 +25,60 @@ import org.apache.camel.component.git.consumer.GitCommitConsumer;
 import org.apache.camel.component.git.consumer.GitTagConsumer;
 import org.apache.camel.component.git.consumer.GitType;
 import org.apache.camel.component.git.producer.GitProducer;
-import org.apache.camel.impl.DefaultEndpoint;
 import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriPath;
+import org.apache.camel.support.ScheduledPollEndpoint;
 
 /**
- * The git component is used for working with git repositories.
+ * Perform operations on git repositories.
  */
-@UriEndpoint(scheme = "git", title = "Git", syntax = "git:localPath", label = "file")
-public class GitEndpoint extends DefaultEndpoint {
+@UriEndpoint(firstVersion = "2.16.0", scheme = "git", title = "Git", syntax = "git:localPath", category = { Category.FILE },
+             headersClass = GitConstants.class)
+public class GitEndpoint extends ScheduledPollEndpoint {
 
     @UriPath
-    @Metadata(required = "true")
+    @Metadata(required = true)
     private String localPath;
 
     @UriParam
     private String branchName;
 
-    @UriParam
+    @UriParam(label = "producer",
+              description = "Name of target branch in merge operation. If not supplied will try to use init.defaultBranch git configs. If not configured will use default value",
+              defaultValue = "master")
+    private String targetBranchName;
+
+    @UriParam(label = "producer")
     private String tagName;
 
     @UriParam(enums = "commit,tag,branch", label = "consumer")
     private GitType type;
 
-    @UriParam
+    @UriParam(label = "producer,security", secret = true)
     private String username;
 
-    @UriParam
+    @UriParam(label = "producer,security", secret = true)
     private String password;
 
-    @UriParam
+    @UriParam(label = "producer")
     private String remotePath;
-    
-    @UriParam
+
+    @UriParam(label = "producer")
     private String remoteName;
 
-    @UriParam(enums = "clone,init,add,remove,commit,commitAll,createBranch,deleteBranch,createTag,deleteTag,status,log,push,pull,showBranches,cherryPick", label = "producer")
+    // Set to true for backward compatibility , better to set to false (native git behavior)
+    @UriParam(defaultValue = "true")
+    @Metadata(label = "producer")
+    private boolean allowEmpty = true;
+
+    @UriParam(label = "producer",
+              enums = "add,cherryPick,clean,clone,commit,commitAll,createBranch,createTag,deleteBranch,deleteTag,gc,init,log,pull,push,remoteAdd,remoteList,remove,showBranches,showTags,status")
     private String operation;
+
+    @UriParam(description = "A String with path to a .gitconfig file", label = "advanced")
+    private String gitConfigFile;
 
     public GitEndpoint(String uri, GitComponent component) {
         super(uri, component);
@@ -84,11 +100,6 @@ public class GitEndpoint extends DefaultEndpoint {
         } else {
             throw new IllegalArgumentException("Cannot create consumer with type " + type);
         }
-    }
-
-    @Override
-    public boolean isSingleton() {
-        return true;
     }
 
     /**
@@ -178,7 +189,7 @@ public class GitEndpoint extends DefaultEndpoint {
     public void setTagName(String tagName) {
         this.tagName = tagName;
     }
-    
+
     /**
      * The remote repository name to use in particular operation like pull
      */
@@ -190,4 +201,36 @@ public class GitEndpoint extends DefaultEndpoint {
         this.remoteName = remoteName;
     }
 
+    /**
+     * The flag to manage empty git commits
+     */
+    public boolean isAllowEmpty() {
+        return allowEmpty;
+    }
+
+    public void setAllowEmpty(boolean allowEmpty) {
+        this.allowEmpty = allowEmpty;
+    }
+
+    /**
+     * The branch name to merge
+     */
+    public String getTargetBranchName() {
+        return this.targetBranchName;
+    }
+
+    public void setTargetBranchName(String targetBranchName) {
+        this.targetBranchName = targetBranchName;
+    }
+
+    /**
+     * A String with path to a .gitconfig file
+     */
+    public String getGitConfigFile() {
+        return this.gitConfigFile;
+    }
+
+    public void setGitConfigFile(String gitConfigFile) {
+        this.gitConfigFile = gitConfigFile;
+    }
 }

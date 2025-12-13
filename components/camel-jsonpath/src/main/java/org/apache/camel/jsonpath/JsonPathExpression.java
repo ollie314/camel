@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,26 +16,53 @@
  */
 package org.apache.camel.jsonpath;
 
+import java.util.Collection;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
 import com.jayway.jsonpath.Option;
-import org.apache.camel.AfterPropertiesConfigured;
 import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
+import org.apache.camel.Expression;
 import org.apache.camel.ExpressionEvaluationException;
 import org.apache.camel.ExpressionIllegalSyntaxException;
+import org.apache.camel.jsonpath.easypredicate.EasyPredicateParser;
 import org.apache.camel.support.ExpressionAdapter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-public class JsonPathExpression extends ExpressionAdapter implements AfterPropertiesConfigured {
+public class JsonPathExpression extends ExpressionAdapter {
+
+    private static final Logger LOG = LoggerFactory.getLogger(JsonPathExpression.class);
 
     private final String expression;
     private JsonPathEngine engine;
 
+    private boolean predicate;
     private Class<?> resultType;
     private boolean suppressExceptions;
     private boolean allowSimple = true;
+    private boolean allowEasyPredicate = true;
+    private boolean writeAsString;
+    private boolean unpackArray;
+    private Expression source;
     private Option[] options;
 
     public JsonPathExpression(String expression) {
         this.expression = expression;
+    }
+
+    public boolean isPredicate() {
+        return predicate;
+    }
+
+    /**
+     * Whether to be evaluated as a predicate
+     */
+    public void setPredicate(boolean predicate) {
+        this.predicate = predicate;
     }
 
     public Class<?> getResultType() {
@@ -71,6 +98,48 @@ public class JsonPathExpression extends ExpressionAdapter implements AfterProper
         this.allowSimple = allowSimple;
     }
 
+    public boolean isAllowEasyPredicate() {
+        return allowEasyPredicate;
+    }
+
+    /**
+     * Whether to allow using the easy predicate parser to pre-parse predicates. See {@link EasyPredicateParser} for
+     * more details.
+     */
+    public void setAllowEasyPredicate(boolean allowEasyPredicate) {
+        this.allowEasyPredicate = allowEasyPredicate;
+    }
+
+    public boolean isWriteAsString() {
+        return writeAsString;
+    }
+
+    /**
+     * Whether to write the output of each row/element as a JSON String value instead of a Map/POJO value.
+     */
+    public void setWriteAsString(boolean writeAsString) {
+        this.writeAsString = writeAsString;
+    }
+
+    public boolean isUnpackArray() {
+        return unpackArray;
+    }
+
+    /**
+     * Whether to unpack a single element json-array into an object.
+     */
+    public void setUnpackArray(boolean unpackArray) {
+        this.unpackArray = unpackArray;
+    }
+
+    public Expression getSource() {
+        return source;
+    }
+
+    public void setSource(Expression source) {
+        this.source = source;
+    }
+
     public Option[] getOptions() {
         return options;
     }
@@ -86,26 +155,64 @@ public class JsonPathExpression extends ExpressionAdapter implements AfterProper
     public Object evaluate(Exchange exchange) {
         try {
             Object result = evaluateJsonPath(exchange, engine);
-            if (resultType != null) {
-                return exchange.getContext().getTypeConverter().convertTo(resultType, exchange, result);
-            } else {
+            boolean resultTypeIsCollection = resultType != null && Collection.class.isAssignableFrom(resultType);
+            if (unpackArray) {
+                // in some cases we get a single element that is wrapped in a List, so unwrap that
+                // if we for example want to grab the single entity and convert that to an int/boolean/String etc
+                boolean singleElement = result instanceof List && ((List<?>) result).size() == 1;
+                if (singleElement && !resultTypeIsCollection) {
+                    result = ((List<?>) result).get(0);
+                    LOG.trace("Unwrapping result: {} from single element List before converting to: {}", result,
+                            resultType);
+                }
+            }
+            if (resultType == null) {
                 return result;
             }
+            if (resultTypeIsCollection) {
+                // we want a list as output
+                boolean resultIsCollection = result instanceof List;
+                if (!resultIsCollection) {
+                    var list = new LinkedList<>();
+                    list.add(result);
+                    result = list;
+                }
+                return exchange.getContext().getTypeConverter().convertTo(resultType, exchange, result);
+            } else if (result instanceof Collection<?> col) {
+                // convert each element in the list
+                result = col.stream()
+                        .filter(Objects::nonNull) // skip null
+                        .map(item -> exchange.getContext().getTypeConverter().convertTo(resultType, exchange, item))
+                        .collect(Collectors.toList());
+            }
+            if (result instanceof Collection<?> col && col.size() == 1) {
+                result = col.stream().findFirst().get();
+            }
+            return exchange.getContext().getTypeConverter().convertTo(resultType, exchange, result);
         } catch (Exception e) {
             throw new ExpressionEvaluationException(this, exchange, e);
         }
     }
 
     @Override
-    public void afterPropertiesConfigured(CamelContext camelContext) {
-        init();
-    }
+    public void init(CamelContext context) {
+        String exp = expression;
 
-    public void init() {
+        if (predicate && isAllowEasyPredicate()) {
+            EasyPredicateParser parser = new EasyPredicateParser();
+            exp = parser.parse(expression);
+
+            if (!exp.equals(expression)) {
+                LOG.debug("EasyPredicateParser parsed {} -> {}", expression, exp);
+            }
+        }
+
+        LOG.debug("Initializing {} using: {}", predicate ? "predicate" : "expression", exp);
         try {
-            engine = new JsonPathEngine(expression, suppressExceptions, allowSimple, options);
+            engine = new JsonPathEngine(
+                    exp, source, writeAsString, suppressExceptions, allowSimple, options, context);
         } catch (Exception e) {
-            throw new ExpressionIllegalSyntaxException(expression, e);
+            throw new ExpressionIllegalSyntaxException(exp, e);
         }
     }
 

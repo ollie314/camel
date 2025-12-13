@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,15 +16,16 @@
  */
 package org.apache.camel.component.jms;
 
+import org.junit.jupiter.api.Disabled;
+
 /**
  * With the passthrough option
- *
- * @version 
  */
+@Disabled("Characters like - or . have to be escaped in Artemis like JmsRouteWithCustomKeyFormatStrategyTest#40, the passthrough doesn't do this automatically")
 public class JmsRouteWithPassThroughKeyFormatStrategyTest extends JmsRouteWithDefaultKeyFormatStrategyTest {
 
     @Override
     protected String getUri() {
-        return "activemq:queue:foo?jmsKeyFormatStrategy=passthrough";
+        return "activemq:queue:JmsRouteWithPassThroughKeyFormatStrategyTest?jmsKeyFormatStrategy=passthrough";
     }
 }

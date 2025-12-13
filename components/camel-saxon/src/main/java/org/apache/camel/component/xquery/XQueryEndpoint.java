@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,7 +16,7 @@
  */
 package org.apache.camel.component.xquery;
 
-import java.net.URL;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -24,54 +24,65 @@ import java.util.Properties;
 import net.sf.saxon.Configuration;
 import net.sf.saxon.lib.ModuleURIResolver;
 import net.sf.saxon.query.StaticQueryContext;
+import org.apache.camel.Category;
 import org.apache.camel.Component;
-import org.apache.camel.impl.ProcessorEndpoint;
 import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriPath;
-import org.apache.camel.util.ResourceHelper;
-import org.apache.camel.util.ServiceHelper;
+import org.apache.camel.support.ProcessorEndpoint;
+import org.apache.camel.support.ResourceHelper;
+import org.apache.camel.support.builder.ExpressionBuilder;
+import org.apache.camel.support.service.ServiceHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Transforms the message using a XQuery template using Saxon.
+ * Query and/or transform XML payloads using XQuery and Saxon.
  */
-@UriEndpoint(scheme = "xquery", title = "XQuery", syntax = "xquery:resourceUri", label = "transformation")
+@UriEndpoint(firstVersion = "1.0.0", scheme = "xquery", title = "XQuery", syntax = "xquery:resourceUri",
+             remote = false, category = { Category.TRANSFORMATION })
 public class XQueryEndpoint extends ProcessorEndpoint {
 
     private static final Logger LOG = LoggerFactory.getLogger(XQueryEndpoint.class);
 
     private volatile XQueryBuilder xquery;
 
-    @UriPath @Metadata(required = "true")
+    @UriPath
+    @Metadata(required = true)
     private String resourceUri;
-    @UriParam
+    @UriParam(label = "advanced")
     private Configuration configuration;
-    @UriParam
+    @UriParam(label = "advanced")
+    private Map<String, Object> configurationProperties = new HashMap<>();
+    @UriParam(label = "advanced")
     private StaticQueryContext staticQueryContext;
+    @UriParam(label = "advanced")
+    private Map<String, Object> parameters = new HashMap<>();
     @UriParam
-    private Map<String, Object> parameters = new HashMap<String, Object>();
-    @UriParam
-    private Map<String, String> namespacePrefixes = new HashMap<String, String>();
+    private Map<String, String> namespacePrefixes = new HashMap<>();
     @UriParam(defaultValue = "DOM")
     private ResultFormat resultsFormat = ResultFormat.DOM;
-    @UriParam
+    @UriParam(label = "advanced")
     private Properties properties = new Properties();
     @UriParam
     private Class<?> resultType;
     @UriParam(defaultValue = "true")
     private boolean stripsAllWhiteSpace = true;
-    @UriParam
+    @UriParam(label = "advanced")
     private ModuleURIResolver moduleURIResolver;
     @UriParam
     private boolean allowStAX;
     @UriParam
-    private String headerName;
+    private String source;
 
     public XQueryEndpoint(String endpointUri, Component component) {
         super(endpointUri, component);
+    }
+
+    @Override
+    public boolean isRemote() {
+        return false;
     }
 
     public String getResourceUri() {
@@ -94,6 +105,17 @@ public class XQueryEndpoint extends ProcessorEndpoint {
      */
     public void setConfiguration(Configuration configuration) {
         this.configuration = configuration;
+    }
+
+    public Map<String, Object> getConfigurationProperties() {
+        return configurationProperties;
+    }
+
+    /**
+     * To set custom Saxon configuration properties
+     */
+    public void setConfigurationProperties(Map<String, Object> configurationProperties) {
+        this.configurationProperties = configurationProperties;
     }
 
     public StaticQueryContext getStaticQueryContext() {
@@ -195,26 +217,43 @@ public class XQueryEndpoint extends ProcessorEndpoint {
         this.allowStAX = allowStAX;
     }
 
-    public String getHeaderName() {
-        return headerName;
+    public String getSource() {
+        return source;
     }
 
     /**
-     * To use a Camel Message header as the input source instead of Message body.
+     * Source to use, instead of message body. You can prefix with variable:, header:, or property: to specify kind of
+     * source. Otherwise, the source is assumed to be a variable. Use empty or null to use default source, which is the
+     * message body.
      */
-    public void setHeaderName(String headerName) {
-        this.headerName = headerName;
+    public void setSource(String source) {
+        this.source = source;
+    }
+
+    @Override
+    protected void doInit() throws Exception {
+        super.doInit();
+        if (ResourceHelper.isClasspathUri(resourceUri)) {
+            doInitXQuery();
+        }
     }
 
     @Override
     protected void doStart() throws Exception {
         super.doStart();
+        if (!ResourceHelper.isClasspathUri(resourceUri)) {
+            doInitXQuery();
+        }
+        ServiceHelper.startService(xquery);
+    }
 
+    protected void doInitXQuery() throws Exception {
         LOG.debug("{} using schema resource: {}", this, resourceUri);
-        URL url = ResourceHelper.resolveMandatoryResourceAsUrl(getCamelContext().getClassResolver(), resourceUri);
+        InputStream is = ResourceHelper.resolveMandatoryResourceAsInputStream(getCamelContext(), resourceUri);
 
-        this.xquery = XQueryBuilder.xquery(url);
+        this.xquery = XQueryBuilder.xquery(is);
         this.xquery.setConfiguration(getConfiguration());
+        this.xquery.setConfigurationProperties(getConfigurationProperties());
         this.xquery.setStaticQueryContext(getStaticQueryContext());
         this.xquery.setParameters(getParameters());
         this.xquery.setNamespaces(namespacePrefixes);
@@ -223,11 +262,11 @@ public class XQueryEndpoint extends ProcessorEndpoint {
         this.xquery.setResultType(getResultType());
         this.xquery.setStripsAllWhiteSpace(isStripsAllWhiteSpace());
         this.xquery.setAllowStAX(isAllowStAX());
-        this.xquery.setHeaderName(getHeaderName());
+        this.xquery.setModuleURIResolver(getModuleURIResolver());
+        this.xquery.setSource(ExpressionBuilder.singleInputExpression(getSource()));
+        this.xquery.init(getCamelContext());
 
         setProcessor(xquery);
-
-        ServiceHelper.startService(xquery);
     }
 
     @Override

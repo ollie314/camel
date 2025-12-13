@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,12 +22,15 @@ import java.util.Map;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
+import org.apache.camel.RuntimeCamelException;
+import org.apache.camel.SSLContextParametersAware;
 import org.apache.camel.component.olingo2.api.impl.Olingo2AppImpl;
 import org.apache.camel.component.olingo2.internal.Olingo2ApiCollection;
 import org.apache.camel.component.olingo2.internal.Olingo2ApiName;
-import org.apache.camel.util.ObjectHelper;
-import org.apache.camel.util.component.AbstractApiComponent;
-import org.apache.camel.util.jsse.SSLContextParameters;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.spi.annotations.Component;
+import org.apache.camel.support.component.AbstractApiComponent;
+import org.apache.camel.support.jsse.SSLContextParameters;
 import org.apache.http.HttpHost;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.impl.client.HttpClientBuilder;
@@ -36,27 +39,38 @@ import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
 /**
  * Represents the component that manages {@link Olingo2Endpoint}.
  */
-public class Olingo2Component extends AbstractApiComponent<Olingo2ApiName, Olingo2Configuration, Olingo2ApiCollection> {
+@Component("olingo2")
+public class Olingo2Component extends AbstractApiComponent<Olingo2ApiName, Olingo2Configuration, Olingo2ApiCollection>
+        implements SSLContextParametersAware {
+
+    @Metadata
+    Olingo2Configuration configuration;
+
+    @Metadata(label = "security", defaultValue = "false")
+    private boolean useGlobalSslContextParameters;
 
     // component level shared proxy
     private Olingo2AppWrapper apiProxy;
 
     public Olingo2Component() {
-        super(Olingo2Endpoint.class, Olingo2ApiName.class, Olingo2ApiCollection.getCollection());
+        super(Olingo2ApiName.class, Olingo2ApiCollection.getCollection());
     }
 
     public Olingo2Component(CamelContext context) {
-        super(context, Olingo2Endpoint.class, Olingo2ApiName.class, Olingo2ApiCollection.getCollection());
+        super(context, Olingo2ApiName.class, Olingo2ApiCollection.getCollection());
     }
 
     @Override
-    protected Olingo2ApiName getApiName(String apiNameStr) throws IllegalArgumentException {
-        return Olingo2ApiName.fromValue(apiNameStr);
+    protected Olingo2ApiName getApiName(String apiNameStr) {
+        return getCamelContext().getTypeConverter().convertTo(Olingo2ApiName.class, apiNameStr);
     }
 
     @Override
     protected Endpoint createEndpoint(String uri, String remaining, Map<String, Object> parameters) throws Exception {
         // parse remaining to extract resourcePath and queryParams
+        if (remaining.startsWith("DEFAULT/")) {
+            remaining = remaining.substring(8);
+        }
         final String[] pathSegments = remaining.split("/", -1);
         final String methodName = pathSegments[0];
 
@@ -75,18 +89,15 @@ public class Olingo2Component extends AbstractApiComponent<Olingo2ApiName, Oling
         final Olingo2Configuration endpointConfiguration = createEndpointConfiguration(Olingo2ApiName.DEFAULT);
         final Endpoint endpoint = createEndpoint(uri, methodName, Olingo2ApiName.DEFAULT, endpointConfiguration);
 
-        // set endpoint property inBody
-        setProperties(endpoint, parameters);
-
         // configure endpoint properties and initialize state
-        endpoint.configureProperties(parameters);
+        setProperties(endpoint, parameters);
 
         return endpoint;
     }
 
     @Override
-    protected Endpoint createEndpoint(String uri, String methodName, Olingo2ApiName apiName,
-                                      Olingo2Configuration endpointConfiguration) {
+    protected Endpoint createEndpoint(
+            String uri, String methodName, Olingo2ApiName apiName, Olingo2Configuration endpointConfiguration) {
         endpointConfiguration.setApiName(apiName);
         endpointConfiguration.setMethodName(methodName);
         return new Olingo2Endpoint(uri, this, apiName, methodName, endpointConfiguration);
@@ -110,17 +121,33 @@ public class Olingo2Component extends AbstractApiComponent<Olingo2ApiName, Oling
 
     public Olingo2AppWrapper createApiProxy(Olingo2Configuration endpointConfiguration) {
         final Olingo2AppWrapper result;
-        if (endpointConfiguration.equals(this.configuration)) {
-            synchronized (this) {
+        if (endpointConfiguration.equals(getConfiguration())) {
+            lock.lock();
+            try {
                 if (apiProxy == null) {
-                    apiProxy = createOlingo2App(this.configuration);
+                    apiProxy = createOlingo2App(getConfiguration());
                 }
+            } finally {
+                lock.unlock();
             }
             result = apiProxy;
         } else {
             result = createOlingo2App(endpointConfiguration);
         }
         return result;
+    }
+
+    @Override
+    public boolean isUseGlobalSslContextParameters() {
+        return this.useGlobalSslContextParameters;
+    }
+
+    /**
+     * Enable usage of global SSL context parameters.
+     */
+    @Override
+    public void setUseGlobalSslContextParameters(boolean useGlobalSslContextParameters) {
+        this.useGlobalSslContextParameters = useGlobalSslContextParameters;
     }
 
     private Olingo2AppWrapper createOlingo2App(Olingo2Configuration configuration) {
@@ -144,16 +171,20 @@ public class Olingo2Component extends AbstractApiComponent<Olingo2ApiName, Oling
 
             SSLContextParameters sslContextParameters = configuration.getSslContextParameters();
             if (sslContextParameters == null) {
+                // use global ssl config
+                sslContextParameters = retrieveGlobalSslContextParameters();
+            }
+            if (sslContextParameters == null) {
                 // use defaults if not specified
                 sslContextParameters = new SSLContextParameters();
             }
             try {
                 asyncClientBuilder.setSSLContext(sslContextParameters.createSSLContext(getCamelContext()));
-            } catch (GeneralSecurityException e) {
-                throw ObjectHelper.wrapRuntimeCamelException(e);
-            } catch (IOException e) {
-                throw ObjectHelper.wrapRuntimeCamelException(e);
+            } catch (GeneralSecurityException | IOException e) {
+                throw RuntimeCamelException.wrapRuntimeCamelException(e);
             }
+
+            clientBuilder = asyncClientBuilder;
         }
 
         Olingo2AppImpl olingo2App;
@@ -165,6 +196,8 @@ public class Olingo2Component extends AbstractApiComponent<Olingo2ApiName, Oling
         apiProxy = new Olingo2AppWrapper(olingo2App);
         apiProxy.getOlingo2App().setContentType(configuration.getContentType());
         apiProxy.getOlingo2App().setHttpHeaders(configuration.getHttpHeaders());
+        apiProxy.getOlingo2App().setEntityProviderReadProperties(configuration.getEntityProviderReadProperties());
+        apiProxy.getOlingo2App().setEntityProviderWriteProperties(configuration.getEntityProviderWriteProperties());
 
         return apiProxy;
     }

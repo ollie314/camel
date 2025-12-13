@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,20 +17,29 @@
 package org.apache.camel.component.hazelcast.set;
 
 import com.hazelcast.core.HazelcastInstance;
+import org.apache.camel.Category;
 import org.apache.camel.Component;
 import org.apache.camel.Consumer;
-import org.apache.camel.Endpoint;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
+import org.apache.camel.component.hazelcast.HazelcastCommand;
+import org.apache.camel.component.hazelcast.HazelcastConstants;
 import org.apache.camel.component.hazelcast.HazelcastDefaultEndpoint;
+import org.apache.camel.spi.UriEndpoint;
+
+import static org.apache.camel.component.hazelcast.HazelcastConstants.SCHEME_SET;
 
 /**
- * Hazelcast Set {@link Endpoint} implementation.
+ * Perform operations on <a href="http://www.hazelcast.com/">Hazelcast</a> distributed set.
  */
+@UriEndpoint(firstVersion = "2.7.0", scheme = SCHEME_SET, title = "Hazelcast Set", syntax = "hazelcast-set:cacheName",
+             category = { Category.CACHE, Category.CLUSTERING }, headersClass = HazelcastConstants.class)
 public class HazelcastSetEndpoint extends HazelcastDefaultEndpoint {
 
-    public HazelcastSetEndpoint(HazelcastInstance hazelcastInstance, String endpointUri, Component component, String cacheName) {
+    public HazelcastSetEndpoint(HazelcastInstance hazelcastInstance, String endpointUri, Component component,
+                                String cacheName) {
         super(hazelcastInstance, endpointUri, component, cacheName);
+        setCommand(HazelcastCommand.set);
     }
 
     @Override

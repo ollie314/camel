@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,8 +21,9 @@ import javax.xml.transform.TransformerFactory;
 
 import net.sf.saxon.TransformerFactoryImpl;
 import org.apache.camel.component.schematron.constant.Constants;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * TemplateFactory Unit Test.
@@ -33,12 +34,12 @@ public class TemplatesFactoryTest {
     private String rules = "sch/schematron-1.sch";
 
     @Test
-    public void testInstantiateAnInstanceOfTemplates() throws Exception {
+    public void testInstantiateAnInstanceOfTemplates() {
         TemplatesFactory fac = TemplatesFactory.newInstance();
         TransformerFactory factory = new TransformerFactoryImpl();
         factory.setURIResolver(new ClassPathURIResolver(Constants.SCHEMATRON_TEMPLATES_ROOT_DIR, null));
         Templates templates = fac.getTemplates(ClassLoader.getSystemResourceAsStream(rules), factory);
-        Assert.assertNotNull(templates);
+        assertNotNull(templates);
 
     }
 }

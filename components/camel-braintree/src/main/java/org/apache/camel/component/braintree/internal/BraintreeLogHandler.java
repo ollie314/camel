@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -31,7 +31,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class BraintreeLogHandler extends Handler {
     public static final Handler INSTANCE = new BraintreeLogHandler();
-    public static final Level DEFAULT_LOGGER_VERSION = Level.WARNING;
+    public static final Level DEFAULT_LOGGER_LEVEL = Level.WARNING;
     public static final String DEFAULT_LOGGER_NAME = "org.apache.camel.component.braintree.camel-braintree";
 
     private static final int TRACE_LEVEL_THRESHOLD = Level.FINEST.intValue();
@@ -50,46 +50,46 @@ public final class BraintreeLogHandler extends Handler {
     }
 
     @Override
-    public void publish(LogRecord record) {
-        if (record != null) {
-            final Logger logger = getLogger(record);
-            final String message = formatMessage(record);
+    public void publish(LogRecord logRecord) {
+        if (logRecord != null) {
+            final Logger logger = getLogger(logRecord);
+            final String message = formatMessage(logRecord);
 
-            int level = record.getLevel().intValue();
+            int level = logRecord.getLevel().intValue();
             if (level <= TRACE_LEVEL_THRESHOLD) {
-                logger.trace(message, record.getThrown());
+                logger.trace(message, logRecord.getThrown());
             } else if (level <= DEBUG_LEVEL_THRESHOLD) {
-                logger.debug(message, record.getThrown());
+                logger.debug(message, logRecord.getThrown());
             } else if (level <= INFO_LEVEL_THRESHOLD) {
-                logger.info(message, record.getThrown());
+                logger.info(message, logRecord.getThrown());
             } else if (level <= WARN_LEVEL_THRESHOLD) {
-                logger.warn(message, record.getThrown());
+                logger.warn(message, logRecord.getThrown());
             } else {
-                logger.error(message, record.getThrown());
+                logger.error(message, logRecord.getThrown());
             }
         }
     }
 
-    private Logger getLogger(LogRecord record) {
-        String name = record.getLoggerName();
+    private Logger getLogger(LogRecord logRecord) {
+        String name = logRecord.getLoggerName();
         if (name == null) {
             name = DEFAULT_LOGGER_NAME;
         }
         return LoggerFactory.getLogger(name);
     }
 
-    private String formatMessage(LogRecord record) {
-        String message = record.getMessage();
+    private String formatMessage(LogRecord logRecord) {
+        String message = logRecord.getMessage();
         if (message != null) {
 
-            ResourceBundle bundle = record.getResourceBundle();
+            ResourceBundle bundle = logRecord.getResourceBundle();
             if (bundle != null) {
                 try {
                     message = bundle.getString(message);
                 } catch (MissingResourceException e) {
                 }
             }
-            Object[] params = record.getParameters();
+            Object[] params = logRecord.getParameters();
             // avoid formatting when there are no or 0 parameters. see also
             // http://jira.qos.ch/browse/SLF4J-203
             if (params != null && params.length > 0) {

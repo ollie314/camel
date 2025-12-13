@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,55 +16,84 @@
  */
 package org.apache.camel.component.jms.issues;
 
-import javax.jms.ConnectionFactory;
-
 import org.apache.camel.CamelContext;
-import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.jms.CamelJmsTestHelper;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.jms.AbstractJMSTest;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.awaitility.Awaitility;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
-/**
- * @version 
- */
-public class JmsInOutUseMessageIDasCorrelationIDTest extends CamelTestSupport {
+public class JmsInOutUseMessageIDasCorrelationIDTest extends AbstractJMSTest {
+
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
+
+    void waitForConnections() {
+        Awaitility.await().until(() -> context.getRoute("route-1").getUptimeMillis() > 100);
+    }
 
     @Test
-    public void testInOutWithMsgIdAsCorrId() throws Exception {
-        String reply = template.requestBody("activemq:queue:in?useMessageIDAsCorrelationID=true", "Hello World", String.class);
+    public void testInOutWithMsgIdAsCorrId() {
+        String reply = template.requestBody(
+                "activemq:queue:JmsInOutUseMessageIDasCorrelationIDTest.in?useMessageIDAsCorrelationID=true", "Hello World",
+                String.class);
         assertEquals("Bye World", reply);
     }
 
     @Test
-    public void testInOutFixedReplyToAndWithMsgIdAsCorrId() throws Exception {
-        String reply = template.requestBody("activemq:queue:in?replyTo=bar&useMessageIDAsCorrelationID=true", "Hello World", String.class);
+    public void testInOutFixedReplyToAndWithMsgIdAsCorrId() {
+        String reply = template.requestBody(
+                "activemq:queue:JmsInOutUseMessageIDasCorrelationIDTest.in?replyTo=queue:JmsInOutUseMessageIDasCorrelationIDTest.bar&useMessageIDAsCorrelationID=true",
+                "Hello World",
+                String.class);
         assertEquals("Bye World", reply);
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-        return camelContext;
+    @Override
+    protected String getComponentName() {
+        return "activemq";
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("activemq:queue:in?useMessageIDAsCorrelationID=true").process(new Processor() {
-                    public void process(Exchange exchange) throws Exception {
-                        String id = exchange.getIn().getHeader("JMSCorrelationID", String.class);
-                        assertNull("JMSCorrelationID should be null", id);
+            public void configure() {
+                from("activemq:queue:JmsInOutUseMessageIDasCorrelationIDTest.in?useMessageIDAsCorrelationID=true")
+                        .routeId("route-1")
+                        .process(exchange -> {
+                            String id = exchange.getIn().getHeader("JMSCorrelationID", String.class);
+                            assertNull(id, "JMSCorrelationID should be null");
 
-                        exchange.getOut().setBody("Bye World");
-                    }
-                });
+                            exchange.getMessage().setBody("Bye World");
+                        });
             }
         };
     }
 
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
+
+        waitForConnections();
+    }
 }

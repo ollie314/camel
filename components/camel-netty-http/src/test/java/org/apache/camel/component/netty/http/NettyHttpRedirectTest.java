@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,38 +17,40 @@
 package org.apache.camel.component.netty.http;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
 import org.apache.camel.RuntimeCamelException;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class NettyHttpRedirectTest extends BaseNettyTest {
 
     @Test
-    public void testHttpRedirect() throws Exception {
+    public void testHttpRedirect() {
         try {
             template.requestBody("netty-http:http://localhost:{{port}}/test", "Hello World", String.class);
             fail("Should have thrown an exception");
         } catch (RuntimeCamelException e) {
             NettyHttpOperationFailedException cause = assertIsInstanceOf(NettyHttpOperationFailedException.class, e.getCause());
             assertEquals(301, cause.getStatusCode());
-            assertEquals(true, cause.isRedirectError());
-            assertEquals(true, cause.hasRedirectLocation());
+            assertTrue(cause.isRedirectError());
+            assertTrue(cause.hasRedirectLocation());
             assertEquals("http://localhost:" + getPort() + "/newtest", cause.getRedirectLocation());
         }
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("netty-http:http://localhost:{{port}}/test")
-                        .process(new Processor() {
-                            public void process(Exchange exchange) throws Exception {
-                                exchange.getOut().setHeader(Exchange.HTTP_RESPONSE_CODE, 301);
-                                exchange.getOut().setHeader("location", "http://localhost:" + getPort() + "/newtest");
-                            }
+                        .process(exchange -> {
+                            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, 301);
+                            exchange.getMessage().setHeader("location", "http://localhost:" + getPort() + "/newtest");
                         });
             }
         };

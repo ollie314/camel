@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,81 +17,102 @@
 package org.apache.camel.dataformat.tarfile;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
-
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.util.Collections.singletonList;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.NotifyBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.spring.CamelSpringTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.spring.junit5.CamelSpringTestSupport;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 import org.springframework.context.support.ClassPathXmlApplicationContext;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.camel.Exchange.FILE_NAME;
 import static org.apache.camel.dataformat.tarfile.TarUtils.TEXT;
 import static org.apache.camel.dataformat.tarfile.TarUtils.getBytes;
 import static org.apache.camel.dataformat.tarfile.TarUtils.getTaredText;
+import static org.apache.camel.dataformat.tarfile.TarUtils.toEntries;
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class SpringTarFileDataFormatTest extends CamelSpringTestSupport {
+class SpringTarFileDataFormatTest extends CamelSpringTestSupport {
     private static final File TEST_DIR = new File("target/springtar");
 
     @Test
-    public void testTarWithoutFileName() throws Exception {
+    void testTarWithoutFileName() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:tar");
         mock.expectedMessageCount(1);
 
         template.sendBody("direct:tar", TEXT);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         Exchange exchange = mock.getReceivedExchanges().get(0);
         assertEquals(exchange.getIn().getMessageId() + ".tar", exchange.getIn().getHeader(FILE_NAME));
-        assertArrayEquals(getTaredText(exchange.getIn().getMessageId()), (byte[]) exchange.getIn().getBody());
+
+        final byte[] resultArray = exchange.getIn().getBody(byte[].class);
+        Map<String, TarUtils.EntryMetadata> tarData = toEntries(resultArray);
+        assertTrue(tarData.containsKey(exchange.getIn().getMessageId()));
+
+        TarUtils.EntryMetadata entryMetadata = tarData.get(exchange.getIn().getMessageId());
+        assertEquals(TEXT.getBytes(StandardCharsets.UTF_8).length, entryMetadata.size);
+        assertFalse(entryMetadata.isDirectory);
     }
 
-
     @Test
-    public void testTarWithFileName() throws Exception {
+    void testTarWithFileName() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:tar");
         mock.expectedMessageCount(1);
         mock.expectedHeaderReceived(FILE_NAME, "poem.txt.tar");
 
         template.sendBodyAndHeader("direct:tar", TEXT, FILE_NAME, "poem.txt");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         Exchange exchange = mock.getReceivedExchanges().get(0);
-        assertArrayEquals(getTaredText("poem.txt"), (byte[]) exchange.getIn().getBody());
+
+        final byte[] convertedArray = exchange.getIn().getBody(byte[].class);
+
+        Map<String, TarUtils.EntryMetadata> tarData = toEntries(convertedArray);
+        assertTrue(tarData.containsKey("poem.txt"));
+
+        TarUtils.EntryMetadata entryMetadata = tarData.get("poem.txt");
+        assertEquals(TEXT.getBytes(StandardCharsets.UTF_8).length, entryMetadata.size);
+        assertFalse(entryMetadata.isDirectory);
     }
 
     @Test
-    public void testUntar() throws Exception {
+    void testUntar() throws Exception {
         getMockEndpoint("mock:untar").expectedBodiesReceived(TEXT);
         getMockEndpoint("mock:untar").expectedHeaderReceived(FILE_NAME, "file");
 
         template.sendBody("direct:untar", getTaredText("file"));
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
-    public void testTarAndUntar() throws Exception {
+    void testTarAndUntar() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:tarAndUntar");
         mock.expectedMessageCount(1);
 
         template.sendBody("direct:tarAndUntar", TEXT);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         Exchange exchange = mock.getReceivedExchanges().get(0);
         assertEquals(exchange.getIn().getMessageId(), exchange.getIn().getHeader(FILE_NAME));
-        assertArrayEquals(TEXT.getBytes(UTF_8), (byte[]) exchange.getIn().getBody());
+        assertArrayEquals(TEXT.getBytes(UTF_8), exchange.getIn().getBody(byte[].class));
     }
 
     @Test
-    public void testTarToFileWithoutFileName() throws Exception {
+    void testTarToFileWithoutFileName() throws Exception {
         NotifyBuilder notify = new NotifyBuilder(context).whenDone(1).create();
 
         String[] files = TEST_DIR.list();
@@ -102,7 +123,7 @@ public class SpringTarFileDataFormatTest extends CamelSpringTestSupport {
 
         template.sendBody("direct:tarToFile", TEXT);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // use builder to ensure the exchange is fully done before we check for file exists
         assertTrue(notify.matches(5, TimeUnit.SECONDS));
@@ -110,11 +131,19 @@ public class SpringTarFileDataFormatTest extends CamelSpringTestSupport {
         Exchange exchange = mock.getReceivedExchanges().get(0);
         File file = new File(TEST_DIR, exchange.getIn().getMessageId() + ".tar");
         assertTrue(file.exists());
-        assertArrayEquals(getTaredText(exchange.getIn().getMessageId()), getBytes(file));
+
+        final byte[] resultArray = getBytes(file);
+
+        Map<String, TarUtils.EntryMetadata> tarData = toEntries(resultArray);
+        assertTrue(tarData.containsKey(exchange.getIn().getMessageId()));
+
+        TarUtils.EntryMetadata entryMetadata = tarData.get(exchange.getIn().getMessageId());
+        assertEquals(TEXT.getBytes(StandardCharsets.UTF_8).length, entryMetadata.size);
+        assertFalse(entryMetadata.isDirectory);
     }
 
     @Test
-    public void testTarToFileWithFileName() throws Exception {
+    void testTarToFileWithFileName() throws Exception {
         NotifyBuilder notify = new NotifyBuilder(context).whenDone(1).create();
 
         MockEndpoint mock = getMockEndpoint("mock:tarToFile");
@@ -132,34 +161,39 @@ public class SpringTarFileDataFormatTest extends CamelSpringTestSupport {
         assertTrue(notify.matches(5, TimeUnit.SECONDS));
 
         assertTrue(file.exists());
-        assertArrayEquals(getTaredText("poem.txt"), getBytes(file));
+
+        final byte[] resultArray = getBytes(file);
+
+        Map<String, TarUtils.EntryMetadata> tarData = toEntries(resultArray);
+        assertTrue(tarData.containsKey("poem.txt"));
+
+        TarUtils.EntryMetadata entryMetadata = tarData.get("poem.txt");
+        assertEquals(TEXT.getBytes(StandardCharsets.UTF_8).length, entryMetadata.size);
+        assertFalse(entryMetadata.isDirectory);
     }
 
     @Test
-    public void testDslTar() throws Exception {
-        getMockEndpoint("mock:dslTar").expectedBodiesReceived(singletonList(getTaredText("poem.txt")));
+    void testDslTar() throws Exception {
         getMockEndpoint("mock:dslTar").expectedHeaderReceived(FILE_NAME, "poem.txt.tar");
 
         template.sendBodyAndHeader("direct:dslTar", TEXT, FILE_NAME, "poem.txt");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
-
     @Test
-    public void testDslUntar() throws Exception {
+    void testDslUntar() throws Exception {
         getMockEndpoint("mock:dslUntar").expectedBodiesReceived(TEXT);
         getMockEndpoint("mock:dslUntar").expectedHeaderReceived(FILE_NAME, "test.txt");
 
         template.sendBody("direct:dslUntar", getTaredText("test.txt"));
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
-    @Override
-    public void setUp() throws Exception {
+    @AfterEach
+    public void cleanOutputDirectory() {
         deleteDirectory(TEST_DIR);
-        super.setUp();
     }
 
     @Override

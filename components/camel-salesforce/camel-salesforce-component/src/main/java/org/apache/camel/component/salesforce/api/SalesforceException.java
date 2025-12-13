@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,6 +16,7 @@
  */
 package org.apache.camel.component.salesforce.api;
 
+import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
 
@@ -28,6 +29,11 @@ public class SalesforceException extends CamelException {
 
     private final List<RestError> errors;
     private final int statusCode;
+    private final InputStream responseContent;
+
+    public SalesforceException(String message) {
+        this(message, null);
+    }
 
     public SalesforceException(Throwable cause) {
         this(null, 0, null, cause);
@@ -38,7 +44,7 @@ public class SalesforceException extends CamelException {
     }
 
     public SalesforceException(String message, int statusCode) {
-        this(null, statusCode, message, null);
+        this(null, statusCode, message, (InputStream) null);
     }
 
     public SalesforceException(String message, int statusCode, Throwable cause) {
@@ -46,7 +52,7 @@ public class SalesforceException extends CamelException {
     }
 
     public SalesforceException(List<RestError> errors, int statusCode) {
-        this(errors, statusCode, null, null);
+        this(errors, statusCode, null, (InputStream) null);
     }
 
     public SalesforceException(List<RestError> errors, int statusCode, Throwable cause) {
@@ -54,49 +60,35 @@ public class SalesforceException extends CamelException {
     }
 
     public SalesforceException(List<RestError> errors, int statusCode, String message) {
-        this(errors, statusCode, message, null);
+        this(errors, statusCode, message, null, null);
+    }
+
+    public SalesforceException(List<RestError> errors, int statusCode, String message, InputStream responseContent) {
+        this(errors, statusCode, message, responseContent, null);
     }
 
     public SalesforceException(List<RestError> errors, int statusCode, String message, Throwable cause) {
+        this(errors, statusCode, message, null, cause);
+    }
+
+    public SalesforceException(List<RestError> errors, int statusCode, String message, InputStream responseContent,
+                               Throwable cause) {
         super(message == null ? toErrorMessage(errors, statusCode) : message, cause);
         this.errors = errors;
         this.statusCode = statusCode;
+        this.responseContent = responseContent;
     }
 
     public List<RestError> getErrors() {
-        return errors != null ? Collections.unmodifiableList(errors) : null;
+        return errors == null ? Collections.emptyList() : Collections.unmodifiableList(errors);
     }
 
     public int getStatusCode() {
         return statusCode;
     }
 
-    @Override
-    public String toString() {
-        final StringBuilder builder = new StringBuilder("{");
-        appendFields(builder);
-        builder.append("}");
-        return builder.toString();
-    }
-
-    protected void appendFields(StringBuilder builder) {
-        // append message
-        builder.append("message:'");
-        builder.append(getMessage());
-        builder.append("',");
-
-        // check for error
-        if (errors != null) {
-            builder.append("errors:[");
-            for (RestError error : errors) {
-                builder.append(error.toString());
-            }
-            builder.append("],");
-
-        }
-        // append statusCode
-        builder.append("statusCode:");
-        builder.append(statusCode);
+    public InputStream getResponseContent() {
+        return responseContent;
     }
 
     private static String toErrorMessage(List<RestError> errors, int statusCode) {
@@ -114,5 +106,4 @@ public class SalesforceException extends CamelException {
 
         return builder.toString();
     }
-
 }

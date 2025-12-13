@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,11 +16,9 @@
  */
 package org.apache.camel.component.dropbox;
 
-import java.util.Locale;
-
-import com.dropbox.core.DbxClient;
 import com.dropbox.core.DbxRequestConfig;
-import org.apache.camel.component.dropbox.util.DropboxException;
+import com.dropbox.core.oauth.DbxCredential;
+import com.dropbox.core.v2.DbxClientV2;
 import org.apache.camel.component.dropbox.util.DropboxOperation;
 import org.apache.camel.component.dropbox.util.DropboxUploadMode;
 import org.apache.camel.spi.Metadata;
@@ -32,51 +30,67 @@ import org.apache.camel.spi.UriPath;
 public class DropboxConfiguration {
 
     //specific dropbox operation for the component
-    @UriPath @Metadata(required = "true")
+    @UriPath
+    @Metadata(required = true)
     private DropboxOperation operation;
+
     //dropbox auth options
-    @UriParam @Metadata(required = "true")
-    private String accessToken;
-    //local path to put files
     @UriParam
+    @Metadata(label = "security", required = true, secret = true)
+    private String accessToken;
+    @UriParam
+    @Metadata(label = "security", required = true, secret = true)
+    private Long expireIn;
+    @UriParam
+    @Metadata(label = "security", required = true, secret = true)
+    private String refreshToken;
+    @UriParam
+    @Metadata(label = "security", required = true, secret = true)
+    private String apiKey;
+    @UriParam
+    @Metadata(label = "security", required = true, secret = true)
+    private String apiSecret;
+
+    //local path to put files
+    @UriParam(label = "producer")
     private String localPath;
     //where to put files on dropbox
-    @UriParam
+    @UriParam(label = "common")
     private String remotePath;
     //new path on dropbox when moving files
-    @UriParam
+    @UriParam(label = "producer")
     private String newRemotePath;
     //search query on dropbox
-    @UriParam
+    @UriParam(label = "common")
     private String query;
     //in case of uploading if force or add existing file
-    @UriParam
+    @UriParam(label = "producer")
     private DropboxUploadMode uploadMode;
     //id of the app
-    @UriParam @Metadata(required = "true")
+    @UriParam(label = "common")
     private String clientIdentifier;
-    //reference to dropboxclient
-    @UriParam
-    private DbxClient client;
+    //reference to dropbox client
+    @UriParam(label = "advanced")
+    private DbxClientV2 client;
 
     /**
-     * To use an existing DbxClient instance as DropBox client.
+     * To use an existing DbxClient instance as Dropbox client.
      */
-    public void setClient(DbxClient client) {
+    public void setClient(DbxClientV2 client) {
         this.client = client;
     }
 
-    public DbxClient getClient() {
+    public DbxClientV2 getClient() {
         return client;
     }
 
     /**
      * Obtain a new instance of DbxClient and store it in configuration.
      */
-    public void createClient() throws DropboxException {
-        DbxRequestConfig config = new DbxRequestConfig(clientIdentifier, Locale.getDefault().toString());
-        DbxClient client = new DbxClient(config, accessToken);
-        this.client = client;
+    public void createClient() {
+        DbxRequestConfig config = DbxRequestConfig.newBuilder(clientIdentifier).build();
+        DbxCredential credential = new DbxCredential(accessToken, expireIn, refreshToken, apiKey, apiSecret);
+        this.client = new DbxClientV2(config, credential);
     }
 
     public String getAccessToken() {
@@ -94,8 +108,53 @@ public class DropboxConfiguration {
         return localPath;
     }
 
+    public String getRefreshToken() {
+        return refreshToken;
+    }
+
     /**
-     * Folder or file to upload on Dropbox from the local filesystem.
+     * The refresh token to refresh the access token for a specific Dropbox user
+     */
+    public void setRefreshToken(String refreshToken) {
+        this.refreshToken = refreshToken;
+    }
+
+    public String getApiKey() {
+        return apiKey;
+    }
+
+    /**
+     * The apiKey to make API requests for a specific Dropbox user
+     */
+    public void setApiKey(String apiKey) {
+        this.apiKey = apiKey;
+    }
+
+    /**
+     * The apiSecret to make API requests for a specific Dropbox user
+     */
+    public String getApiSecret() {
+        return apiSecret;
+    }
+
+    public void setApiSecret(String apiSecret) {
+        this.apiSecret = apiSecret;
+    }
+
+    /**
+     * The expire time to access token for a specific Dropbox user
+     */
+    public Long getExpireIn() {
+        return expireIn;
+    }
+
+    public void setExpireIn(Long expireIn) {
+        this.expireIn = expireIn;
+    }
+
+    /**
+     * Optional folder or file to upload on Dropbox from the local filesystem. If this option has not been configured
+     * then the message body is used as the content to upload.
      */
     public void setLocalPath(String localPath) {
         this.localPath = localPath;
@@ -128,7 +187,8 @@ public class DropboxConfiguration {
     }
 
     /**
-     * A space-separated list of substrings to search for. A file matches only if it contains all the substrings. If this option is not set, all files will be matched.
+     * A space-separated list of sub-strings to search for. A file matches only if it contains all the sub-strings. If
+     * this option is not set, all files will be matched.
      */
     public void setQuery(String query) {
         this.query = query;
@@ -161,9 +221,8 @@ public class DropboxConfiguration {
     }
 
     /**
-     * Which mode to upload.
-     * in case of "add" the new file will be renamed if a file with the same name already exists on dropbox.
-     * in case of "force" if a file with the same name already exists on dropbox, this will be overwritten.
+     * Which mode to upload. in case of "add" the new file will be renamed if a file with the same name already exists
+     * on dropbox. in case of "force" if a file with the same name already exists on dropbox, this will be overwritten.
      */
     public void setUploadMode(DropboxUploadMode uploadMode) {
         this.uploadMode = uploadMode;

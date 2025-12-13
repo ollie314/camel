@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,33 +16,37 @@
  */
 package org.apache.camel.component.mail;
 
-import javax.mail.Folder;
-import javax.mail.Message;
-import javax.mail.Store;
-import javax.mail.internet.MimeMessage;
+import jakarta.mail.Folder;
+import jakarta.mail.Message;
+import jakarta.mail.Store;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mail.Mailbox.MailboxUser;
+import org.apache.camel.component.mail.Mailbox.Protocol;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import org.jvnet.mock_javamail.Mailbox;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.apache.camel.test.junit5.TestSupport.body;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Unit test for batch consumer.
  */
 public class MailBatchConsumerTest extends CamelTestSupport {
+    private static final MailboxUser jones = Mailbox.getOrCreateUser("jones", "secret");
 
     @Override
-    public void setUp() throws Exception {
+    public void doPreSetup() throws Exception {
         prepareMailbox();
-        super.setUp();
     }
 
     @Test
     public void testBatchConsumer() throws Exception {
-        Mailbox mailbox = Mailbox.get("jones@localhost");
-        assertEquals(5, mailbox.size());
+        Mailbox mailbox = jones.getInbox();
+        assertEquals(5, mailbox.getMessageCount());
 
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMessageCount(5);
@@ -60,15 +64,15 @@ public class MailBatchConsumerTest extends CamelTestSupport {
         mock.message(4).exchangeProperty(Exchange.BATCH_COMPLETE).isEqualTo(true);
         mock.expectedPropertyReceived(Exchange.BATCH_SIZE, 5);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     private void prepareMailbox() throws Exception {
         // connect to mailbox
         Mailbox.clearAll();
         JavaMailSender sender = new DefaultJavaMailSender();
-        Store store = sender.getSession().getStore("pop3");
-        store.connect("localhost", 25, "jones", "secret");
+        Store store = sender.getSession().getStore("imap");
+        store.connect("localhost", Mailbox.getPort(Protocol.imap), jones.getLogin(), jones.getPassword());
         Folder folder = store.getFolder("INBOX");
         folder.open(Folder.READ_WRITE);
         folder.expunge();
@@ -77,18 +81,19 @@ public class MailBatchConsumerTest extends CamelTestSupport {
         Message[] messages = new Message[5];
         for (int i = 0; i < 5; i++) {
             messages[i] = new MimeMessage(sender.getSession());
-            messages[i].setHeader("Message-ID", "" + i);
+            messages[i].setHeader("Message-ID", Integer.toString(i));
             messages[i].setText("Message " + i);
         }
         folder.appendMessages(messages);
         folder.close(true);
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("pop3://jones@localhost?password=secret&consumer.delay=5000"
-                    + "&delete=true").to("mock:result");
+            public void configure() {
+                from(jones.uriPrefix(Protocol.pop3) + "&initialDelay=100&delay=100"
+                     + "&delete=true").to("mock:result");
             }
         };
     }

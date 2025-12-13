@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,9 +18,19 @@ package org.apache.camel.component.netty.http;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.impl.DefaultExchange;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.support.DefaultExchange;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledIfSystemProperty;
+import org.junit.jupiter.api.condition.DisabledOnOs;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@DisabledIfSystemProperty(named = "java.vendor", matches = ".*ibm.*")
+@DisabledOnOs(architectures = { "s390x" },
+              disabledReason = "This test does not run reliably on s390x (see CAMEL-21438)")
 public class NettyHttpSSLHandshakeErrorTest extends BaseNettyTest {
 
     @Override
@@ -30,17 +40,12 @@ public class NettyHttpSSLHandshakeErrorTest extends BaseNettyTest {
 
     @Test
     public void testHttpsHandshakeError() throws Exception {
-        // ibm jdks dont have sun security algorithms
-        if (isJavaVendor("ibm")) {
-            return;
-        }
-
         getMockEndpoint("mock:target").expectedMessageCount(0);
 
         context.addRoutes(new RouteBuilder() {
             public void configure() {
                 from("netty-http:https://localhost:{{port}}?ssl=true&needClientAuth=true&keyStoreFormat=JKS"
-                        + "&passphrase=storepassword&keyStoreResource=jsse/server-keystore.jks&trustStoreResource=jsse/server-truststore.jks")
+                     + "&passphrase=storepassword&keyStoreResource=jsse/server-keystore.jks&trustStoreResource=jsse/server-truststore.jks")
                         .to("mock:target");
             }
         });
@@ -48,15 +53,18 @@ public class NettyHttpSSLHandshakeErrorTest extends BaseNettyTest {
 
         DefaultExchange exchange = new DefaultExchange(context);
 
-        Exchange response = template.send("netty-http:https://localhost:{{port}}?requestTimeout=10000&throwExceptionOnFailure=false"
-                + "&ssl=true&keyStoreFormat=JKS&passphrase=storepassword&keyStoreResource=jsse/client-keystore.jks&trustStoreResource=jsse/server-truststore.jks", exchange);
+        Exchange response = template
+                .send("netty-http:https://localhost:{{port}}?requestTimeout=10000&throwExceptionOnFailure=false"
+                      + "&ssl=true&keyStoreFormat=JKS&passphrase=storepassword&keyStoreResource=jsse/client-keystore.jks&trustStoreResource=jsse/server-truststore.jks",
+                        exchange);
 
         Exception ex = response.getException();
 
-        assertTrue("should have failed", response.isFailed());
-        assertEquals("exception expected", javax.net.ssl.SSLHandshakeException.class, ex.getClass());
+        assertTrue(response.isFailed(), "should have failed");
+        assertNotNull(ex);
+        assertEquals(javax.net.ssl.SSLHandshakeException.class, ex.getClass(), "SSLHandshakeException expected");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
 }

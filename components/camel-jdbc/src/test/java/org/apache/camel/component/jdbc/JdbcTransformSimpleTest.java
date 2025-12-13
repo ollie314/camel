@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,11 +19,11 @@ package org.apache.camel.component.jdbc;
 import org.apache.camel.EndpointInject;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class JdbcTransformSimpleTest extends AbstractJdbcTestSupport {
-    
-    @EndpointInject(uri = "mock:result")
+
+    @EndpointInject("mock:result")
     private MockEndpoint mock;
 
     @Test
@@ -32,19 +32,19 @@ public class JdbcTransformSimpleTest extends AbstractJdbcTestSupport {
 
         template.sendBody("direct:hello", "select * from customer order by ID");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:hello")
-                    .to("jdbc:testdb")
-                    // grab the first row, and the name column
-                    .transform().simple("${body[0]['NAME']}")
-                    .to("mock:result");
+                        .to("jdbc:testdb")
+                        // grab the first row, and the name column
+                        .transform().simple("${body[0]['NAME']}")
+                        .to("mock:result");
             }
         };
     }

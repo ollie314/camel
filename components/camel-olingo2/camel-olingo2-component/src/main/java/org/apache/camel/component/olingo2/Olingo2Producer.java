@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,10 +24,10 @@ import org.apache.camel.Exchange;
 import org.apache.camel.RuntimeCamelException;
 import org.apache.camel.component.olingo2.api.Olingo2ResponseHandler;
 import org.apache.camel.component.olingo2.internal.Olingo2ApiName;
+import org.apache.camel.component.olingo2.internal.Olingo2Constants;
 import org.apache.camel.component.olingo2.internal.Olingo2PropertiesHelper;
-import org.apache.camel.util.ObjectHelper;
-import org.apache.camel.util.component.AbstractApiProducer;
-import org.apache.camel.util.component.ApiMethod;
+import org.apache.camel.support.component.AbstractApiProducer;
+import org.apache.camel.support.component.ApiMethod;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,15 +38,16 @@ public class Olingo2Producer extends AbstractApiProducer<Olingo2ApiName, Olingo2
 
     private static final Logger LOG = LoggerFactory.getLogger(Olingo2Producer.class);
 
+    private Olingo2Index resultIndex;
+
     public Olingo2Producer(Olingo2Endpoint endpoint) {
-        super(endpoint, Olingo2PropertiesHelper.getHelper());
+        super(endpoint, Olingo2PropertiesHelper.getHelper(endpoint.getCamelContext()));
     }
 
     @Override
     public boolean process(final Exchange exchange, final AsyncCallback callback) {
         // properties for method arguments
-        final Map<String, Object> properties = new HashMap<String, Object>();
-        properties.putAll(endpoint.getEndpointProperties());
+        final Map<String, Object> properties = new HashMap<>(endpoint.getEndpointProperties());
         propertiesHelper.getExchangeProperties(exchange, properties);
 
         // let the endpoint and the Producer intercept properties
@@ -56,11 +57,19 @@ public class Olingo2Producer extends AbstractApiProducer<Olingo2ApiName, Olingo2
         // create response handler
         properties.put(Olingo2Endpoint.RESPONSE_HANDLER_PROPERTY, new Olingo2ResponseHandler<Object>() {
             @Override
-            public void onResponse(Object response) {
-                // producer returns a single response, even for methods with List return types
+            public void onResponse(Object response, Map<String, String> responseHeaders) {
+                if (resultIndex != null) {
+                    response = resultIndex.filterResponse(response);
+                }
+
+                // producer returns a single response, even for methods with
+                // List return types
                 exchange.getOut().setBody(response);
                 // copy headers
                 exchange.getOut().setHeaders(exchange.getIn().getHeaders());
+
+                // Add http response headers
+                exchange.getOut().setHeader(Olingo2Constants.RESPONSE_HTTP_HEADERS, responseHeaders);
 
                 interceptResult(response, exchange);
 
@@ -94,12 +103,41 @@ public class Olingo2Producer extends AbstractApiProducer<Olingo2ApiName, Olingo2
 
         try {
             doInvokeMethod(method, properties);
-        } catch (Throwable t) {
-            exchange.setException(ObjectHelper.wrapRuntimeCamelException(t));
+        } catch (Exception e) {
+            exchange.setException(RuntimeCamelException.wrapRuntimeCamelException(e));
             callback.done(true);
             return true;
         }
 
         return false;
+    }
+
+    @Override
+    public void interceptProperties(Map<String, Object> properties) {
+        //
+        // If we have a filterAlreadySeen property then initialise the filter
+        // index
+        //
+        Object value = properties.get(Olingo2Endpoint.FILTER_ALREADY_SEEN);
+        if (value == null) {
+            return;
+        }
+
+        //
+        // Initialise the index if not already and if filterAlreadySeen has been
+        // set
+        //
+        if (Boolean.parseBoolean(value.toString()) && resultIndex == null) {
+            resultIndex = new Olingo2Index();
+        }
+    }
+
+    @Override
+    public void interceptResult(Object result, Exchange resultExchange) {
+        if (resultIndex == null) {
+            return;
+        }
+
+        resultIndex.index(result);
     }
 }

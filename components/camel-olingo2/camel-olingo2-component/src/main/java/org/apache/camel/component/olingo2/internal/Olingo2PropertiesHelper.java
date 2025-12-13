@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,24 +16,34 @@
  */
 package org.apache.camel.component.olingo2.internal;
 
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+import org.apache.camel.CamelContext;
 import org.apache.camel.component.olingo2.Olingo2Configuration;
-import org.apache.camel.util.component.ApiMethodPropertiesHelper;
+import org.apache.camel.support.component.ApiMethodPropertiesHelper;
 
 /**
  * Singleton {@link ApiMethodPropertiesHelper} for Olingo2 component.
  */
 public final class Olingo2PropertiesHelper extends ApiMethodPropertiesHelper<Olingo2Configuration> {
 
+    private static final Lock LOCK = new ReentrantLock();
     private static Olingo2PropertiesHelper helper;
 
-    private Olingo2PropertiesHelper() {
-        super(Olingo2Configuration.class, Olingo2Constants.PROPERTY_PREFIX);
+    private Olingo2PropertiesHelper(CamelContext context) {
+        super(context, Olingo2Configuration.class, Olingo2Constants.PROPERTY_PREFIX);
     }
 
-    public static synchronized Olingo2PropertiesHelper getHelper() {
-        if (helper == null) {
-            helper = new Olingo2PropertiesHelper();
+    public static Olingo2PropertiesHelper getHelper(CamelContext context) {
+        LOCK.lock();
+        try {
+            if (helper == null) {
+                helper = new Olingo2PropertiesHelper(context);
+            }
+            return helper;
+        } finally {
+            LOCK.unlock();
         }
-        return helper;
     }
 }

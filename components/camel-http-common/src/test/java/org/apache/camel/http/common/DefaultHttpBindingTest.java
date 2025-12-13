@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,24 +20,27 @@ import java.util.Date;
 import java.util.Locale;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 public class DefaultHttpBindingTest extends CamelTestSupport {
 
     @Test
-    public void testConvertDate() throws Exception {
+    public void testConvertDate() {
         DefaultHttpBinding binding = new DefaultHttpBinding();
         Date date = new Date();
         Exchange exchange = super.createExchangeWithBody(null);
-        
+
         String value = binding.convertHeaderValueToString(exchange, date);
         assertNotEquals(value, date.toString());
         assertEquals(value, DefaultHttpBinding.getHttpDateFormat().format(date));
     }
 
     @Test
-    public void testConvertDateTypeConverter() throws Exception {
+    public void testConvertDateTypeConverter() {
         DefaultHttpBinding binding = new DefaultHttpBinding();
         Date date = new Date();
         Exchange exchange = super.createExchangeWithBody(null);
@@ -47,18 +50,18 @@ public class DefaultHttpBindingTest extends CamelTestSupport {
     }
 
     @Test
-    public void testConvertLocale() throws Exception {
+    public void testConvertLocale() {
         DefaultHttpBinding binding = new DefaultHttpBinding();
         Locale l = Locale.SIMPLIFIED_CHINESE;
         Exchange exchange = super.createExchangeWithBody(null);
-        
+
         String value = binding.convertHeaderValueToString(exchange, l);
         assertNotEquals(value, l.toString());
         assertEquals("zh-CN", value);
     }
 
     @Test
-    public void testConvertLocaleTypeConverter() throws Exception {
+    public void testConvertLocaleTypeConverter() {
         DefaultHttpBinding binding = new DefaultHttpBinding();
         Locale l = Locale.SIMPLIFIED_CHINESE;
         Exchange exchange = super.createExchangeWithBody(null);

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,51 +16,51 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
+import jakarta.jms.ConnectionFactory;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.infra.artemis.common.ConnectionFactoryHelper;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
 
 /**
  * Testing with async start listener
  */
-public class JmsAsyncStartListenerTest extends CamelTestSupport {
+@Timeout(60)
+public class JmsAsyncStartListenerTest extends AbstractPersistentJMSTest {
 
-    protected String componentName = "activemq";
+    protected final String componentName = "activemq";
 
     @Test
     public void testAsyncStartListener() throws Exception {
         MockEndpoint result = getMockEndpoint("mock:result");
         result.expectedMessageCount(2);
 
-        template.sendBody("activemq:queue:hello", "Hello World");
-        template.sendBody("activemq:queue:hello", "Gooday World");
+        template.sendBody("activemq:queue:JmsAsyncStartListenerTest", "Hello World");
+        template.sendBody("activemq:queue:JmsAsyncStartListenerTest", "Goodbye World");
 
         result.assertIsSatisfied();
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
+    @Override
+    protected void createConnectionFactory(CamelContext camelContext) {
         // use a persistent queue as the consumer is started asynchronously
         // so we need a persistent store in case no active consumers when we send the messages
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createPersistentConnectionFactory();
+        ConnectionFactory connectionFactory = ConnectionFactoryHelper.createConnectionFactory(service);
         JmsComponent jms = jmsComponentAutoAcknowledge(connectionFactory);
-        jms.setAsyncStartListener(true);
+        jms.getConfiguration().setAsyncStartListener(true);
         camelContext.addComponent(componentName, jms);
-
-        return camelContext;
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("activemq:queue:hello").to("mock:result");
+            public void configure() {
+                from("activemq:queue:JmsAsyncStartListenerTest").to("mock:result");
             }
         };
     }

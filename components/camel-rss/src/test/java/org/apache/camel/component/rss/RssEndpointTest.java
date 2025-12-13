@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,24 +16,19 @@
  */
 package org.apache.camel.component.rss;
 
-import java.util.HashMap;
-import java.util.Map;
-
 import org.apache.camel.builder.RouteBuilder;
 
 public class RssEndpointTest extends RssPollingConsumerTest {
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() throws Exception {
                 RssEndpoint rss = new RssEndpoint();
                 rss.setCamelContext(context);
                 rss.setFeedUri("file:src/test/data/rss20.xml");
                 rss.setSplitEntries(false);
-
-                Map<String, Object> map = new HashMap<String, Object>();
-                map.put("delay", 100);
-                rss.setConsumerProperties(map);
+                rss.setDelay(100);
 
                 context.addEndpoint("myrss", rss);
 

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,44 +19,40 @@ package org.apache.camel.component.quartz;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.impl.DefaultCamelContext;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
-public class QuartzTwoCamelContextTest extends Assert {
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+
+public class QuartzTwoCamelContextTest {
 
     private DefaultCamelContext camel1;
     private DefaultCamelContext camel2;
 
-    @Before
+    @BeforeEach
     public void setUp() throws Exception {
         camel1 = new DefaultCamelContext();
-        camel1.setName("camel-1");
         camel1.addRoutes(new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("quartz://myGroup/myTimerName?cron=0/1+*+*+*+*+?").to("mock:one");
             }
         });
         camel1.start();
 
         camel2 = new DefaultCamelContext();
-        camel2.setName("camel-2");
         camel2.addRoutes(new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("quartz://myOtherGroup/myOtherTimerName?cron=0/1+*+*+*+*+?").to("mock:two");
             }
         });
         camel2.start();
     }
 
-    @After
-    public void tearDown() throws Exception {
+    @AfterEach
+    public void tearDown() {
         camel1.stop();
         camel2.stop();
     }
@@ -70,34 +66,33 @@ public class QuartzTwoCamelContextTest extends Assert {
         mock2.expectedMinimumMessageCount(6);
         mock1.assertIsSatisfied();
 
-        camel1.stop();
+        assertDoesNotThrow(() -> camel1.stop());
 
         mock2.assertIsSatisfied();
 
-        camel2.stop();        
+        assertDoesNotThrow(() -> camel2.stop());
     }
-    
+
     @Test
     public void testThirdCamelContext() throws Exception {
         camel1.stop();
-        
+
         camel2.stop();
-                
+
         DefaultCamelContext camel3 = new DefaultCamelContext();
-        camel3.setName("camel-3");
         camel3.addRoutes(new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("quartz://myThirdGroup/myThirdTimerName?cron=0/1+*+*+*+*+?").to("mock:three");
             }
         });
-        camel3.start();
-        
+        assertDoesNotThrow(camel3::start);
+
         MockEndpoint mock3 = camel3.getEndpoint("mock:three", MockEndpoint.class);
         mock3.expectedMinimumMessageCount(2);
-        
+
         mock3.assertIsSatisfied();
-        camel3.stop();
+        assertDoesNotThrow(camel3::stop);
     }
 
 }

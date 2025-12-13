@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,78 +17,98 @@
 package org.apache.camel.component.netty;
 
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.ThreadFactory;
 
+import io.netty.bootstrap.ServerBootstrap;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.epoll.Epoll;
+import io.netty.channel.epoll.EpollServerDomainSocketChannel;
+import io.netty.channel.epoll.EpollServerSocketChannel;
+import io.netty.channel.group.ChannelGroup;
+import io.netty.channel.group.DefaultChannelGroup;
+import io.netty.channel.kqueue.KQueue;
+import io.netty.channel.kqueue.KQueueServerDomainSocketChannel;
+import io.netty.channel.kqueue.KQueueServerSocketChannel;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.channel.unix.DomainSocketAddress;
+import io.netty.util.concurrent.ImmediateEventExecutor;
 import org.apache.camel.CamelContext;
-import org.apache.camel.Suspendable;
-import org.apache.camel.support.ServiceSupport;
-import org.jboss.netty.bootstrap.ServerBootstrap;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelFactory;
-import org.jboss.netty.channel.ChannelFuture;
-import org.jboss.netty.channel.ChannelPipelineFactory;
-import org.jboss.netty.channel.group.ChannelGroup;
-import org.jboss.netty.channel.group.ChannelGroupFuture;
-import org.jboss.netty.channel.group.DefaultChannelGroup;
-import org.jboss.netty.channel.socket.nio.BossPool;
-import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
-import org.jboss.netty.channel.socket.nio.WorkerPool;
+import org.apache.camel.support.CamelContextHelper;
+import org.apache.camel.support.EndpointHelper;
+import org.apache.camel.support.service.ServiceSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * A {@link NettyServerBootstrapFactory} which is used by a single consumer (not shared).
  */
-public class SingleTCPNettyServerBootstrapFactory extends ServiceSupport implements NettyServerBootstrapFactory, Suspendable {
+public class SingleTCPNettyServerBootstrapFactory extends ServiceSupport implements NettyServerBootstrapFactory {
 
     protected static final Logger LOG = LoggerFactory.getLogger(SingleTCPNettyServerBootstrapFactory.class);
     private ChannelGroup allChannels;
     private CamelContext camelContext;
     private ThreadFactory threadFactory;
     private NettyServerBootstrapConfiguration configuration;
-    private ChannelPipelineFactory pipelineFactory;
-    private ChannelFactory channelFactory;
+    private ChannelInitializer<Channel> pipelineFactory;
     private ServerBootstrap serverBootstrap;
     private Channel channel;
-    private BossPool bossPool;
-    private WorkerPool workerPool;
+    private EventLoopGroup bossGroup;
+    private EventLoopGroup workerGroup;
 
     public SingleTCPNettyServerBootstrapFactory() {
     }
 
-    public void init(CamelContext camelContext, NettyServerBootstrapConfiguration configuration, ChannelPipelineFactory pipelineFactory) {
+    @Override
+    public void init(
+            CamelContext camelContext, NettyServerBootstrapConfiguration configuration,
+            ChannelInitializer<Channel> pipelineFactory) {
         this.camelContext = camelContext;
         this.configuration = configuration;
         this.pipelineFactory = pipelineFactory;
 
         this.allChannels = configuration.getChannelGroup() != null
-            ? configuration.getChannelGroup()
-            : new DefaultChannelGroup(SingleTCPNettyServerBootstrapFactory.class.getName());
+                ? configuration.getChannelGroup()
+                : new DefaultChannelGroup(
+                        SingleTCPNettyServerBootstrapFactory.class.getName(), ImmediateEventExecutor.INSTANCE);
     }
 
-    public void init(ThreadFactory threadFactory, NettyServerBootstrapConfiguration configuration, ChannelPipelineFactory pipelineFactory) {
+    @Override
+    public void init(
+            ThreadFactory threadFactory, NettyServerBootstrapConfiguration configuration,
+            ChannelInitializer<Channel> pipelineFactory) {
         this.threadFactory = threadFactory;
         this.configuration = configuration;
         this.pipelineFactory = pipelineFactory;
 
         this.allChannels = configuration.getChannelGroup() != null
-            ? configuration.getChannelGroup()
-            : new DefaultChannelGroup(SingleTCPNettyServerBootstrapFactory.class.getName());
+                ? configuration.getChannelGroup()
+                : new DefaultChannelGroup(
+                        SingleTCPNettyServerBootstrapFactory.class.getName(), ImmediateEventExecutor.INSTANCE);
     }
 
+    @Override
     public void addChannel(Channel channel) {
         allChannels.add(channel);
     }
 
+    @Override
     public void removeChannel(Channel channel) {
         allChannels.remove(channel);
     }
 
+    @Override
     public void addConsumer(NettyConsumer consumer) {
         // does not allow sharing
     }
 
+    @Override
     public void removeConsumer(NettyConsumer consumer) {
         // does not allow sharing
     }
@@ -106,104 +126,123 @@ public class SingleTCPNettyServerBootstrapFactory extends ServiceSupport impleme
         stopServerBootstrap();
     }
 
-    @Override
-    protected void doResume() throws Exception {
-        if (channel != null) {
-            LOG.debug("ServerBootstrap binding to {}:{}", configuration.getHost(), configuration.getPort());
-            ChannelFuture future = channel.bind(new InetSocketAddress(configuration.getHost(), configuration.getPort()));
-            future.awaitUninterruptibly();
-            if (!future.isSuccess()) {
-                // if we cannot bind, the re-create channel
-                allChannels.remove(channel);
-                channel = serverBootstrap.bind(new InetSocketAddress(configuration.getHost(), configuration.getPort()));
-                allChannels.add(channel);
-            }
-        }
-    }
-
-    @Override
-    protected void doSuspend() throws Exception {
-        if (channel != null) {
-            LOG.debug("ServerBootstrap unbinding from {}:{}", configuration.getHost(), configuration.getPort());
-            ChannelFuture future = channel.unbind();
-            future.awaitUninterruptibly();
-        }
-    }
-
-    protected void startServerBootstrap() {
+    protected void startServerBootstrap() throws Exception {
         // prefer using explicit configured thread pools
-        BossPool bp = configuration.getBossPool();
-        WorkerPool wp = configuration.getWorkerPool();
+        EventLoopGroup bg = configuration.getBossGroup();
+        EventLoopGroup wg = configuration.getWorkerGroup();
 
-        if (bp == null) {
+        if (bg == null) {
             // create new pool which we should shutdown when stopping as its not shared
-            bossPool = new NettyServerBossPoolBuilder()
+            bossGroup = new NettyServerBossPoolBuilder()
+                    .withNativeTransport(configuration.isNativeTransport())
                     .withBossCount(configuration.getBossCount())
                     .withName("NettyServerTCPBoss")
                     .build();
-            bp = bossPool;
+            bg = bossGroup;
         }
-        if (wp == null) {
+        if (wg == null) {
             // create new pool which we should shutdown when stopping as its not shared
-            workerPool = new NettyWorkerPoolBuilder()
+            workerGroup = new NettyWorkerPoolBuilder()
+                    .withNativeTransport(configuration.isNativeTransport())
                     .withWorkerCount(configuration.getWorkerCount())
                     .withName("NettyServerTCPWorker")
                     .build();
-            wp = workerPool;
+            wg = workerGroup;
         }
 
-        channelFactory = new NioServerSocketChannelFactory(bp, wp);
-
-        serverBootstrap = new ServerBootstrap(channelFactory);
-        serverBootstrap.setOption("child.keepAlive", configuration.isKeepAlive());
-        serverBootstrap.setOption("child.tcpNoDelay", configuration.isTcpNoDelay());
-        serverBootstrap.setOption("reuseAddress", configuration.isReuseAddress());
-        serverBootstrap.setOption("child.reuseAddress", configuration.isReuseAddress());
-        serverBootstrap.setOption("child.connectTimeoutMillis", configuration.getConnectTimeout());
+        serverBootstrap = new ServerBootstrap();
+        if (configuration.getUnixDomainSocketPath() != null) {
+            if (KQueue.isAvailable()) {
+                serverBootstrap.group(bg, wg).channel(KQueueServerDomainSocketChannel.class);
+            } else if (Epoll.isAvailable()) {
+                serverBootstrap.group(bg, wg).channel(EpollServerDomainSocketChannel.class);
+            } else {
+                throw new IllegalStateException(
+                        "Unable to use unix domain sockets - both Epoll and KQueue are not available");
+            }
+        } else {
+            if (configuration.isNativeTransport()) {
+                if (KQueue.isAvailable()) {
+                    serverBootstrap.group(bg, wg).channel(KQueueServerSocketChannel.class);
+                } else if (Epoll.isAvailable()) {
+                    serverBootstrap.group(bg, wg).channel(EpollServerSocketChannel.class);
+                } else {
+                    throw new IllegalStateException(
+                            "Unable to use native transport - both Epoll and KQueue are not available");
+                }
+            } else {
+                serverBootstrap.group(bg, wg).channel(NioServerSocketChannel.class);
+            }
+        }
+        if (configuration.getUnixDomainSocketPath() == null) {
+            serverBootstrap.childOption(ChannelOption.SO_KEEPALIVE, configuration.isKeepAlive());
+            serverBootstrap.childOption(ChannelOption.TCP_NODELAY, configuration.isTcpNoDelay());
+            serverBootstrap.option(ChannelOption.SO_REUSEADDR, configuration.isReuseAddress());
+            serverBootstrap.childOption(ChannelOption.SO_REUSEADDR, configuration.isReuseAddress());
+        }
+        serverBootstrap.childOption(ChannelOption.CONNECT_TIMEOUT_MILLIS, configuration.getConnectTimeout());
         if (configuration.getBacklog() > 0) {
-            serverBootstrap.setOption("backlog", configuration.getBacklog());
+            serverBootstrap.option(ChannelOption.SO_BACKLOG, configuration.getBacklog());
         }
 
-        // set any additional netty options
-        if (configuration.getOptions() != null) {
-            for (Map.Entry<String, Object> entry : configuration.getOptions().entrySet()) {
-                serverBootstrap.setOption(entry.getKey(), entry.getValue());
+        Map<String, Object> options = configuration.getOptions();
+        if (options != null) {
+            for (Map.Entry<String, Object> entry : options.entrySet()) {
+                String value = entry.getValue().toString();
+                ChannelOption<Object> option = ChannelOption.valueOf(entry.getKey());
+                //For all netty options that aren't of type String
+                //TODO: find a way to add primitive Netty options without having to add them to the Camel registry.
+                if (EndpointHelper.isReferenceParameter(value)) {
+                    String name = value.substring(1);
+                    Object o = CamelContextHelper.mandatoryLookup(camelContext, name);
+                    serverBootstrap.option(option, o);
+                } else {
+                    serverBootstrap.option(option, value);
+                }
             }
         }
 
-        LOG.debug("Created ServerBootstrap {} with options: {}", serverBootstrap, serverBootstrap.getOptions());
-
         // set the pipeline factory, which creates the pipeline for each newly created channels
-        serverBootstrap.setPipelineFactory(pipelineFactory);
+        serverBootstrap.childHandler(pipelineFactory);
 
-        LOG.info("ServerBootstrap binding to {}:{}", configuration.getHost(), configuration.getPort());
-        channel = serverBootstrap.bind(new InetSocketAddress(configuration.getHost(), configuration.getPort()));
+        LOG.debug("Created ServerBootstrap {}", serverBootstrap);
+
+        SocketAddress socketAddress;
+        if (configuration.getUnixDomainSocketPath() != null) {
+            Path udsPath = Path.of(configuration.getUnixDomainSocketPath()).toAbsolutePath();
+            LOG.info("ServerBootstrap binding to {}", udsPath);
+            socketAddress = new DomainSocketAddress(udsPath.toFile());
+        } else {
+            LOG.info("ServerBootstrap binding to {}:{}", configuration.getHost(), configuration.getPort());
+            socketAddress = new InetSocketAddress(configuration.getHost(), configuration.getPort());
+        }
+        ChannelFuture channelFuture = serverBootstrap.bind(socketAddress).sync();
+        channel = channelFuture.channel();
         // to keep track of all channels in use
         allChannels.add(channel);
     }
 
     protected void stopServerBootstrap() {
         // close all channels
-        LOG.info("ServerBootstrap unbinding from {}:{}", configuration.getHost(), configuration.getPort());
+        if (configuration.getUnixDomainSocketPath() != null) {
+            Path udsPath = Path.of(configuration.getUnixDomainSocketPath()).toAbsolutePath();
+            LOG.info("ServerBootstrap unbinding from {}", udsPath);
+        } else {
+            LOG.info("ServerBootstrap unbinding from {}:{}", configuration.getHost(), configuration.getPort());
+
+        }
 
         LOG.trace("Closing {} channels", allChannels.size());
-        ChannelGroupFuture future = allChannels.close();
-        future.awaitUninterruptibly();
-
-        // close server external resources
-        if (channelFactory != null) {
-            channelFactory.releaseExternalResources();
-            channelFactory = null;
-        }
+        allChannels.close().awaitUninterruptibly(configuration.getShutdownTimeout());
 
         // and then shutdown the thread pools
-        if (bossPool != null) {
-            bossPool.shutdown();
-            bossPool = null;
+        if (bossGroup != null) {
+            bossGroup.shutdownGracefully().awaitUninterruptibly(configuration.getShutdownTimeout());
+            bossGroup = null;
         }
-        if (workerPool != null) {
-            workerPool.shutdown();
-            workerPool = null;
+        if (workerGroup != null) {
+            workerGroup.shutdownGracefully().awaitUninterruptibly(configuration.getShutdownTimeout());
+            workerGroup = null;
         }
     }
 

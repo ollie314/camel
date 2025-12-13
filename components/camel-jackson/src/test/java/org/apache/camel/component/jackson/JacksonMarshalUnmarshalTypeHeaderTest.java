@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,8 +18,11 @@ package org.apache.camel.component.jackson;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class JacksonMarshalUnmarshalTypeHeaderTest extends CamelTestSupport {
 
@@ -32,7 +35,7 @@ public class JacksonMarshalUnmarshalTypeHeaderTest extends CamelTestSupport {
         String json = "{\"name\":\"Camel\"}";
         template.sendBodyAndHeader("direct:backPojo", json, JacksonConstants.UNMARSHAL_TYPE, TestPojo.class.getName());
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         TestPojo pojo = mock.getReceivedExchanges().get(0).getIn().getBody(TestPojo.class);
         assertNotNull(pojo);
@@ -40,12 +43,13 @@ public class JacksonMarshalUnmarshalTypeHeaderTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
 
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 JacksonDataFormat format = new JacksonDataFormat();
+                format.setAllowUnmarshallType(true);
 
                 from("direct:backPojo").unmarshal(format).to("mock:reversePojo");
 

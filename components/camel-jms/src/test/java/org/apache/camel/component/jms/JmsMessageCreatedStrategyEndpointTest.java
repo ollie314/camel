@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,34 +16,36 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.Session;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.Session;
 
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
 import org.apache.camel.Exchange;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.impl.JndiRegistry;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+public class JmsMessageCreatedStrategyEndpointTest extends AbstractJMSTest {
 
-/**
- * @version 
- */
-public class JmsMessageCreatedStrategyEndpointTest extends CamelTestSupport {
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected final String componentName = "activemq";
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
-    protected String componentName = "activemq";
-
-    @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry jndi = super.createRegistry();
-        jndi.bind("myStrategy", new MyMessageCreatedStrategy());
-        return jndi;
-    }
+    @BindToRegistry("myStrategy")
+    private final MyMessageCreatedStrategy strategy = new MyMessageCreatedStrategy();
 
     @Test
     public void testMessageCreatedStrategy() throws Exception {
@@ -51,33 +53,42 @@ public class JmsMessageCreatedStrategyEndpointTest extends CamelTestSupport {
         mock.expectedMessageCount(1);
         mock.expectedHeaderReceived("beer", "Carlsberg");
 
-        // must remember to use this on the producer side as its in use when sending
-        template.sendBody("activemq:queue:foo?messageCreatedStrategy=#myStrategy", "Hello World");
+        // must remember to use this on the producer side as its in use when
+        // sending
+        template.sendBody("activemq:queue:JmsMessageCreatedStrategyEndpointTest?messageCreatedStrategy=#myStrategy",
+                "Hello World");
 
-        assertMockEndpointsSatisfied();
-    }
-
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent(componentName, jmsComponentAutoAcknowledge(connectionFactory));
-
-        return camelContext;
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    public String getComponentName() {
+        return componentName;
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("activemq:queue:foo")
-                        .to("mock:result");
+            public void configure() {
+                from("activemq:queue:JmsMessageCreatedStrategyEndpointTest").to("mock:result");
             }
         };
     }
 
-    private class MyMessageCreatedStrategy implements MessageCreatedStrategy {
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
+    }
+
+    private static class MyMessageCreatedStrategy implements MessageCreatedStrategy {
 
         @Override
         public void onMessageCreated(Message message, Session session, Exchange exchange, Throwable cause) {

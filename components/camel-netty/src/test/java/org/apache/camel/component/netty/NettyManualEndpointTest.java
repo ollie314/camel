@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,11 +19,15 @@ package org.apache.camel.component.netty;
 import java.util.ArrayList;
 import java.util.List;
 
+import io.netty.channel.ChannelHandler;
+import io.netty.handler.codec.Delimiters;
+import io.netty.util.CharsetUtil;
 import org.apache.camel.builder.RouteBuilder;
-import org.jboss.netty.channel.ChannelHandler;
-import org.jboss.netty.handler.codec.frame.Delimiters;
-import org.jboss.netty.util.CharsetUtil;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class NettyManualEndpointTest extends BaseNettyTest {
 
@@ -37,16 +41,16 @@ public class NettyManualEndpointTest extends BaseNettyTest {
 
         template.sendBody(endpoint, "Hello World\n");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         assertEquals("netty:tcp://localhost:" + getPort(), endpoint.getEndpointUri());
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 NettyConfiguration nettyConfig = new NettyConfiguration();
                 nettyConfig.setProtocol("tcp");
                 nettyConfig.setHost("localhost");
@@ -54,10 +58,10 @@ public class NettyManualEndpointTest extends BaseNettyTest {
                 nettyConfig.setSync(false);
 
                 // need to add encoders and decoders manually
-                nettyConfig.setEncoder(ChannelHandlerFactories.newStringEncoder(CharsetUtil.UTF_8));
-                List<ChannelHandler> decoders = new ArrayList<ChannelHandler>();
-                decoders.add(ChannelHandlerFactories.newDelimiterBasedFrameDecoder(1000, Delimiters.lineDelimiter()));
-                decoders.add(ChannelHandlerFactories.newStringDecoder(CharsetUtil.UTF_8));
+                nettyConfig.addEncoder(ChannelHandlerFactories.newStringEncoder(CharsetUtil.UTF_8, "tcp"));
+                List<ChannelHandler> decoders = new ArrayList<>();
+                decoders.add(ChannelHandlerFactories.newDelimiterBasedFrameDecoder(1000, Delimiters.lineDelimiter(), "tcp"));
+                decoders.add(ChannelHandlerFactories.newStringDecoder(CharsetUtil.UTF_8, "tcp"));
                 nettyConfig.setDecoders(decoders);
 
                 // create and start component
@@ -69,7 +73,6 @@ public class NettyManualEndpointTest extends BaseNettyTest {
                 // create and start endpoint, pass in null as endpoint uri
                 // as we create this endpoint manually
                 endpoint = new NettyEndpoint(null, component, nettyConfig);
-                endpoint.setTimer(component.getTimer());
                 endpoint.start();
 
                 from(endpoint).to("mock:result");

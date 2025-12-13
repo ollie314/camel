@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,18 +16,26 @@
  */
 package org.apache.camel.component.sjms.consumer;
 
-import org.apache.activemq.ActiveMQConnectionFactory;
+import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import org.apache.camel.CamelContext;
+import org.apache.camel.ExchangePattern;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.component.sjms.SjmsComponent;
 import org.apache.camel.component.sjms.support.MyAsyncComponent;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.infra.artemis.services.ArtemisService;
+import org.apache.camel.test.infra.artemis.services.ArtemisServiceFactory;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
  *
  */
 public class AsyncConsumerInOutTest extends CamelTestSupport {
+
+    @RegisterExtension
+    public static ArtemisService service = ArtemisServiceFactory.createSingletonVMService();
 
     @Test
     public void testAsyncJmsConsumer() throws Exception {
@@ -37,19 +45,20 @@ public class AsyncConsumerInOutTest extends CamelTestSupport {
         // process the 2nd message on the queue
         getMockEndpoint("mock:result").expectedBodiesReceived("Hello World", "Bye Camel");
 
-        template.sendBody("sjms:queue:start", "Hello Camel");
-        template.sendBody("sjms:queue:start", "Hello World");
+        template.sendBody("sjms:queue:start.ArtemisService", "Hello Camel");
+        template.sendBody("sjms:queue:start.ArtemisService", "Hello World");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
+    @Override
     protected CamelContext createCamelContext() throws Exception {
         CamelContext camelContext = super.createCamelContext();
 
         camelContext.addComponent("async", new MyAsyncComponent());
 
         ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory(
-                "vm://broker?broker.persistent=false&broker.useJmx=false");
+                service.serviceAddress());
         SjmsComponent component = new SjmsComponent();
         component.setConnectionFactory(connectionFactory);
         camelContext.addComponent("sjms", component);
@@ -58,24 +67,24 @@ public class AsyncConsumerInOutTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // enable async in only mode on the consumer
-                from("sjms:queue:start?synchronous=false")
+                from("sjms:queue:start.ArtemisService?asyncConsumer=true")
                         .choice()
-                            .when(body().contains("Camel"))
-                            .to("async:camel?delay=2000")
-                            .inOut("sjms:queue:in.out.test?namedReplyTo=response.queue&synchronous=false")
-                            .to("mock:result")
+                        .when(body().contains("Camel"))
+                        .to("async:camel?delay=2000")
+                        .to(ExchangePattern.InOut, "sjms:queue:in.out.test.ArtemisService?replyTo=response.queue")
+                        .to("mock:result")
                         .otherwise()
-                            .to("log:other")
-                            .to("mock:result");
+                        .to("log:other")
+                        .to("mock:result");
 
-                from("sjms:queue:in.out.test?exchangePattern=InOut&synchronous=false")
-                    .to("log:camel")
-                    .transform(constant("Bye Camel"));
+                from("sjms:queue:in.out.test.ArtemisService?asyncConsumer=true")
+                        .to("log:camel")
+                        .transform(constant("Bye Camel"));
             }
         };
     }

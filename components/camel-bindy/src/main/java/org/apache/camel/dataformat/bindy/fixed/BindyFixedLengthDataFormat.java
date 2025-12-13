@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,8 +20,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
@@ -34,16 +34,17 @@ import org.apache.camel.dataformat.bindy.BindyAbstractFactory;
 import org.apache.camel.dataformat.bindy.BindyFixedLengthFactory;
 import org.apache.camel.dataformat.bindy.FormatFactory;
 import org.apache.camel.dataformat.bindy.util.ConverterUtils;
-import org.apache.camel.spi.DataFormat;
+import org.apache.camel.spi.annotations.Dataformat;
+import org.apache.camel.support.ExchangeHelper;
+import org.apache.camel.support.ObjectHelper;
 import org.apache.camel.util.IOHelper;
-import org.apache.camel.util.ObjectHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * A <a href="http://camel.apache.org/data-format.html">data format</a> (
- * {@link DataFormat}) using Bindy to marshal to and from Fixed Length
+ * Marshal and unmarshal between POJOs and fixed field length format using Camel Bindy
  */
+@Dataformat("bindyFixed")
 public class BindyFixedLengthDataFormat extends BindyAbstractDataFormat {
 
     public static final String CAMEL_BINDY_FIXED_LENGTH_HEADER = "CamelBindyFixedLengthHeader";
@@ -63,13 +64,14 @@ public class BindyFixedLengthDataFormat extends BindyAbstractDataFormat {
 
     @Override
     public String getDataFormatName() {
-        return "bindy-fixed";
+        return "bindyFixed";
     }
 
+    @Override
     @SuppressWarnings("unchecked")
     public void marshal(Exchange exchange, Object body, OutputStream outputStream) throws Exception {
         BindyFixedLengthFactory factory = (BindyFixedLengthFactory) getFactory();
-        ObjectHelper.notNull(factory, "not instantiated");
+        org.apache.camel.util.ObjectHelper.notNull(factory, "not instantiated");
 
         // Get CRLF
         byte[] bytesCRLF = ConverterUtils.getByteReturn(factory.getCarriageReturn());
@@ -78,12 +80,15 @@ public class BindyFixedLengthDataFormat extends BindyAbstractDataFormat {
 
         // the body is not a prepared list so help a bit here and create one for us
         if (!isPreparedList(body)) {
-            models = new ArrayList<Map<String, Object>>();
-            Iterator<?> it = ObjectHelper.createIterator(body);
-            while (it.hasNext()) {
-                Object model = it.next();
+            models = new ArrayList<>();
+            if (body instanceof Map) {
+                // the body is already a map, and we do not want to iterate each element in the map,
+                // but keep the body as a map, so wrap as iterator
+                body = Collections.singleton(body).iterator();
+            }
+            for (Object model : ObjectHelper.createIterable(body)) {
                 String name = model.getClass().getName();
-                Map<String, Object> row = new HashMap<String, Object>();
+                Map<String, Object> row = new HashMap<>();
                 row.put(name, model);
                 row.putAll(createLinkedFieldsModel(model));
                 models.add(row);
@@ -119,7 +124,7 @@ public class BindyFixedLengthDataFormat extends BindyAbstractDataFormat {
                         LOG.info("Skipping marshal of header row; 'skipHeader=true'");
                         continue;
                     } else {
-                        result = headerFactory.unbind(model);
+                        result = headerFactory.unbind(getCamelContext(), model);
                     }
                 }
             } else if (row == models.size() && footerFactory != null) {
@@ -131,14 +136,14 @@ public class BindyFixedLengthDataFormat extends BindyAbstractDataFormat {
                         LOG.info("Skipping marshal of footer row; 'skipFooter=true'");
                         continue;
                     } else {
-                        result = footerFactory.unbind(model);
+                        result = footerFactory.unbind(getCamelContext(), model);
                     }
                 }
             }
 
             if (result == null) {
                 // marshal as a normal / default row
-                result = factory.unbind(model);
+                result = factory.unbind(getCamelContext(), model);
             }
 
             byte[] bytes = exchange.getContext().getTypeConverter().convertTo(byte[].class, exchange, result);
@@ -159,7 +164,7 @@ public class BindyFixedLengthDataFormat extends BindyAbstractDataFormat {
     private boolean isPreparedList(Object object) {
         if (List.class.isAssignableFrom(object.getClass())) {
             List<?> list = (List<?>) object;
-            if (list.size() > 0) {
+            if (!list.isEmpty()) {
                 // Check first entry, should be enough
                 Object entry = list.get(0);
                 if (Map.class.isAssignableFrom(entry.getClass())) {
@@ -175,30 +180,36 @@ public class BindyFixedLengthDataFormat extends BindyAbstractDataFormat {
         return false;
     }
 
+    @Override
     public Object unmarshal(Exchange exchange, InputStream inputStream) throws Exception {
         BindyFixedLengthFactory factory = (BindyFixedLengthFactory) getFactory();
-        ObjectHelper.notNull(factory, "not instantiated");
+        org.apache.camel.util.ObjectHelper.notNull(factory, "not instantiated");
 
         // List of Pojos
-        List<Map<String, Object>> models = new ArrayList<Map<String, Object>>();
+        List<Map<String, Object>> models = new ArrayList<>();
 
         // Pojos of the model
         Map<String, Object> model;
 
-        InputStreamReader in = new InputStreamReader(inputStream, IOHelper.getCharsetName(exchange));
+        InputStreamReader in = new InputStreamReader(inputStream, ExchangeHelper.getCharsetName(exchange));
 
         // Scanner is used to read big file
         Scanner scanner = new Scanner(in);
+        boolean isEolSet = false;
+        if (!"".equals(factory.getEndOfLine())) {
+            scanner.useDelimiter(factory.getEndOfLine());
+            isEolSet = true;
+        }
 
-        AtomicInteger count = new AtomicInteger(0);
+        AtomicInteger count = new AtomicInteger();
 
         try {
 
             // Parse the header if it exists
-            if (scanner.hasNextLine() && factory.hasHeader()) {
+            if (headerExists(factory, scanner, isEolSet)) {
 
                 // Read the line (should not trim as its fixed length)
-                String line = getNextNonEmptyLine(scanner, count);
+                String line = getNextNonEmptyLine(scanner, count, isEolSet);
 
                 if (!factory.skipHeader()) {
                     Map<String, Object> headerObjMap = createModel(headerFactory, line, count.intValue());
@@ -206,11 +217,11 @@ public class BindyFixedLengthDataFormat extends BindyAbstractDataFormat {
                 }
             }
 
-            String thisLine = getNextNonEmptyLine(scanner, count);
+            String thisLine = getNextNonEmptyLine(scanner, count, isEolSet);
 
             String nextLine = null;
             if (thisLine != null) {
-                nextLine = getNextNonEmptyLine(scanner, count);
+                nextLine = getNextNonEmptyLine(scanner, count, isEolSet);
             }
 
             // Parse the main file content
@@ -222,7 +233,7 @@ public class BindyFixedLengthDataFormat extends BindyAbstractDataFormat {
                 models.add(model);
 
                 thisLine = nextLine;
-                nextLine = getNextNonEmptyLine(scanner, count);
+                nextLine = getNextNonEmptyLine(scanner, count, isEolSet);
             }
 
             // this line should be the last non-empty line from the file
@@ -241,8 +252,8 @@ public class BindyFixedLengthDataFormat extends BindyAbstractDataFormat {
 
             // BigIntegerFormatFactory if models list is empty or not
             // If this is the case (correspond to an empty stream, ...)
-            if (models.size() == 0) {
-                throw new java.lang.IllegalArgumentException("No records have been defined in the the file");
+            if (models.isEmpty() && !isAllowEmptyStream()) {
+                throw new java.lang.IllegalArgumentException("No records have been defined in the file");
             } else {
                 return extractUnmarshalResult(models);
             }
@@ -254,14 +265,26 @@ public class BindyFixedLengthDataFormat extends BindyAbstractDataFormat {
 
     }
 
-    private String getNextNonEmptyLine(Scanner scanner, AtomicInteger count) {
+    private boolean headerExists(BindyFixedLengthFactory factory, Scanner scanner, boolean isEolSet) {
+        return hasMore(isEolSet, scanner) && factory.hasHeader();
+    }
+
+    private boolean hasMore(boolean isEolSet, Scanner scanner) {
+        return isEolSet && scanner.hasNext() || !isEolSet && scanner.hasNextLine();
+    }
+
+    private String getNextNonEmptyLine(Scanner scanner, AtomicInteger count, boolean isEolSet) {
         String line = "";
-        while (ObjectHelper.isEmpty(line) && scanner.hasNextLine()) {
+        while (org.apache.camel.util.ObjectHelper.isEmpty(line) && hasMore(isEolSet, scanner)) {
             count.incrementAndGet();
-            line = scanner.nextLine();
+            if (!isEolSet) {
+                line = scanner.nextLine();
+            } else {
+                line = scanner.next();
+            }
         }
 
-        if (ObjectHelper.isEmpty(line)) {
+        if (org.apache.camel.util.ObjectHelper.isEmpty(line)) {
             return null;
         } else {
             return line;
@@ -280,10 +303,12 @@ public class BindyFixedLengthDataFormat extends BindyAbstractDataFormat {
             if (isTrimmingNeededAndEnabled(factory, myLine)) {
                 myLine = myLine.substring(0, factory.recordLength());
             }
-            if ((myLine.length() < factory.recordLength()
-                    && !factory.isIgnoreMissingChars()) || (myLine.length() > factory.recordLength())) {
-                throw new java.lang.IllegalArgumentException("Size of the record: " + myLine.length()
-                        + " is not equal to the value provided in the model: " + factory.recordLength());
+            if (myLine.length() < factory.recordLength()
+                    && !factory.isIgnoreMissingChars() || myLine.length() > factory.recordLength()) {
+                throw new java.lang.IllegalArgumentException(
+                        "Size of the record: " + myLine.length()
+                                                             + " is not equal to the value provided in the model: "
+                                                             + factory.recordLength());
             }
         }
 
@@ -291,7 +316,7 @@ public class BindyFixedLengthDataFormat extends BindyAbstractDataFormat {
         Map<String, Object> model = factory.factory();
 
         // Bind data from Fixed record with model classes
-        factory.bind(myLine, model, count);
+        factory.bind(getCamelContext(), myLine, model, count);
 
         // Link objects together
         factory.link(model);
@@ -304,6 +329,7 @@ public class BindyFixedLengthDataFormat extends BindyAbstractDataFormat {
         return factory.isIgnoreTrailingChars() && myLine.length() > factory.recordLength();
     }
 
+    @SuppressWarnings("unused")
     private String rightPad(String myLine, int length) {
         return String.format("%1$-" + length + "s", myLine);
     }

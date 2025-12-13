@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,19 +22,22 @@ import java.io.OutputStream;
 import net.fortuna.ical4j.data.CalendarBuilder;
 import net.fortuna.ical4j.data.CalendarOutputter;
 import net.fortuna.ical4j.model.Calendar;
-
 import org.apache.camel.Exchange;
 import org.apache.camel.spi.DataFormat;
 import org.apache.camel.spi.DataFormatName;
-import org.apache.camel.support.ServiceSupport;
+import org.apache.camel.spi.annotations.Dataformat;
+import org.apache.camel.support.service.ServiceSupport;
 
 /**
  * Bridge ICal data format to camel world.
  */
+@Dataformat("ical")
 public class ICalDataFormat extends ServiceSupport implements DataFormat, DataFormatName {
 
-    private CalendarOutputter outputer = new CalendarOutputter();
-    private CalendarBuilder builder = new CalendarBuilder();
+    private boolean validating;
+
+    private CalendarOutputter outputer;
+    private CalendarBuilder builder;
 
     @Override
     public String getDataFormatName() {
@@ -54,7 +57,8 @@ public class ICalDataFormat extends ServiceSupport implements DataFormat, DataFo
 
     @Override
     protected void doStart() throws Exception {
-        // noop
+        outputer = new CalendarOutputter(validating);
+        builder = new CalendarBuilder();
     }
 
     @Override
@@ -62,28 +66,12 @@ public class ICalDataFormat extends ServiceSupport implements DataFormat, DataFo
         // noop
     }
 
-    public void setValidating(boolean validate) {
-        outputer.setValidating(validate);
+    public void setValidating(boolean validating) {
+        this.validating = validating;
     }
 
     public boolean isValidating() {
-        return outputer.isValidating();
-    }
-
-    public CalendarOutputter getOutputer() {
-        return outputer;
-    }
-
-    public void setOutputer(CalendarOutputter outputer) {
-        this.outputer = outputer;
-    }
-
-    public CalendarBuilder getBuilder() {
-        return builder;
-    }
-
-    public void setBuilder(CalendarBuilder builder) {
-        this.builder = builder;
+        return validating;
     }
 
 }

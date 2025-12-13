@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,19 +16,21 @@
  */
 package org.apache.camel.component.leveldb;
 
-import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.processor.aggregate.AggregationStrategy;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.params.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
-public class LevelDBAggregateTimeoutCompletionRestartTest extends CamelTestSupport {
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+@DisabledOnOs({ OS.AIX, OS.OTHER })
+public class LevelDBAggregateTimeoutCompletionRestartTest extends LevelDBTestSupport {
 
     @Override
-    public void setUp() throws Exception {
+    public void doPreSetup() throws Exception {
         deleteDirectory("target/data");
-        super.setUp();
     }
 
     @Test
@@ -50,39 +52,23 @@ public class LevelDBAggregateTimeoutCompletionRestartTest extends CamelTestSuppo
         mock = getMockEndpoint("mock:aggregated");
         mock.expectedBodiesReceived("ABC");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
         assertEquals(1, mock.getReceivedCounter());
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                // create the leveldb repo
-                LevelDBAggregationRepository repo = new LevelDBAggregationRepository("repo1", "target/data/leveldb.dat");
+            public void configure() {
 
                 // here is the Camel route where we aggregate
                 from("direct:start")
-                    .aggregate(header("id"), new MyAggregationStrategy())
+                        .aggregate(header("id"), new StringAggregationStrategy())
                         // use our created leveldb repo as aggregation repository
-                        .completionTimeout(3000).aggregationRepository(repo)
+                        .completionTimeout(3000).aggregationRepository(getRepo())
                         .to("mock:aggregated");
             }
         };
-    }
-
-    public static class MyAggregationStrategy implements AggregationStrategy {
-
-        public Exchange aggregate(Exchange oldExchange, Exchange newExchange) {
-            if (oldExchange == null) {
-                return newExchange;
-            }
-            String body1 = oldExchange.getIn().getBody(String.class);
-            String body2 = newExchange.getIn().getBody(String.class);
-
-            oldExchange.getIn().setBody(body1 + body2);
-            return oldExchange;
-        }
     }
 }

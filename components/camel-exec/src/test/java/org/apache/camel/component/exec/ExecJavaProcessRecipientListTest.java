@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,6 +17,7 @@
 package org.apache.camel.component.exec;
 
 import java.io.InputStream;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,10 +27,11 @@ import org.apache.camel.Processor;
 import org.apache.camel.Produce;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.exec.internal.ExecutableJavaProgram;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.test.junit5.CamelTestSupport;
 import org.apache.commons.io.IOUtils;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import static org.apache.camel.component.exec.ExecBinding.EXEC_COMMAND_ARGS;
 import static org.apache.camel.component.exec.ExecBinding.EXEC_COMMAND_EXECUTABLE;
@@ -39,33 +41,34 @@ import static org.apache.camel.component.exec.ExecBinding.EXEC_STDERR;
 import static org.apache.camel.component.exec.ExecBinding.EXEC_USE_STDERR_ON_EMPTY_STDOUT;
 import static org.apache.camel.component.exec.ExecEndpoint.NO_TIMEOUT;
 import static org.apache.camel.component.exec.ExecTestUtils.buildJavaExecutablePath;
-import static org.apache.camel.component.exec.ExecutableJavaProgram.EXIT_WITH_VALUE_0;
-import static org.apache.camel.component.exec.ExecutableJavaProgram.EXIT_WITH_VALUE_1;
-import static org.apache.camel.component.exec.ExecutableJavaProgram.PRINT_IN_STDERR;
-import static org.apache.camel.component.exec.ExecutableJavaProgram.PRINT_IN_STDOUT;
-import static org.apache.camel.component.exec.ExecutableJavaProgram.READ_INPUT_LINES_AND_PRINT_THEM;
-import static org.apache.camel.component.exec.ExecutableJavaProgram.SLEEP_WITH_TIMEOUT;
-import static org.apache.camel.component.exec.ExecutableJavaProgram.THREADS;
-import static org.apache.commons.io.IOUtils.LINE_SEPARATOR;
+import static org.apache.camel.component.exec.internal.ExecutableJavaProgram.EXIT_WITH_VALUE_0;
+import static org.apache.camel.component.exec.internal.ExecutableJavaProgram.EXIT_WITH_VALUE_1;
+import static org.apache.camel.component.exec.internal.ExecutableJavaProgram.PRINT_IN_STDERR;
+import static org.apache.camel.component.exec.internal.ExecutableJavaProgram.PRINT_IN_STDOUT;
+import static org.apache.camel.component.exec.internal.ExecutableJavaProgram.READ_INPUT_LINES_AND_PRINT_THEM;
+import static org.apache.camel.component.exec.internal.ExecutableJavaProgram.SLEEP_WITH_TIMEOUT;
+import static org.apache.camel.component.exec.internal.ExecutableJavaProgram.THREADS;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * Tests the functionality of the {@link org.apache.camel.component.exec.ExecComponent}, executing<br>
  * <i>java org.apache.camel.component.exec.ExecutableJavaProgram</i> <br>
- * command. <b>Note, that the tests assume, that the JAVA_HOME system variable
- * is set.</b> This is a more credible assumption, than assuming that java is in
- * the path, because the Maven scripts build the path to java with the JAVA_HOME
- * environment variable.
+ * command. <b>Note, that the tests assume, that the JAVA_HOME system variable is set.</b> This is a more credible
+ * assumption, than assuming that java is in the path, because the Maven scripts build the path to java with the
+ * JAVA_HOME environment variable.
  *
- * @see {@link org.apache.camel.component.exec.ExecutableJavaProgram}
+ * @see {@link org.apache.camel.component.exec.internal.ExecutableJavaProgram}
  */
 public class ExecJavaProcessRecipientListTest extends CamelTestSupport {
 
     private static final String EXECUTABLE_PROGRAM_ARG = ExecutableJavaProgram.class.getName();
 
-    @Produce(uri = "direct:input")
+    @Produce("direct:input")
     private ProducerTemplate producerTemplate;
 
-    @EndpointInject(uri = "mock:output")
+    @EndpointInject("mock:output")
     private MockEndpoint output;
 
     @Test
@@ -78,7 +81,7 @@ public class ExecJavaProcessRecipientListTest extends CamelTestSupport {
     }
 
     @Test
-    public void testExecJavaProcessExitCode1Direct() throws Exception {
+    public void testExecJavaProcessExitCode1Direct() {
         Exchange out = sendExchange("direct:direct", EXIT_WITH_VALUE_1, NO_TIMEOUT);
 
         assertNotNull(out);
@@ -104,7 +107,7 @@ public class ExecJavaProcessRecipientListTest extends CamelTestSupport {
         ExecResult inBody = e.getIn().getBody(ExecResult.class);
 
         output.assertIsSatisfied();
-        assertEquals(PRINT_IN_STDOUT, IOUtils.toString(inBody.getStdout()));
+        assertEquals(PRINT_IN_STDOUT, IOUtils.toString(inBody.getStdout(), Charset.defaultCharset()));
     }
 
     @Test
@@ -144,8 +147,8 @@ public class ExecJavaProcessRecipientListTest extends CamelTestSupport {
         ExecResult body = e.getIn().getBody(ExecResult.class);
 
         output.assertIsSatisfied();
-        assertNull("the test executable must not print anything in stdout", body.getStdout());
-        assertNotNull("the test executable must print in stderr", body.getStderr());
+        assertNull(body.getStdout(), "the test executable must not print anything in stdout");
+        assertNotNull(body.getStderr(), "the test executable must print in stderr");
         // the converter must fall back to the stderr, because stdout is null
         String stderr = e.getIn().getBody(String.class);
         assertEquals(PRINT_IN_STDERR, stderr);
@@ -161,11 +164,11 @@ public class ExecJavaProcessRecipientListTest extends CamelTestSupport {
         ExecResult body = e.getIn().getBody(ExecResult.class);
 
         output.assertIsSatisfied();
-        assertNull("the test executable must not print anything in stdout", body.getStdout());
-        assertNotNull("the test executable must print in stderr", body.getStderr());
+        assertNull(body.getStdout(), "the test executable must not print anything in stdout");
+        assertNotNull(body.getStderr(), "the test executable must print in stderr");
         // the converter must fall back to the stderr, because stdout is null
         String out = e.getIn().getBody(String.class);
-        assertEquals("Should be empty", "", out);
+        assertEquals("", out, "Should be empty");
     }
 
     @Test
@@ -176,7 +179,7 @@ public class ExecJavaProcessRecipientListTest extends CamelTestSupport {
         Exchange e = sendExchange(commandArgument, NO_TIMEOUT);
         output.assertIsSatisfied();
         InputStream out = e.getIn().getBody(InputStream.class);
-        assertEquals(PRINT_IN_STDOUT, IOUtils.toString(out));
+        assertEquals(PRINT_IN_STDOUT, IOUtils.toString(out, Charset.defaultCharset()));
     }
 
     @Test
@@ -199,10 +202,10 @@ public class ExecJavaProcessRecipientListTest extends CamelTestSupport {
         output.setExpectedMessageCount(1);
         Exchange exchange = sendExchange(THREADS, NO_TIMEOUT);
 
-        String err = IOUtils.toString(exchange.getIn().getHeader(EXEC_STDERR, InputStream.class));
+        String err = IOUtils.toString(exchange.getIn().getHeader(EXEC_STDERR, InputStream.class), Charset.defaultCharset());
         ExecResult result = exchange.getIn().getBody(ExecResult.class);
-        String[] outs = IOUtils.toString(result.getStdout()).split(LINE_SEPARATOR);
-        String[] errs = err.split(LINE_SEPARATOR);
+        String[] outs = IOUtils.toString(result.getStdout(), Charset.defaultCharset()).split(System.lineSeparator());
+        String[] errs = err.split(System.lineSeparator());
 
         output.assertIsSatisfied();
         assertEquals(ExecutableJavaProgram.LINES_TO_PRINT_FROM_EACH_THREAD, outs.length);
@@ -233,14 +236,14 @@ public class ExecJavaProcessRecipientListTest extends CamelTestSupport {
         final StringBuilder builder = new StringBuilder();
         int lines = 10;
         for (int t = 1; t < lines; t++) {
-            builder.append("Line" + t + LINE_SEPARATOR);
+            builder.append("Line").append(t).append(System.lineSeparator());
         }
         String whiteSpaceSeparatedLines = builder.toString();
         String expected = builder.toString();
 
         Exchange e = sendExchange(READ_INPUT_LINES_AND_PRINT_THEM, 20000, whiteSpaceSeparatedLines, false);
         ExecResult inBody = e.getIn().getBody(ExecResult.class);
-        assertEquals(expected, IOUtils.toString(inBody.getStdout()));
+        assertEquals(expected, IOUtils.toString(inBody.getStdout(), Charset.defaultCharset()));
     }
 
     protected Exchange sendExchange(final String endpoint, final Object commandArgument, final long timeout) {
@@ -251,16 +254,19 @@ public class ExecJavaProcessRecipientListTest extends CamelTestSupport {
         return sendExchange(commandArgument, timeout, "testBody", false);
     }
 
-    protected Exchange sendExchange(final Object commandArgument, final long timeout, final String body, final boolean useStderrOnEmptyStdout) {
+    protected Exchange sendExchange(
+            final Object commandArgument, final long timeout, final String body, final boolean useStderrOnEmptyStdout) {
         return sendExchange("direct:input", commandArgument, timeout, body, useStderrOnEmptyStdout);
     }
 
-    protected Exchange sendExchange(final String endpoint, final Object commandArgument, final long timeout, final String body, final boolean useStderrOnEmptyStdout) {
+    protected Exchange sendExchange(
+            final String endpoint, final Object commandArgument, final long timeout, final String body,
+            final boolean useStderrOnEmptyStdout) {
         final List<String> args = buildArgs(commandArgument);
         final String javaAbsolutePath = buildJavaExecutablePath();
 
         return producerTemplate.send(endpoint, new Processor() {
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setBody(body);
                 exchange.getIn().setHeader(EXEC_COMMAND_EXECUTABLE, javaAbsolutePath);
                 exchange.getIn().setHeader(EXEC_COMMAND_TIMEOUT, timeout);
@@ -275,7 +281,7 @@ public class ExecJavaProcessRecipientListTest extends CamelTestSupport {
 
     List<String> buildArgs(Object commandArgument) {
         String classpath = System.getProperty("java.class.path");
-        List<String> args = new ArrayList<String>();
+        List<String> args = new ArrayList<>();
         args.add("-cp");
         args.add(classpath);
         args.add(EXECUTABLE_PROGRAM_ARG);
@@ -288,10 +294,10 @@ public class ExecJavaProcessRecipientListTest extends CamelTestSupport {
         return new RouteBuilder() {
             public void configure() {
                 from("direct:input")
-                    .recipientList(header("whereTo")).to("mock:output");
+                        .recipientList(header("whereTo")).to("mock:output");
 
                 from("direct:direct")
-                    .recipientList(header("whereTo"));
+                        .recipientList(header("whereTo"));
             }
         };
     }

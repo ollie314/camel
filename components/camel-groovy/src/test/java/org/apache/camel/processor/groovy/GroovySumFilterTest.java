@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,14 +19,12 @@ package org.apache.camel.processor.groovy;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.camel.test.spring.CamelSpringTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.spring.junit5.CamelSpringTestSupport;
+import org.junit.jupiter.api.Test;
 import org.springframework.context.support.AbstractApplicationContext;
 import org.springframework.context.support.ClassPathXmlApplicationContext;
 
-/**
- * @version 
- */
 public class GroovySumFilterTest extends CamelSpringTestSupport {
 
     @Override
@@ -39,14 +37,14 @@ public class GroovySumFilterTest extends CamelSpringTestSupport {
         getMockEndpoint("mock:high").expectedMessageCount(1);
         getMockEndpoint("mock:low").expectedMessageCount(0);
 
-        List orders = new ArrayList();
+        List<Order> orders = new ArrayList<>();
         orders.add(new Order("Camel in Action", 50));
         orders.add(new Order("ActiveMQ in Action", 40));
         orders.add(new Order("Spring in Action", 60));
 
         template.sendBody("direct:start", orders);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -54,13 +52,13 @@ public class GroovySumFilterTest extends CamelSpringTestSupport {
         getMockEndpoint("mock:high").expectedMessageCount(0);
         getMockEndpoint("mock:low").expectedMessageCount(1);
 
-        List orders = new ArrayList();
+        List<Order> orders = new ArrayList<>();
         orders.add(new Order("Camel in Action", 50));
         orders.add(new Order("ActiveMQ in Action", 40));
 
         template.sendBody("direct:start", orders);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
 }

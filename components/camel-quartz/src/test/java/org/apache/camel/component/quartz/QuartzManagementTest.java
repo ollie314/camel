@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,8 +20,15 @@ import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@DisabledOnOs(OS.AIX)
 public class QuartzManagementTest extends BaseQuartzTest {
 
     protected MBeanServer getMBeanServer() {
@@ -30,18 +37,14 @@ public class QuartzManagementTest extends BaseQuartzTest {
 
     @Test
     public void testQuartzRoute() throws Exception {
-        // JMX tests dont work well on AIX CI servers (hangs them)
-        if (isPlatform("aix")) {
-            return;
-        }
-
         getMockEndpoint("mock:result").expectedMessageCount(2);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         MBeanServer mbeanServer = getMBeanServer();
 
-        String name = String.format("quartz:type=QuartzScheduler,name=DefaultQuartzScheduler-%s,instance=NON_CLUSTERED", context.getManagementName());
+        String name = String.format("quartz:type=QuartzScheduler,name=DefaultQuartzScheduler-%s,instance=NON_CLUSTERED",
+                context.getManagementName());
 
         ObjectName on = ObjectName.getInstance(name);
         assertTrue(mbeanServer.isRegistered(on));
@@ -51,11 +54,12 @@ public class QuartzManagementTest extends BaseQuartzTest {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("quartz://myGroup/myTimerName?trigger.repeatInterval=2&trigger.repeatCount=1").routeId("myRoute").to("mock:result");
+            public void configure() {
+                from("quartz://myGroup/myTimerName?trigger.repeatInterval=2&trigger.repeatCount=1").routeId("myRoute")
+                        .to("mock:result");
             }
         };
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,64 +17,68 @@
 package org.apache.camel.component.netty;
 
 import java.net.InetSocketAddress;
+import java.util.List;
 
+import io.netty.bootstrap.Bootstrap;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.DatagramPacket;
+import io.netty.channel.socket.nio.NioDatagramChannel;
+import io.netty.handler.codec.MessageToMessageDecoder;
+import io.netty.util.CharsetUtil;
 import org.apache.camel.builder.RouteBuilder;
-import org.jboss.netty.bootstrap.ConnectionlessBootstrap;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelPipeline;
-import org.jboss.netty.channel.ChannelPipelineFactory;
-import org.jboss.netty.channel.Channels;
-import org.jboss.netty.channel.MessageEvent;
-import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
-import org.jboss.netty.channel.socket.nio.NioDatagramChannelFactory;
-import org.jboss.netty.handler.codec.string.StringDecoder;
-import org.jboss.netty.util.CharsetUtil;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class NettyUdpConnectionlessSendTest extends BaseNettyTest {
     private static final String SEND_STRING = "***<We all love camel>***";
     private static final int SEND_COUNT = 20;
     private volatile int receivedCount;
-    private ConnectionlessBootstrap bootstrap;
+    private EventLoopGroup group;
+    private Bootstrap bootstrap;
 
     public void createNettyUdpReceiver() {
-        bootstrap = new ConnectionlessBootstrap(new NioDatagramChannelFactory());
-        bootstrap.setPipelineFactory(new ChannelPipelineFactory() {
-            @Override
-            public ChannelPipeline getPipeline() throws Exception {
-                ChannelPipeline channelPipeline = Channels.pipeline();
-                channelPipeline.addLast("StringDecoder", new StringDecoder(CharsetUtil.UTF_8));
-                channelPipeline.addLast("ContentHandler", new ContentHandler());
-                return channelPipeline;
-            }
-        });
-
+        group = new NioEventLoopGroup();
+        bootstrap = new Bootstrap();
+        bootstrap.group(group)
+                .channel(NioDatagramChannel.class)
+                .handler(new ChannelInitializer<Channel>() {
+                    @Override
+                    protected void initChannel(Channel channel) {
+                        channel.pipeline().addLast(new UdpHandler());
+                        channel.pipeline().addLast(new ContentHandler());
+                    }
+                }).localAddress(new InetSocketAddress(getPort()));
     }
 
-
     public void bind() {
-        bootstrap.bind(new InetSocketAddress(getPort()));
+        bootstrap.bind().syncUninterruptibly();
     }
 
     public void stop() {
-        bootstrap.shutdown();
+        group.shutdownGracefully().syncUninterruptibly();
     }
 
     @Test
-    public void sendConnectionlessUdp() throws Exception {
+    public void sendConnectionlessUdp() {
         createNettyUdpReceiver();
         bind();
         for (int i = 0; i < SEND_COUNT; ++i) {
             template.sendBody("direct:in", SEND_STRING);
         }
         stop();
-        assertTrue("We should have received some datagrams", receivedCount > 0);
+        assertTrue(receivedCount > 0, "We should have received some datagrams");
 
     }
 
     @Test
-    public void sendWithoutReceiver() throws Exception {
+    public void sendWithoutReceiver() {
         int exceptionCount = 0;
         for (int i = 0; i < SEND_COUNT; ++i) {
             try {
@@ -83,25 +87,31 @@ public class NettyUdpConnectionlessSendTest extends BaseNettyTest {
                 ++exceptionCount;
             }
         }
-        assertEquals("No exception should occur", 0, exceptionCount);
+        assertEquals(0, exceptionCount, "No exception should occur");
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:in").to("netty:udp://localhost:{{port}}?sync=false&textline=true&udpConnectionlessSending=true");
             }
         };
     }
 
-    public class ContentHandler extends SimpleChannelUpstreamHandler {
+    public class UdpHandler extends MessageToMessageDecoder<DatagramPacket> {
         @Override
-        public void messageReceived(ChannelHandlerContext ctx, MessageEvent messageEvent) throws Exception {
-            String s = (String)messageEvent.getMessage();
-            receivedCount++;
-            assertEquals(SEND_STRING, s.trim());
+        protected void decode(
+                ChannelHandlerContext channelHandlerContext, DatagramPacket datagramPacket, List<Object> objects) {
+            objects.add(datagramPacket.content().toString(CharsetUtil.UTF_8));
+        }
+    }
+
+    public class ContentHandler extends SimpleChannelInboundHandler<String> {
+        @Override
+        protected void channelRead0(ChannelHandlerContext channelHandlerContext, String s) {
+            ++receivedCount;
         }
     }
 }

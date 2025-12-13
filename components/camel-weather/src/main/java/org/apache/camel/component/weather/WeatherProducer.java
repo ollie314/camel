@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,13 +17,18 @@
 package org.apache.camel.component.weather;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.impl.DefaultProducer;
+import org.apache.camel.support.DefaultProducer;
 import org.apache.camel.util.ObjectHelper;
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.HttpStatus;
-import org.apache.commons.httpclient.methods.GetMethod;
+import org.apache.hc.client5.http.classic.HttpClient;
+import org.apache.hc.client5.http.classic.methods.HttpGet;
+import org.apache.hc.core5.http.HttpStatus;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class WeatherProducer extends DefaultProducer {
+
+    private static final Logger LOG = LoggerFactory.getLogger(WeatherProducer.class);
 
     private final String query;
 
@@ -42,33 +47,42 @@ public class WeatherProducer extends DefaultProducer {
         String q = query;
         String location = exchange.getIn().getHeader(WeatherConstants.WEATHER_LOCATION, String.class);
         if (location != null) {
-            q = getEndpoint().getConfiguration().getQuery(location);
+            q = getEndpoint().getWeatherQuery().getQuery(location);
         }
 
-        HttpClient httpClient = ((WeatherComponent) getEndpoint().getComponent()).getHttpClient();
-        GetMethod method = new GetMethod(q);
-        try {
-            log.debug("Going to execute the Weather query {}", q);
-            int statusCode = httpClient.executeMethod(method);
-            if (statusCode != HttpStatus.SC_OK) {
-                throw new IllegalStateException("Got the invalid http status value '" + method.getStatusLine() + "' as the result of the query '" + query + "'");
-            }
-            String weather = getEndpoint().getCamelContext().getTypeConverter().mandatoryConvertTo(String.class, method.getResponseBodyAsStream());
-            log.debug("Got back the Weather information {}", weather);
+        HttpClient httpClient = getEndpoint().getConfiguration().getHttpClient();
+        String uri = q;
+        HttpGet method = new HttpGet(uri);
+        httpClient.execute(
+                method,
+                response -> {
+                    try {
+                        LOG.debug("Going to execute the Weather query {}", uri);
+                        if (HttpStatus.SC_OK != response.getCode()) {
+                            throw new IllegalStateException(
+                                    "Got the invalid http status value '" + response.getCode()
+                                                            + "' as the result of the query '" + query + "'");
+                        }
+                        String weather = EntityUtils.toString(response.getEntity(), "UTF-8");
+                        LOG.debug("Got back the Weather information {}", weather);
 
-            if (ObjectHelper.isEmpty(weather)) {
-                throw new IllegalStateException("Got the unexpected value '" + weather + "' as the result of the query '" + q + "'");
-            }
+                        if (ObjectHelper.isEmpty(weather)) {
+                            throw new IllegalStateException(
+                                    "Got the unexpected value '" + weather + "' as the result of the query '" + uri + "'");
+                        }
 
-            String header = getEndpoint().getConfiguration().getHeaderName();
-            if (header != null) {
-                exchange.getIn().setHeader(header, weather);
-            } else {
-                exchange.getIn().setBody(weather);
-            }
-            exchange.getIn().setHeader(WeatherConstants.WEATHER_QUERY, q);
-        } finally {
-            method.releaseConnection();
-        }
+                        String header = getEndpoint().getConfiguration().getHeaderName();
+                        if (header != null) {
+                            exchange.getIn().setHeader(header, weather);
+                        } else {
+                            exchange.getIn().setBody(weather);
+                        }
+                        exchange.getIn().setHeader(WeatherConstants.WEATHER_QUERY, uri);
+                        return null;
+                    } finally {
+                        method.reset();
+                    }
+                });
+
     }
 }

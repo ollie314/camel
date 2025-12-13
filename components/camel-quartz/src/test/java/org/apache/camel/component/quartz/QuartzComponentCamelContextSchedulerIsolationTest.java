@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,31 +18,28 @@ package org.apache.camel.component.quartz;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.impl.DefaultCamelContext;
-import org.apache.camel.management.JmxSystemPropertyKeys;
-import org.junit.AfterClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Test;
 import org.quartz.Scheduler;
-import org.quartz.SchedulerException;
 
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 
 public class QuartzComponentCamelContextSchedulerIsolationTest {
 
-    @AfterClass
+    @AfterAll
     public static void afterTests() {
-        System.clearProperty(JmxSystemPropertyKeys.DISABLED);
     }
 
     @Test
     public void testSchedulerIsolationUnmanaged() throws Exception {
-        disableJMX();
+        DefaultCamelContext.setDisableJmx(true);
         testSchedulerIsolation();
     }
 
     @Test
     public void testSchedulerIsolationManaged() throws Exception {
-        enableJMX();
+        DefaultCamelContext.setDisableJmx(false);
         testSchedulerIsolation();
     }
 
@@ -74,22 +71,8 @@ public class QuartzComponentCamelContextSchedulerIsolationTest {
     /**
      * Get the default scheduler for the provided camel context.
      */
-    private Scheduler getDefaultScheduler(CamelContext context) throws SchedulerException {
-        return getQuartzComponent(context).getFactory().getScheduler();
-    }
-
-    /**
-     * Disables the JMX agent.
-     */
-    private void disableJMX() {
-        System.setProperty(JmxSystemPropertyKeys.DISABLED, "true");
-    }
-
-    /**
-     * Enables the JMX agent.
-     */
-    private void enableJMX() {
-        System.setProperty(JmxSystemPropertyKeys.DISABLED, "false");
+    private Scheduler getDefaultScheduler(CamelContext context) {
+        return getQuartzComponent(context).getScheduler();
     }
 
 }

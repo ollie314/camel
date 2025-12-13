@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,7 +20,9 @@ import java.util.Arrays;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class MyBatisDeleteListTest extends MyBatisTestSupport {
 
@@ -31,11 +33,11 @@ public class MyBatisDeleteListTest extends MyBatisTestSupport {
 
         template.sendBody("direct:start", Arrays.asList(123, 456));
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // there should be 0 rows now
         Integer rows = template.requestBody("mybatis:count?statementType=SelectOne", null, Integer.class);
-        assertEquals("There should be 0 rows", 0, rows.intValue());
+        assertEquals(0, rows.intValue(), "There should be 0 rows");
     }
 
     @Test
@@ -45,21 +47,21 @@ public class MyBatisDeleteListTest extends MyBatisTestSupport {
 
         template.sendBody("direct:start", Arrays.asList(999));
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // there should be 2 rows now
         Integer rows = template.requestBody("mybatis:count?statementType=SelectOne", null, Integer.class);
-        assertEquals("There should be 2 rows", 2, rows.intValue());
+        assertEquals(2, rows.intValue(), "There should be 2 rows");
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .to("mybatis:batchDeleteAccountById?statementType=DeleteList")
-                    .to("mock:result");
+                        .to("mybatis:batchDeleteAccountById?statementType=DeleteList")
+                        .to("mock:result");
             }
         };
     }

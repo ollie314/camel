@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,12 +19,8 @@ package org.apache.camel.processor.jpa;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.examples.SendEmail;
-import org.apache.camel.spring.SpringRouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
 public class JpaRouteConsumeLockEntityTest extends AbstractJpaTest {
     protected static final String SELECT_ALL_STRING = "select x from " + SendEmail.class.getName() + " x";
 
@@ -35,12 +31,12 @@ public class JpaRouteConsumeLockEntityTest extends AbstractJpaTest {
 
         template.sendBody("direct:start", new SendEmail("one@somewhere.org"));
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
     protected RouteBuilder createRouteBuilder() {
-        return new SpringRouteBuilder() {
+        return new RouteBuilder() {
             public void configure() {
                 from("direct:start").to("jpa://" + SendEmail.class.getName());
 

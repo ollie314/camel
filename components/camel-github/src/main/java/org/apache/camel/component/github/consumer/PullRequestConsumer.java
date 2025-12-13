@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,8 +16,9 @@
  */
 package org.apache.camel.component.github.consumer;
 
+import java.util.ArrayDeque;
 import java.util.List;
-import java.util.Stack;
+import java.util.Queue;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
@@ -42,7 +43,7 @@ public class PullRequestConsumer extends AbstractGitHubConsumer {
         Registry registry = endpoint.getCamelContext().getRegistry();
         Object service = registry.lookupByName(GitHubConstants.GITHUB_PULL_REQUEST_SERVICE);
         if (service != null) {
-            LOG.debug("Using PullRequestService found in registry " + service.getClass().getCanonicalName());
+            LOG.debug("Using PullRequestService found in registry {}", service.getClass().getCanonicalName());
             pullRequestService = (PullRequestService) service;
         } else {
             pullRequestService = new PullRequestService();
@@ -52,7 +53,7 @@ public class PullRequestConsumer extends AbstractGitHubConsumer {
 
         LOG.info("GitHub PullRequestConsumer: Indexing current pull requests...");
         List<PullRequest> pullRequests = pullRequestService.getPullRequests(getRepository(), "open");
-        if (pullRequests.size() > 0) {
+        if (!pullRequests.isEmpty()) {
             lastOpenPullRequest = pullRequests.get(0).getNumber();
         }
     }
@@ -61,7 +62,7 @@ public class PullRequestConsumer extends AbstractGitHubConsumer {
     protected int poll() throws Exception {
         List<PullRequest> openPullRequests = pullRequestService.getPullRequests(getRepository(), "open");
         // In the end, we want PRs oldest to newest.
-        Stack<PullRequest> newPullRequests = new Stack<PullRequest>();
+        ArrayDeque<PullRequest> newPullRequests = new ArrayDeque<>();
         for (PullRequest pullRequest : openPullRequests) {
             if (pullRequest.getNumber() > lastOpenPullRequest) {
                 newPullRequests.push(pullRequest);
@@ -70,13 +71,14 @@ public class PullRequestConsumer extends AbstractGitHubConsumer {
             }
         }
 
-        if (newPullRequests.size() > 0) {
+        if (!newPullRequests.isEmpty()) {
             lastOpenPullRequest = openPullRequests.get(0).getNumber();
         }
 
-        while (!newPullRequests.empty()) {
+        Queue<Object> exchanges = new ArrayDeque<>();
+        while (!newPullRequests.isEmpty()) {
             PullRequest newPullRequest = newPullRequests.pop();
-            Exchange e = getEndpoint().createExchange();
+            Exchange e = createExchange(true);
 
             e.getIn().setBody(newPullRequest);
 
@@ -85,9 +87,9 @@ public class PullRequestConsumer extends AbstractGitHubConsumer {
             if (newPullRequest.getHead() != null) {
                 e.getIn().setHeader(GitHubConstants.GITHUB_PULLREQUEST_HEAD_COMMIT_SHA, newPullRequest.getHead().getSha());
             }
-
-            getProcessor().process(e);
+            exchanges.add(e);
         }
-        return newPullRequests.size();
+        return processBatch(exchanges);
     }
+
 }

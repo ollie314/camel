@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,6 +18,8 @@ package org.apache.camel.component.undertow.handlers;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
@@ -27,9 +29,10 @@ import io.undertow.server.handlers.PathTemplateHandler;
  * Extended PathTemplateHandler to monitor add/remove handlers. Also this enables hot swapping a default handler.
  */
 public class CamelPathTemplateHandler implements HttpHandler {
-    private Map<String, CamelMethodHandler> handlers = new HashMap<String, CamelMethodHandler>();
-    private Wrapper defaultHandlerWrapper = new Wrapper();
-    private PathTemplateHandler delegate;
+    private final Lock lock = new ReentrantLock();
+    private final Map<String, CamelMethodHandler> handlers = new HashMap<>();
+    private final Wrapper defaultHandlerWrapper = new Wrapper();
+    private final PathTemplateHandler delegate;
     private String handlerString;
 
     public CamelPathTemplateHandler(CamelMethodHandler defaultHandler) {
@@ -42,18 +45,28 @@ public class CamelPathTemplateHandler implements HttpHandler {
         delegate.handleRequest(exchange);
     }
 
-    public synchronized CamelPathTemplateHandler add(final String uriTemplate, final CamelMethodHandler handler) {
-        delegate.add(uriTemplate, handler);
-        handlers.put(uriTemplate, handler);
-        handlerString = null;
-        return this;
+    public CamelPathTemplateHandler add(final String uriTemplate, final CamelMethodHandler handler) {
+        lock.lock();
+        try {
+            delegate.add(uriTemplate, handler);
+            handlers.put(uriTemplate, handler);
+            handlerString = null;
+            return this;
+        } finally {
+            lock.unlock();
+        }
     }
 
-    public synchronized CamelPathTemplateHandler remove(final String uriTemplate) {
-        delegate.remove(uriTemplate);
-        handlers.remove(uriTemplate);
-        handlerString = null;
-        return this;
+    public CamelPathTemplateHandler remove(final String uriTemplate) {
+        lock.lock();
+        try {
+            delegate.remove(uriTemplate);
+            handlers.remove(uriTemplate);
+            handlerString = null;
+            return this;
+        } finally {
+            lock.unlock();
+        }
     }
 
     public CamelMethodHandler get(final String uriTemplate) {
@@ -65,14 +78,25 @@ public class CamelPathTemplateHandler implements HttpHandler {
     }
 
     public CamelMethodHandler getDefault() {
-        return this.defaultHandlerWrapper.get();
+        lock.lock();
+        try {
+            return this.defaultHandlerWrapper.get();
+        } finally {
+            lock.unlock();
+        }
     }
 
-    public synchronized void setDefault(final CamelMethodHandler defaultHandler) {
-        this.defaultHandlerWrapper.set(defaultHandler);
-        handlerString = null;
+    public void setDefault(final CamelMethodHandler defaultHandler) {
+        lock.lock();
+        try {
+            this.defaultHandlerWrapper.set(defaultHandler);
+            handlerString = null;
+        } finally {
+            lock.unlock();
+        }
     }
 
+    @Override
     public String toString() {
         if (handlerString == null) {
             handlerString = "CamelPathTemplateHandler[default=" + defaultHandlerWrapper.get() + ", " + handlers + "]";
@@ -80,7 +104,7 @@ public class CamelPathTemplateHandler implements HttpHandler {
         return handlerString;
     }
 
-    class Wrapper implements HttpHandler {
+    static class Wrapper implements HttpHandler {
         private CamelMethodHandler handler;
 
         public void set(CamelMethodHandler handler) {

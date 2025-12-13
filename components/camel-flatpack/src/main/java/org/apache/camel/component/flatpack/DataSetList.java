@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,20 +19,29 @@ package org.apache.camel.component.flatpack;
 import java.math.BigDecimal;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.AbstractList;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.Properties;
+import java.util.function.DoubleSupplier;
+import java.util.function.IntSupplier;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
+import net.sf.flatpack.DataError;
 import net.sf.flatpack.DataSet;
 import net.sf.flatpack.Record;
 import net.sf.flatpack.ordering.OrderBy;
 
 /**
- * The {@link DataSetList} wraps the {@link DataSet} as a Java {@link List} type so the data can easily be iterated.
- * You can access the {@link DataSet} API from this {@link DataSetList} as it implements {@link DataSet}.
+ * The {@link DataSetList} wraps the {@link DataSet} as a Java {@link List} type so the data can easily be iterated. You
+ * can access the {@link DataSet} API from this {@link DataSetList} as it implements {@link DataSet}.
  */
 public class DataSetList extends AbstractList<Map<String, Object>> implements DataSet {
     private final DataSet dataSet;
@@ -41,11 +50,13 @@ public class DataSetList extends AbstractList<Map<String, Object>> implements Da
         this.dataSet = dataSet;
     }
 
+    @Override
     public Map<String, Object> get(int index) {
         dataSet.absolute(index);
         return FlatpackConverter.toMap(dataSet);
     }
 
+    @Override
     public int size() {
         return dataSet.getRowCount();
     }
@@ -53,23 +64,33 @@ public class DataSetList extends AbstractList<Map<String, Object>> implements Da
     @Override
     public Iterator<Map<String, Object>> iterator() {
         dataSet.goTop();
+
         return new Iterator<Map<String, Object>>() {
-            private boolean hasNext = dataSet.next();
+            Optional<Record> nextData = Optional.empty();
 
+            @Override
             public boolean hasNext() {
-                return hasNext;
+                if (nextData.isPresent()) {
+                    return true;
+                } else {
+                    if (DataSetList.this.next()) {
+                        nextData = dataSet.getRecord();
+                    } else {
+                        nextData = Optional.empty();
+                    }
+                    return nextData.isPresent();
+                }
             }
 
+            @Override
             public Map<String, Object> next() {
-                // because of a limitation in split() we need to create an object for the current position
-                // otherwise strangeness occurs when the same object is used to represent each row
-                Map<String, Object> result = FlatpackConverter.toMap(dataSet);
-                hasNext = dataSet.next();
-                return result;
-            }
-
-            public void remove() {
-                throw new UnsupportedOperationException("remove() not supported");
+                if (nextData.isPresent() || hasNext()) {
+                    final Record line = nextData.orElse(null);
+                    nextData = Optional.empty();
+                    return FlatpackConverter.toMap(line);
+                } else {
+                    throw new NoSuchElementException();
+                }
             }
         };
     }
@@ -93,7 +114,7 @@ public class DataSetList extends AbstractList<Map<String, Object>> implements Da
     }
 
     @Override
-    public List getErrors() {
+    public List<DataError> getErrors() {
         return dataSet.getErrors();
     }
 
@@ -253,7 +274,75 @@ public class DataSetList extends AbstractList<Map<String, Object>> implements Da
     }
 
     @Override
-    public Record getRecord() {
+    public String getString(String column, Supplier<String> defaultSupplier) {
+        return dataSet.getString(column, defaultSupplier);
+    }
+
+    @Override
+    public double getDouble(String column, DoubleSupplier defaultSupplier) {
+        return dataSet.getDouble(column, defaultSupplier);
+    }
+
+    @Override
+    public BigDecimal getBigDecimal(String column, Supplier<BigDecimal> defaultSupplier) {
+        return dataSet.getBigDecimal(column, defaultSupplier);
+    }
+
+    @Override
+    public int getInt(String column, IntSupplier defaultSupplier) {
+        return dataSet.getInt(column, defaultSupplier);
+    }
+
+    @Override
+    public long getLong(String column, LongSupplier defaultSupplier) {
+        return dataSet.getLong(column, defaultSupplier);
+    }
+
+    @Override
+    public Date getDate(String column, Supplier<Date> defaultSupplier) throws ParseException {
+        return dataSet.getDate(column, defaultSupplier);
+    }
+
+    @Override
+    public Date getDate(String column, SimpleDateFormat sdf, Supplier<Date> defaultSupplier)
+            throws ParseException {
+        return dataSet.getDate(column, sdf, defaultSupplier);
+    }
+
+    @Override
+    public LocalDate getLocalDate(String column, Supplier<LocalDate> defaultSupplier) throws ParseException {
+        return dataSet.getLocalDate(column, defaultSupplier);
+    }
+
+    @Override
+    public LocalDate getLocalDate(String column) throws ParseException {
+        return dataSet.getLocalDate(column);
+    }
+
+    @Override
+    public LocalDate getLocalDate(String column, DateTimeFormatter formatter) throws ParseException {
+        return dataSet.getLocalDate(column, formatter);
+    }
+
+    @Override
+    public LocalDate getLocalDate(String column, String dateFormat, Supplier<LocalDate> defaultSupplier)
+            throws ParseException {
+        return dataSet.getLocalDate(column, dateFormat, defaultSupplier);
+    }
+
+    @Override
+    public LocalDate getLocalDate(String column, String dateFormat) throws ParseException {
+        return dataSet.getLocalDate(column, dateFormat);
+    }
+
+    @Override
+    public String getRecordID() {
+        return dataSet.getRecordID();
+    }
+
+    @Override
+    public Optional<Record> getRecord() {
         return dataSet.getRecord();
     }
+
 }

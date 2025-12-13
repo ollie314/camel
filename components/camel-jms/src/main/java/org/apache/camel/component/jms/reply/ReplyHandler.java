@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,29 +16,27 @@
  */
 package org.apache.camel.component.jms.reply;
 
-import javax.jms.Message;
-import javax.jms.Session;
+import jakarta.jms.Message;
+import jakarta.jms.Session;
 
 /**
  * Handles a reply.
- *
- * @version 
  */
 public interface ReplyHandler {
 
     /**
      * The reply message was received
      *
-     * @param correlationId  the correlation id
-     * @param reply  the JMS reply message
-     * @param session the JMS session
+     * @param correlationId the correlation id
+     * @param reply         the JMS reply message
+     * @param session       the JMS session
      */
     void onReply(String correlationId, Message reply, Session session);
 
     /**
      * The reply message was not received and a timeout triggered
      *
-     * @param correlationId  the correlation id
+     * @param correlationId the correlation id
      */
     void onTimeout(String correlationId);
 }

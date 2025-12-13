@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,23 +16,40 @@
  */
 package org.apache.camel.component.dropbox.integration.producer;
 
+import com.dropbox.core.v2.files.Metadata;
+import com.dropbox.core.v2.files.SearchMatchV2;
 import org.apache.camel.Exchange;
 import org.apache.camel.component.dropbox.DropboxConfiguration;
 import org.apache.camel.component.dropbox.DropboxEndpoint;
 import org.apache.camel.component.dropbox.core.DropboxAPIFacade;
-import org.apache.camel.component.dropbox.dto.DropboxResult;
+import org.apache.camel.component.dropbox.dto.DropboxSearchResult;
+import org.apache.camel.component.dropbox.util.DropboxConstants;
+import org.apache.camel.component.dropbox.util.DropboxHelper;
+import org.apache.camel.component.dropbox.validator.DropboxConfigurationValidator;
 
 public class DropboxSearchProducer extends DropboxProducer {
-    
+
     public DropboxSearchProducer(DropboxEndpoint endpoint, DropboxConfiguration configuration) {
         super(endpoint, configuration);
     }
 
     @Override
     public void process(Exchange exchange) throws Exception {
-        DropboxResult result = DropboxAPIFacade.getInstance(configuration.getClient())
-                .search(configuration.getRemotePath(), configuration.getQuery());
-        result.populateExchange(exchange);
-    }
+        String remotePath = DropboxHelper.getRemotePath(configuration, exchange);
+        String query = DropboxHelper.getQuery(configuration, exchange);
 
+        DropboxConfigurationValidator.validateSearchOp(remotePath);
+
+        DropboxSearchResult result = new DropboxAPIFacade(configuration.getClient(), exchange)
+                .search(remotePath, query);
+
+        StringBuilder fileExtracted = new StringBuilder();
+        for (SearchMatchV2 entry : result.getFound()) {
+            Metadata metadataValue = entry.getMetadata().getMetadataValue();
+            fileExtracted.append(metadataValue.getName()).append('-').append(metadataValue.getPathDisplay())
+                    .append('\n');
+        }
+        exchange.getIn().setHeader(DropboxConstants.FOUND_FILES, fileExtracted.toString());
+        exchange.getIn().setBody(result.getFound());
+    }
 }

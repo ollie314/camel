@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,18 +27,23 @@ import org.apache.camel.EndpointInject;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.spi.DataFormat;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
 import static org.apache.camel.dataformat.univocity.UniVocityTestHelper.asMap;
 import static org.apache.camel.dataformat.univocity.UniVocityTestHelper.join;
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * This class tests the unmarshalling of {@link org.apache.camel.dataformat.univocity.UniVocityCsvDataFormat} using the
  * Spring DSL.
  */
 public final class UniVocityCsvDataFormatUnmarshalTest extends CamelTestSupport {
-    @EndpointInject(uri = "mock:result")
+    @EndpointInject("mock:result")
     MockEndpoint result;
 
     /**
@@ -147,42 +152,42 @@ public final class UniVocityCsvDataFormatUnmarshalTest extends CamelTestSupport 
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
-        final Map<String, DataFormat> tests = new HashMap<String, DataFormat>();
+    protected RouteBuilder createRouteBuilder() {
+        final Map<String, DataFormat> tests = new HashMap<>();
 
         // Default reading of CSV
         tests.put("default", new UniVocityCsvDataFormat());
 
         // Reading CSV as Map
-        tests.put("map", new UniVocityCsvDataFormat()
-                        .setAsMap(true)
-                        .setHeaderExtractionEnabled(true)
-        );
+        var df = new UniVocityCsvDataFormat();
+        df.setAsMap(true);
+        df.setHeaderExtractionEnabled(true);
+        tests.put("map", df);
 
         // Reading CSV as Map with specific headers
-        tests.put("mapWithHeaders", new UniVocityCsvDataFormat()
-                        .setAsMap(true)
-                        .setHeaders(new String[]{"A", "B", "C"})
-        );
+        df = new UniVocityCsvDataFormat();
+        df.setAsMap(true);
+        df.setHeaders("A,B,C");
+        tests.put("mapWithHeaders", df);
 
         // Reading CSV using an iterator
-        tests.put("lazy", new UniVocityCsvDataFormat()
-                        .setLazyLoad(true)
-        );
+        df = new UniVocityCsvDataFormat();
+        df.setLazyLoad(true);
+        tests.put("lazy", df);
 
         // Reading CSV using advanced configuration
-        tests.put("advanced", new UniVocityCsvDataFormat()
-                        .setNullValue("N/A")
-                        .setDelimiter(';')
-                        .setIgnoreLeadingWhitespaces(true)
-                        .setIgnoreTrailingWhitespaces(false)
-                        .setComment('!')
-                        .setSkipEmptyLines(true)
-        );
+        df = new UniVocityCsvDataFormat();
+        df.setNullValue("N/A");
+        df.setDelimiter(';');
+        df.setIgnoreLeadingWhitespaces(true);
+        df.setIgnoreTrailingWhitespaces(false);
+        df.setComment('!');
+        df.setSkipEmptyLines(true);
+        tests.put("advanced", df);
 
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 for (Map.Entry<String, DataFormat> test : tests.entrySet()) {
                     from("direct:" + test.getKey()).unmarshal(test.getValue()).to("mock:result");
                 }

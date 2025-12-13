@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,12 +16,15 @@
  */
 package org.apache.camel.component.dropbox.integration.consumer;
 
+import java.util.Map;
+
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.component.dropbox.DropboxConfiguration;
 import org.apache.camel.component.dropbox.DropboxEndpoint;
 import org.apache.camel.component.dropbox.core.DropboxAPIFacade;
-import org.apache.camel.component.dropbox.dto.DropboxResult;
+import org.apache.camel.component.dropbox.dto.DropboxFileDownloadResult;
+import org.apache.camel.component.dropbox.util.DropboxConstants;
 
 public class DropboxScheduledPollGetConsumer extends DropboxScheduledPollConsumer {
 
@@ -31,18 +34,34 @@ public class DropboxScheduledPollGetConsumer extends DropboxScheduledPollConsume
 
     /**
      * Poll from a dropbox remote path and put the result in the message exchange
+     *
      * @return number of messages polled
-     * @throws Exception
      */
     @Override
     protected int poll() throws Exception {
-        Exchange exchange = endpoint.createExchange();
-        DropboxResult result = DropboxAPIFacade.getInstance(configuration.getClient())
-                .get(configuration.getRemotePath());
-        result.populateExchange(exchange);
-        LOG.info("consumer --> downloaded: " + result.toString());
-
+        Exchange exchange = createExchange(false);
         try {
+            DropboxFileDownloadResult result = new DropboxAPIFacade(configuration.getClient(), exchange)
+                    .get(configuration.getRemotePath());
+
+            Map<String, Object> map = result.getEntries();
+            if (map.size() == 1) {
+                for (Map.Entry<String, Object> entry : map.entrySet()) {
+                    exchange.getIn().setHeader(DropboxConstants.DOWNLOADED_FILE, entry.getKey());
+                    exchange.getIn().setBody(entry.getValue());
+                }
+            } else {
+                StringBuilder pathsExtracted = new StringBuilder();
+                for (Map.Entry<String, Object> entry : map.entrySet()) {
+                    pathsExtracted.append(entry.getKey()).append("\n");
+                }
+                exchange.getIn().setHeader(DropboxConstants.DOWNLOADED_FILES, pathsExtracted.toString());
+                exchange.getIn().setBody(map);
+            }
+
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Downloaded: {}", result);
+            }
             // send message to next processor in the route
             getProcessor().process(exchange);
             return 1; // number of messages polled
@@ -51,6 +70,7 @@ public class DropboxScheduledPollGetConsumer extends DropboxScheduledPollConsume
             if (exchange.getException() != null) {
                 getExceptionHandler().handleException("Error processing exchange", exchange, exchange.getException());
             }
+            releaseExchange(exchange, false);
         }
     }
 }

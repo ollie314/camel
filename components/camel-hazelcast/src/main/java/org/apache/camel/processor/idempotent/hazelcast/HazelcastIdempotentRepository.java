@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,34 +16,62 @@
  */
 package org.apache.camel.processor.idempotent.hazelcast;
 
+import com.hazelcast.config.Config;
+import com.hazelcast.config.XmlConfigBuilder;
+import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.core.IMap;
+import com.hazelcast.map.IMap;
+import org.apache.camel.spi.Configurer;
 import org.apache.camel.spi.IdempotentRepository;
-import org.apache.camel.support.ServiceSupport;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.support.service.ServiceSupport;
+import org.apache.camel.util.ObjectHelper;
 
-public class HazelcastIdempotentRepository extends ServiceSupport implements IdempotentRepository<String> {
+@Metadata(label = "bean",
+          description = "Idempotent repository that uses Hazelcast cache to store message ids.",
+          annotations = { "interfaceName=org.apache.camel.spi.IdempotentRepository" })
+@Configurer(metadataOnly = true)
+public class HazelcastIdempotentRepository extends ServiceSupport implements IdempotentRepository {
 
+    protected boolean useLocalHzInstance;
+
+    @Metadata(description = "Name of cache to use", defaultValue = "HazelcastIdempotentRepository")
     private String repositoryName;
     private IMap<String, Boolean> repo;
+    @Metadata(description = "To use an existing Hazelcast instance instead of local")
     private HazelcastInstance hazelcastInstance;
-    
+
+    public HazelcastIdempotentRepository() {
+        this(null);
+    }
+
     public HazelcastIdempotentRepository(HazelcastInstance hazelcastInstance) {
         this(hazelcastInstance, HazelcastIdempotentRepository.class.getSimpleName());
     }
 
     public HazelcastIdempotentRepository(HazelcastInstance hazelcastInstance, String repositoryName) {
-        this.repositoryName = repositoryName;
         this.hazelcastInstance = hazelcastInstance;
+        this.repositoryName = repositoryName;
     }
 
     @Override
     protected void doStart() throws Exception {
+        if (hazelcastInstance == null) {
+            Config cfg = new XmlConfigBuilder().build();
+            cfg.setProperty("hazelcast.version.check.enabled", "false");
+            hazelcastInstance = Hazelcast.newHazelcastInstance(cfg);
+            useLocalHzInstance = true;
+        } else {
+            ObjectHelper.notNull(hazelcastInstance, "hazelcastInstance");
+        }
         repo = hazelcastInstance.getMap(repositoryName);
     }
 
     @Override
     protected void doStop() throws Exception {
-        // noop
+        if (useLocalHzInstance) {
+            hazelcastInstance.getLifecycleService().shutdown();
+        }
     }
 
     @Override
@@ -85,10 +113,10 @@ public class HazelcastIdempotentRepository extends ServiceSupport implements Ide
             repo.unlock(key);
         }
     }
-    
+
     @Override
     public void clear() {
-        repo.clear();        
+        repo.clear();
     }
 
     public String getRepositoryName() {

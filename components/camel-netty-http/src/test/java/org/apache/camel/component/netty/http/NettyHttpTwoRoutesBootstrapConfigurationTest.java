@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,18 +16,20 @@
  */
 package org.apache.camel.component.netty.http;
 
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.component.netty.NettyServerBootstrapConfiguration;
-import org.apache.camel.impl.JndiRegistry;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class NettyHttpTwoRoutesBootstrapConfigurationTest extends BaseNettyTest {
 
     private NettyServerBootstrapConfiguration bootstrapConfiguration;
 
-    @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry jndi = super.createRegistry();
+    @BindToRegistry("myBootstrapOptions")
+    public NettyServerBootstrapConfiguration loadNettyBootstrapConf() {
 
         // create NettyServerBootstrapConfiguration instance where we can configure the bootstrap
         // option we want to use in our Camel routes. This allows us to configure this once,
@@ -38,9 +40,7 @@ public class NettyHttpTwoRoutesBootstrapConfigurationTest extends BaseNettyTest 
         bootstrapConfiguration.setKeepAlive(true);
         bootstrapConfiguration.setWorkerCount(4);
 
-        // register the configuration in the registry with this key
-        jndi.bind("myBootstrapOptions", bootstrapConfiguration);
-        return jndi;
+        return bootstrapConfiguration;
     }
 
     @Test
@@ -54,7 +54,7 @@ public class NettyHttpTwoRoutesBootstrapConfigurationTest extends BaseNettyTest 
         out = template.requestBody("netty-http:http://localhost:{{port}}/bar", "Hello Camel", String.class);
         assertEquals("Bye Camel", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // validate the options
         NettyHttpConsumer consumer = (NettyHttpConsumer) context.getRoute("foo").getConsumer();
@@ -71,21 +71,21 @@ public class NettyHttpTwoRoutesBootstrapConfigurationTest extends BaseNettyTest 
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // we want to use the same bootstrap options and want to configure this explicit, so we
                 // have a NettyServerBootstrapConfiguration instance in the registry, with the key = myBootstrapOptions
                 // which we then tell netty-http to lookup and use
 
                 from("netty-http:http://0.0.0.0:{{port}}/foo?bootstrapConfiguration=#myBootstrapOptions").routeId("foo")
-                    .to("mock:foo")
-                    .transform().constant("Bye World");
+                        .to("mock:foo")
+                        .transform().constant("Bye World");
 
                 from("netty-http:http://0.0.0.0:{{port}}/bar?bootstrapConfiguration=#myBootstrapOptions").routeId("bar")
-                    .to("mock:bar")
-                    .transform().constant("Bye Camel");
+                        .to("mock:bar")
+                        .transform().constant("Bye Camel");
             }
         };
     }

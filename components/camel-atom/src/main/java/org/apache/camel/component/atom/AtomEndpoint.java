@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,22 +16,21 @@
  */
 package org.apache.camel.component.atom;
 
-import java.util.Date;
-
-import org.apache.abdera.model.Feed;
+import org.apache.camel.Category;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.component.feed.FeedComponent;
 import org.apache.camel.component.feed.FeedEndpoint;
 import org.apache.camel.component.feed.FeedPollingConsumer;
+import org.apache.camel.spi.EndpointServiceLocation;
 import org.apache.camel.spi.UriEndpoint;
 
 /**
- * The atom component is used for consuming Atom RSS feeds.
+ * Poll Atom RSS feeds.
  */
-@UriEndpoint(scheme = "atom", title = "Atom", syntax = "atom:feedUri", consumerOnly = true,
-        consumerClass = FeedPollingConsumer.class, label = "rss", lenientProperties = true)
-public class AtomEndpoint extends FeedEndpoint {
+@UriEndpoint(firstVersion = "1.2.0", scheme = "atom", title = "Atom", syntax = "atom:feedUri", consumerOnly = true,
+             category = { Category.DOCUMENT }, lenientProperties = true, headersClass = AtomConstants.class)
+public class AtomEndpoint extends FeedEndpoint implements EndpointServiceLocation {
 
     public AtomEndpoint() {
     }
@@ -41,9 +40,19 @@ public class AtomEndpoint extends FeedEndpoint {
     }
 
     @Override
+    public String getServiceUrl() {
+        return feedUri;
+    }
+
+    @Override
+    public String getServiceProtocol() {
+        return "atom";
+    }
+
+    @Override
     public Exchange createExchange(Object feed) {
         Exchange exchange = createExchangeWithFeedHeader(feed, AtomConstants.ATOM_FEED);
-        exchange.getIn().setBody(((Feed)feed).getEntries());
+        exchange.getIn().setBody(feed);
         return exchange;
     }
 
@@ -55,12 +64,14 @@ public class AtomEndpoint extends FeedEndpoint {
     }
 
     @Override
-    protected FeedPollingConsumer createEntryPollingConsumer(FeedEndpoint feedEndpoint, Processor processor, boolean filter, Date lastUpdate, boolean throttleEntries) throws Exception {
-        AtomEntryPollingConsumer answer = new AtomEntryPollingConsumer(this, processor, filter, lastUpdate, throttleEntries);
+    protected FeedPollingConsumer createEntryPollingConsumer(
+            FeedEndpoint feedEndpoint, Processor processor, boolean throttleEntries)
+            throws Exception {
+        AtomEntryPollingConsumer answer = new AtomEntryPollingConsumer(this, processor, throttleEntries);
         configureConsumer(answer);
         return answer;
-    }  
-    
+    }
+
     @Override
     protected FeedPollingConsumer createPollingConsumer(FeedEndpoint feedEndpoint, Processor processor) throws Exception {
         AtomPollingConsumer answer = new AtomPollingConsumer(this, processor);

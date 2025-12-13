@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,27 +19,34 @@ package org.apache.camel.component.leveldb;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.camel.AggregationStrategy;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
-import org.apache.camel.processor.aggregate.AggregationStrategy;
-import org.apache.camel.test.spring.CamelSpringTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.spring.junit5.CamelSpringTestSupport;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.springframework.context.support.AbstractXmlApplicationContext;
 import org.springframework.context.support.ClassPathXmlApplicationContext;
 
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
+
+@DisabledOnOs({ OS.AIX, OS.OTHER })
 public class LevelDBSpringAggregateRecoverWithRedeliveryPolicyTest extends CamelSpringTestSupport {
 
-    private static AtomicInteger counter = new AtomicInteger(0);
+    private static AtomicInteger counter = new AtomicInteger();
 
     @Override
     protected AbstractXmlApplicationContext createApplicationContext() {
-        return new ClassPathXmlApplicationContext("org/apache/camel/component/leveldb/LevelDBSpringAggregateRecoverWithRedeliveryPolicyTest.xml");
+        return new ClassPathXmlApplicationContext(
+                "org/apache/camel/component/leveldb/LevelDBSpringAggregateRecoverWithRedeliveryPolicyTest.xml");
     }
 
-    @Override
-    public void setUp() throws Exception {
+    @BeforeEach
+    public void cleanupDirectory() {
         deleteDirectory("target/data");
-        super.setUp();
     }
 
     @Test
@@ -61,12 +68,13 @@ public class LevelDBSpringAggregateRecoverWithRedeliveryPolicyTest extends Camel
         template.sendBodyAndHeader("direct:start", "D", "id", 123);
         template.sendBodyAndHeader("direct:start", "E", "id", 123);
 
-        assertMockEndpointsSatisfied(30, TimeUnit.SECONDS);
+        MockEndpoint.assertIsSatisfied(context, 30, TimeUnit.SECONDS);
     }
 
     public static class MyFailProcessor implements Processor {
 
-        public void process(Exchange exchange) throws Exception {
+        @Override
+        public void process(Exchange exchange) {
             int count = counter.incrementAndGet();
             if (count <= 3) {
                 throw new IllegalArgumentException("Damn");
@@ -76,6 +84,7 @@ public class LevelDBSpringAggregateRecoverWithRedeliveryPolicyTest extends Camel
 
     public static class MyAggregationStrategy implements AggregationStrategy {
 
+        @Override
         public Exchange aggregate(Exchange oldExchange, Exchange newExchange) {
             if (oldExchange == null) {
                 return newExchange;

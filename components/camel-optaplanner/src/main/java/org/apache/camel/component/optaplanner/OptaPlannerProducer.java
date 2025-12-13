@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,19 +16,24 @@
  */
 package org.apache.camel.component.optaplanner;
 
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 
+import org.apache.camel.AsyncCallback;
 import org.apache.camel.Exchange;
-import org.apache.camel.impl.DefaultProducer;
-import org.optaplanner.core.api.domain.solution.Solution;
-import org.optaplanner.core.api.solver.Solver;
-import org.optaplanner.core.impl.solver.ProblemFactChange;
+import org.apache.camel.support.DefaultAsyncProducer;
+import org.optaplanner.core.api.solver.SolverFactory;
+import org.optaplanner.core.api.solver.SolverJob;
+import org.optaplanner.core.api.solver.SolverManager;
+import org.optaplanner.core.api.solver.change.ProblemChange;
+import org.optaplanner.core.config.solver.SolverConfig;
+import org.optaplanner.core.config.solver.SolverManagerConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class OptaPlannerProducer extends DefaultProducer {
+public class OptaPlannerProducer extends DefaultAsyncProducer {
 
-    private static final transient Logger LOGGER = LoggerFactory.getLogger(OptaPlannerProducer.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(OptaPlannerProducer.class);
 
     private ExecutorService executor;
     private final OptaPlannerEndpoint endpoint;
@@ -43,8 +48,8 @@ public class OptaPlannerProducer extends DefaultProducer {
     @Override
     protected void doStart() throws Exception {
         if (configuration.isAsync()) {
-            executor = endpoint.getCamelContext().getExecutorServiceManager().newFixedThreadPool(
-                    this, endpoint.getEndpointUri(), configuration.getThreadPoolSize());
+            executor = endpoint.getCamelContext().getExecutorServiceManager().newFixedThreadPool(this,
+                    endpoint.getEndpointUri(), configuration.getThreadPoolSize());
         }
         super.doStart();
     }
@@ -59,72 +64,87 @@ public class OptaPlannerProducer extends DefaultProducer {
     }
 
     @Override
-    public synchronized void process(Exchange exchange) throws Exception {
-        final Object body = exchange.getIn().getMandatoryBody();
-        final String solverId = getSolverId(exchange);
+    public boolean process(Exchange exchange, AsyncCallback callback) {
+        try {
+            final Object body = exchange.getIn().getMandatoryBody();
+            // using Solver Manager :: Optaplanner creates the Solver under the hood
+            final SolverManager solverManager = getSolverManager(exchange);
 
-        if (body instanceof Solution) {
-            if (isAsync(exchange)) {
-                LOGGER.debug("Asynchronously solving problem: [{}] with id [{}]", body, solverId);
-                final Solver solver = endpoint.getOrCreateSolver(solverId);
-                executor.submit(new Runnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            solver.solve((Solution) body);
-                        } catch (Throwable e) {
-                            LOGGER.error("Asynchronously solving failed for solverId ({})", solverId, e);
-                        }
+            Long problemId = endpoint.getConfiguration().getProblemId();
+            LOGGER.debug("Asynchronously solving problem: [{}] with id [{}]", body, problemId);
+
+            if (body instanceof ProblemChange<?>) {
+                solverManager.addProblemChange(problemId, (ProblemChange) body);
+            } else if (isAsync(exchange)) {
+                executor.submit(() -> {
+                    try {
+                        // create a consumer for best solution
+                        OptaplannerEventSupport eventSupport = new OptaplannerEventSupport(endpoint, problemId);
+                        // start solving :: Solver Job is a thread
+                        SolverJob solverJob
+                                = solverManager.solveAndListen(problemId, t -> body, eventSupport::updateBestSolution);
+
+                        // wait for result
+                        populateResult(exchange, solverJob);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        exchange.setException(e);
+                    } catch (Exception e) {
+                        exchange.setException(e);
+                    } finally {
+                        callback.done(false);
                     }
                 });
+                return false;
             } else {
-                LOGGER.debug("Synchronously solving problem: [{}] with id [{}]", body, solverId);
-                Solver solver = endpoint.getSolver(solverId);
-                if (solver == null) {
-                    solver = endpoint.createSolver();
-                }
-                solver.solve((Solution) body);
-                populateResult(exchange, solver);
+                // no need for a consumer for sync call
+                SolverJob solverJob = solverManager.solve(problemId, body);
+                // wait for result
+                populateResult(exchange, solverJob);
             }
-        } else if (body instanceof ProblemFactChange) {
-            LOGGER.debug("Adding ProblemFactChange to solver: [{}] with id [{}]", body, solverId);
-            Solver solver = endpoint.getOrCreateSolver(solverId);
-            solver.addProblemFactChange((ProblemFactChange)body);
-            if (!isAsync(exchange)) {
-                while (!solver.isEveryProblemFactChangeProcessed()) {
-                    Thread.sleep(100);
-                }
-            }
-            populateResult(exchange, solver);
-        } else {
-            LOGGER.debug("Retrieving best score for solver: [{}]", solverId);
-            Solver solver = endpoint.getSolver(solverId);
-            if (solver == null) {
-                throw new RuntimeException("Solver not found: " + solverId);
-            }
-            populateResult(exchange, solver);
+
+            // synchronous or wrong type of body
+            callback.done(true);
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            exchange.setException(e);
+        } catch (Exception e) {
+            exchange.setException(e);
         }
+        callback.done(true);
+        return true;
     }
 
-    private void populateResult(Exchange exchange, Solver solver) {
-        exchange.getIn().setBody(solver.getBestSolution());
-        exchange.getIn().setHeader(OptaPlannerConstants.TIME_SPENT, solver.getTimeMillisSpent());
-        exchange.getIn().setHeader(OptaPlannerConstants.IS_EVERY_PROBLEM_FACT_CHANGE_PROCESSED, solver.isEveryProblemFactChangeProcessed());
-        exchange.getIn().setHeader(OptaPlannerConstants.IS_TERMINATE_EARLY, solver.isTerminateEarly());
-        exchange.getIn().setHeader(OptaPlannerConstants.IS_SOLVING, solver.isSolving());
-    }
-
-    private String getSolverId(Exchange exchange) throws Exception {
-        String solverId = exchange.getIn().getHeader(OptaPlannerConstants.SOLVER_ID, String.class);
-        if (solverId == null) {
-            solverId = configuration.getSolverId();
-        }
-        LOGGER.debug("SolverId: [{}]", solverId);
-        return solverId;
+    private void populateResult(Exchange exchange, SolverJob<?, ?> solverJob)
+            throws InterruptedException, ExecutionException {
+        exchange.getIn().setBody(solverJob.getFinalBestSolution());
+        exchange.getIn().setHeader(OptaPlannerConstants.IS_SOLVING, false);
     }
 
     private boolean isAsync(Exchange exchange) {
         Boolean isAsync = exchange.getIn().getHeader(OptaPlannerConstants.IS_ASYNC, Boolean.class);
         return isAsync != null ? isAsync : configuration.isAsync();
     }
+
+    private SolverManager<?, Long> getSolverManager(Exchange exchange) {
+        // prioritize the solverManager from configuration
+        if (configuration.getSolverManager() != null) {
+            return configuration.getSolverManager();
+        }
+        // if no Solver Manager, check on headers
+        var solverManager = exchange.getIn().getHeader(OptaPlannerConstants.SOLVER_MANAGER, SolverManager.class);
+        // if no SolverManager, check if configFile exists and create one based on it
+        if (solverManager == null) {
+            if (configuration.getConfigFile() == null) {
+                return null;
+            }
+            SolverConfig solverConfig
+                    = SolverConfig.createFromXmlResource(configuration.getConfigFile());
+            SolverFactory<?> solverFactory = SolverFactory.create(solverConfig);
+            solverManager = SolverManager.create(solverFactory, new SolverManagerConfig());
+        }
+        return solverManager;
+    }
+
 }

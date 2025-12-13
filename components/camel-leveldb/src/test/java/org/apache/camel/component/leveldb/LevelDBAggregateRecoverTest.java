@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,30 +16,42 @@
  */
 package org.apache.camel.component.leveldb;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.processor.aggregate.AggregationStrategy;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.junit5.params.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
-public class LevelDBAggregateRecoverTest extends CamelTestSupport {
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
 
-    private static AtomicInteger counter = new AtomicInteger(0);
-    private LevelDBAggregationRepository repo;
+@DisabledOnOs({ OS.AIX, OS.OTHER })
+public class LevelDBAggregateRecoverTest extends LevelDBTestSupport {
+
+    private static Map<SerializerType, AtomicInteger> counters = new ConcurrentHashMap();
+
+    private static AtomicInteger getCounter(SerializerType serializerType) {
+        AtomicInteger counter = counters.get(serializerType);
+        if (counter == null) {
+            counter = new AtomicInteger();
+            counters.put(serializerType, counter);
+        }
+        return counter;
+    }
 
     @Override
-    public void setUp() throws Exception {
+    public void doPreSetup() throws Exception {
         deleteDirectory("target/data");
-        repo = new LevelDBAggregationRepository("repo1", "target/data/leveldb.dat");
         // enable recovery
-        repo.setUseRecovery(true);
+        getRepo().setUseRecovery(true);
         // check faster
-        repo.setRecoveryInterval(500, TimeUnit.MILLISECONDS);
-        super.setUp();
+        getRepo().setRecoveryInterval(500, TimeUnit.MILLISECONDS);
     }
 
     @Test
@@ -58,46 +70,32 @@ public class LevelDBAggregateRecoverTest extends CamelTestSupport {
         template.sendBodyAndHeader("direct:start", "D", "id", 123);
         template.sendBodyAndHeader("direct:start", "E", "id", 123);
 
-        assertMockEndpointsSatisfied(30, TimeUnit.SECONDS);
+        MockEndpoint.assertIsSatisfied(context, 30, TimeUnit.SECONDS);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .aggregate(header("id"), new MyAggregationStrategy())
-                        .completionSize(5).aggregationRepository(repo)
+                        .aggregate(header("id"), new StringAggregationStrategy())
+                        .completionSize(5).aggregationRepository(getRepo())
                         .log("aggregated exchange id ${exchangeId} with ${body}")
                         .to("mock:aggregated")
                         .delay(1000)
                         // simulate errors the first two times
                         .process(new Processor() {
-                            public void process(Exchange exchange) throws Exception {
-                                int count = counter.incrementAndGet();
+                            public void process(Exchange exchange) {
+                                int count = getCounter(getSerializerType()).incrementAndGet();
                                 if (count <= 2) {
                                     throw new IllegalArgumentException("Damn");
                                 }
                             }
                         })
                         .to("mock:result")
-                    .end();
+                        .end();
             }
         };
-    }
-
-    public static class MyAggregationStrategy implements AggregationStrategy {
-
-        public Exchange aggregate(Exchange oldExchange, Exchange newExchange) {
-            if (oldExchange == null) {
-                return newExchange;
-            }
-            String body1 = oldExchange.getIn().getBody(String.class);
-            String body2 = newExchange.getIn().getBody(String.class);
-
-            oldExchange.getIn().setBody(body1 + body2);
-            return oldExchange;
-        }
     }
 }

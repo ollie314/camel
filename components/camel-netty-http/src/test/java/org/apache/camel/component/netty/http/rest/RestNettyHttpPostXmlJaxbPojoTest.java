@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,7 +21,10 @@ import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.component.netty.http.BaseNettyTest;
 import org.apache.camel.model.rest.RestBindingMode;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class RestNettyHttpPostXmlJaxbPojoTest extends BaseNettyTest {
 
@@ -32,9 +35,10 @@ public class RestNettyHttpPostXmlJaxbPojoTest extends BaseNettyTest {
         mock.message(0).body().isInstanceOf(UserJaxbPojo.class);
 
         String body = "<user name=\"Donald Duck\" id=\"123\"></user>";
-        template.sendBodyAndHeader("netty-http:http://localhost:" + getPort() + "/users/new", body, Exchange.CONTENT_TYPE, "text/xml");
+        template.sendBodyAndHeader("netty-http:http://localhost:" + getPort() + "/users/new", body, Exchange.CONTENT_TYPE,
+                "text/xml");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         UserJaxbPojo user = mock.getReceivedExchanges().get(0).getIn().getBody(UserJaxbPojo.class);
         assertNotNull(user);
@@ -51,7 +55,7 @@ public class RestNettyHttpPostXmlJaxbPojoTest extends BaseNettyTest {
         String body = "<user name=\"Donald Duck\" id=\"456\"></user>";
         template.sendBody("netty-http:http://localhost:" + getPort() + "/users/new", body);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         UserJaxbPojo user = mock.getReceivedExchanges().get(0).getIn().getBody(UserJaxbPojo.class);
         assertNotNull(user);
@@ -60,17 +64,17 @@ public class RestNettyHttpPostXmlJaxbPojoTest extends BaseNettyTest {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // configure to use netty-http on localhost with the given port
                 // and enable auto binding mode
                 restConfiguration().component("netty-http").host("localhost").port(getPort()).bindingMode(RestBindingMode.auto);
 
                 // use the rest DSL to define the rest services
                 rest("/users/")
-                    .post("new").type(UserJaxbPojo.class)
+                        .post("new").type(UserJaxbPojo.class)
                         .to("mock:input");
             }
         };

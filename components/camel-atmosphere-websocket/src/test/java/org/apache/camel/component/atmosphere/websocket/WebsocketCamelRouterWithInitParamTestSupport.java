@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,52 +17,42 @@
 package org.apache.camel.component.atmosphere.websocket;
 
 import org.apache.camel.test.AvailablePortFinder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.servlet.ServletContextHandler;
-import org.eclipse.jetty.servlet.ServletHolder;
-import org.junit.After;
-import org.junit.Before;
+import org.apache.camel.test.infra.jetty.services.JettyConfiguration;
+import org.apache.camel.test.infra.jetty.services.JettyConfigurationBuilder;
+import org.apache.camel.test.infra.jetty.services.JettyEmbeddedService;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 
-public class WebsocketCamelRouterWithInitParamTestSupport extends CamelTestSupport {
-    public static final String CONTEXT = "/mycontext";
-    public static final String CONTEXT_URL = "http://localhost/mycontext";
+public abstract class WebsocketCamelRouterWithInitParamTestSupport extends CamelTestSupport {
     protected static final int PORT = AvailablePortFinder.getNextAvailable();
-    protected boolean startCamelContext = true;
-    
-    protected Server server;
 
-    protected ServletHolder servletHolder;
+    // This test needs to run with its own lifecycle management, so we cannot use extensions
+    protected JettyEmbeddedService service;
 
-    @Before
-    public void setUp() throws Exception {
-        server = new Server(PORT);
+    @BeforeEach
+    void setupJetty() {
+        final JettyConfiguration.WebSocketContextHandlerConfiguration.ServletConfiguration<CamelWebSocketServlet> servletConfiguration
+                = new JettyConfiguration.WebSocketContextHandlerConfiguration.ServletConfiguration<>(
+                        new CamelWebSocketServlet(),
+                        JettyConfiguration.WebSocketContextHandlerConfiguration.ServletConfiguration.ROOT_PATH_SPEC,
+                        "CamelWsServlet");
 
-        ServletContextHandler context = new ServletContextHandler(ServletContextHandler.SESSIONS);
-        context.setContextPath("/");
-        server.setHandler(context);
+        servletConfiguration.addInitParameter("events", "true");
 
-        servletHolder = new ServletHolder(new CamelWebSocketServlet());
-        servletHolder.setName("CamelWsServlet");
-        servletHolder.setInitParameter("events", "true");
-        context.addServlet(servletHolder, "/*");
-        
-        server.start();
-        
-        if (startCamelContext) {        
-            super.setUp();
-        }
+        final JettyConfiguration jettyConfiguration = JettyConfigurationBuilder
+                .emptyTemplate()
+                .withPort(PORT)
+                .withContextPath(JettyConfiguration.ROOT_CONTEXT_PATH)
+                .withWebSocketConfiguration().addServletConfiguration(servletConfiguration).build()
+                .build();
+
+        service = new JettyEmbeddedService(jettyConfiguration);
+        service.initialize();
     }
-    
-    @After
-    public void tearDown() throws Exception {
-        if (startCamelContext) {
-            super.tearDown();
-        }
-        
-        server.stop();
-        server.destroy();
-    }
-    
 
+    @AfterEach
+    void tearDownJetty() {
+        service.shutdown();
+    }
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,20 +18,27 @@ package org.apache.camel.component.netty;
 
 import java.io.File;
 
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.impl.JndiRegistry;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledIfSystemProperty;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+@DisabledIfSystemProperty(named = "java.vendor", matches = ".*ibm.*")
 public class NettySSLClientCertHeadersTest extends BaseNettyTest {
 
-    @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry registry = super.createRegistry();
-        registry.bind("ksf", new File("src/test/resources/keystore.jks"));
-        registry.bind("tsf", new File("src/test/resources/keystore.jks"));
-        return registry;
+    @BindToRegistry("ksf")
+    public File loadKeystoreKsf() {
+        return new File("src/test/resources/keystore.jks");
     }
-    
+
+    @BindToRegistry("tsf")
+    public File loadKeystoreTsf() {
+        return new File("src/test/resources/keystore.jks");
+    }
+
     @Override
     public boolean isUseRouteBuilder() {
         return false;
@@ -39,36 +46,30 @@ public class NettySSLClientCertHeadersTest extends BaseNettyTest {
 
     @Test
     public void testSSLInOutWithNettyConsumer() throws Exception {
-        // ibm jdks dont have sun security algorithms
-        if (isJavaVendor("ibm")) {
-            return;
-        }
-
         getMockEndpoint("mock:input").expectedMessageCount(1);
 
         getMockEndpoint("mock:input").expectedHeaderReceived(NettyConstants.NETTY_SSL_CLIENT_CERT_SUBJECT_NAME,
-                "CN=arlu15, OU=Sun Java System Application Server, O=Sun Microsystems, L=Santa Clara, ST=California, C=US");
+                "SERIALNUMBER=1234567890, CN=CommonName, OU=Unit, O=Org, L=Loc, ST=State, C=US");
         getMockEndpoint("mock:input").expectedHeaderReceived(NettyConstants.NETTY_SSL_CLIENT_CERT_ISSUER_NAME,
-                "CN=arlu15, OU=Sun Java System Application Server, O=Sun Microsystems, L=Santa Clara, ST=California, C=US");
-        getMockEndpoint("mock:input").expectedHeaderReceived(NettyConstants.NETTY_SSL_CLIENT_CERT_SERIAL_NO, "1210701502");
+                "SERIALNUMBER=1234567890, CN=CommonName, OU=Unit, O=Org, L=Loc, ST=State, C=US");
+        getMockEndpoint("mock:input").expectedHeaderReceived(NettyConstants.NETTY_SSL_CLIENT_CERT_SERIAL_NO, "1234567890");
 
         context.addRoutes(new RouteBuilder() {
             public void configure() {
-                // needClientAuth=true so we can get the client certificate details
-                from("netty:tcp://localhost:{{port}}?sync=true&ssl=true&passphrase=changeit&keyStoreFile=#ksf&trustStoreFile=#tsf"
-                        + "&needClientAuth=true&sslClientCertHeaders=true")
-                    .to("mock:input")
-                    .transform().constant("Bye World");
+                // needClientAuth=true so we can get the client certificate
+                // details
+                from("netty:tcp://localhost:{{port}}?sync=true&ssl=true&passphrase=changeit&keyStoreResource=#ksf&trustStoreResource=#tsf"
+                     + "&needClientAuth=true&sslClientCertHeaders=true").to("mock:input").transform().constant("Bye World");
             }
         });
         context.start();
 
         String response = template.requestBody(
-                "netty:tcp://localhost:{{port}}?sync=true&ssl=true&passphrase=changeit&keyStoreFile=#ksf&trustStoreFile=#tsf",
+                "netty:tcp://localhost:{{port}}?sync=true&ssl=true&passphrase=changeit&keyStoreResource=#ksf&trustStoreResource=#tsf",
                 "Hello World", String.class);
         assertEquals("Bye World", response);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
 }

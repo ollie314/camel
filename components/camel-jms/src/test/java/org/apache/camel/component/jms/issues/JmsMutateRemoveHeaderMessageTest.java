@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,27 +16,34 @@
  */
 package org.apache.camel.component.jms.issues;
 
-import javax.jms.ConnectionFactory;
-
 import org.apache.camel.CamelContext;
-import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.jms.CamelJmsTestHelper;
+import org.apache.camel.component.jms.AbstractJMSTest;
 import org.apache.camel.component.jms.JmsMessage;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import org.junit.Test;
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+public class JmsMutateRemoveHeaderMessageTest extends AbstractJMSTest {
 
-/**
- * @version 
- */
-public class JmsMutateRemoveHeaderMessageTest extends CamelTestSupport {
-
-    private String uri = "activemq:queue:hello";
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
+    private final String uri = "activemq:queue:JmsMutateRemoveHeaderMessageTest";
 
     @Test
     public void testMutateMessage() throws Exception {
@@ -47,47 +54,52 @@ public class JmsMutateRemoveHeaderMessageTest extends CamelTestSupport {
 
         template.sendBodyAndHeader(uri, "Hello World", "HEADER_1", "VALUE_1");
 
-        assertMockEndpointsSatisfied();
-    }
-
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-        return camelContext;
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected String getComponentName() {
+        return "activemq";
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from(uri)
-                    .process(new Processor() {
-                        public void process(Exchange exchange) throws Exception {
+                        .process(exchange -> {
                             // do not mutate it
                             JmsMessage msg = assertIsInstanceOf(JmsMessage.class, exchange.getIn());
-                            assertNotNull("javax.jms.Message should not be null", msg.getJmsMessage());
+                            assertNotNull(msg.getJmsMessage(), "jakarta.jms.Message should not be null");
 
                             // get header should not mutate it
                             assertEquals("VALUE_1", exchange.getIn().getHeader("HEADER_1"));
-                        }
-                    })
-                    // removing a header should mutate it
-                    .removeHeader("HEADER_1")
-                    .process(new Processor() {
-                        public void process(Exchange exchange) throws Exception {
+                        })
+                        // removing a header should mutate it
+                        .removeHeader("HEADER_1")
+                        .process(exchange -> {
                             // it should have been mutated
                             JmsMessage msg = assertIsInstanceOf(JmsMessage.class, exchange.getIn());
-                            assertNotNull("javax.jms.Message should not be null", msg.getJmsMessage());
+                            assertNotNull(msg.getJmsMessage(), "jakarta.jms.Message should not be null");
 
                             // get header should not mutate it
-                            assertNull("Header should have been removed", exchange.getIn().getHeader("HEADER_1"));
-                        }
-                    })
-                    .to("mock:result");
+                            assertNull(exchange.getIn().getHeader("HEADER_1"), "Header should have been removed");
+                        })
+                        .to("mock:result");
             }
         };
     }
 
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
+    }
 }

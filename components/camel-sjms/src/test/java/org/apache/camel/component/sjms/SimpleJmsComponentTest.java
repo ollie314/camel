@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,25 +16,27 @@
  */
 package org.apache.camel.component.sjms;
 
-import org.apache.activemq.ActiveMQConnectionFactory;
+import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class SimpleJmsComponentTest extends CamelTestSupport {
 
     @Test
-    public void testHelloWorld() throws Exception {
+    public void testHelloWorld() {
         SjmsComponent component = context.getComponent("sjms", SjmsComponent.class);
         assertNotNull(component);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
-                ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory("vm://broker?broker.persistent=false&broker.useJmx=false");
+                ActiveMQConnectionFactory connectionFactory
+                        = new ActiveMQConnectionFactory("vm://broker?broker.persistent=false&broker.useJmx=false");
                 SjmsComponent component = new SjmsComponent();
                 component.setConnectionFactory(connectionFactory);
                 getContext().addComponent("sjms", component);

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,22 +18,22 @@ package org.apache.camel.component.metrics;
 
 import com.codahale.metrics.MetricRegistry;
 import org.apache.camel.Producer;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertThat;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class TimerEndpointTest {
 
     private static final String METRICS_NAME = "metrics.name";
@@ -45,19 +45,19 @@ public class TimerEndpointTest {
 
     private InOrder inOrder;
 
-    @Before
-    public void setUp() throws Exception {
+    @BeforeEach
+    public void setUp() {
         endpoint = new MetricsEndpoint(null, null, registry, MetricsType.TIMER, METRICS_NAME);
         inOrder = Mockito.inOrder(registry);
     }
 
-    @After
-    public void tearDown() throws Exception {
+    @AfterEach
+    public void tearDown() {
         inOrder.verifyNoMoreInteractions();
     }
 
     @Test
-    public void testTimerEndpoint() throws Exception {
+    public void testTimerEndpoint() {
         assertThat(endpoint, is(notNullValue()));
         assertThat(endpoint.getRegistry(), is(registry));
         assertThat(endpoint.getMetricsName(), is(METRICS_NAME));
@@ -71,12 +71,12 @@ public class TimerEndpointTest {
     }
 
     @Test
-    public void testGetAction() throws Exception {
+    public void testGetAction() {
         assertThat(endpoint.getAction(), is(nullValue()));
     }
 
     @Test
-    public void testSetAction() throws Exception {
+    public void testSetAction() {
         assertThat(endpoint.getAction(), is(nullValue()));
         endpoint.setAction(MetricsTimerAction.start);
         assertThat(endpoint.getAction(), is(MetricsTimerAction.start));

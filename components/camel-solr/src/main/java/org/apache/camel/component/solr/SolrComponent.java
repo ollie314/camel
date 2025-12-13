@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,136 +16,172 @@
  */
 package org.apache.camel.component.solr;
 
-import java.io.IOException;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
-import org.apache.camel.impl.UriEndpointComponent;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.spi.annotations.Component;
+import org.apache.camel.support.DefaultComponent;
 import org.apache.solr.client.solrj.SolrClient;
-import org.apache.solr.client.solrj.impl.CloudSolrClient;
-import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrClient;
-import org.apache.solr.client.solrj.impl.HttpSolrClient;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Represents the component that manages {@link SolrEndpoint}.
  */
-public class SolrComponent extends UriEndpointComponent {
+@Component("solr")
+public class SolrComponent extends DefaultComponent {
 
-    private static final Logger LOG = LoggerFactory.getLogger(SolrComponent.class);
-    private final Map<SolrEndpoint, SolrServerReference> servers = new HashMap<SolrEndpoint, SolrServerReference>();
-
-    protected static final class SolrServerReference {
-
-        private final AtomicInteger referenceCounter = new AtomicInteger();
-        private HttpSolrClient solrServer;
-        private ConcurrentUpdateSolrClient updateSolrServer;
-        private CloudSolrClient cloudSolrServer;
-
-        public HttpSolrClient getSolrServer() {
-            return solrServer;
-        }
-
-        public void setSolrServer(HttpSolrClient solrServer) {
-            this.solrServer = solrServer;
-        }
-
-        public ConcurrentUpdateSolrClient getUpdateSolrServer() {
-            return updateSolrServer;
-        }
-
-        public void setUpdateSolrServer(ConcurrentUpdateSolrClient updateSolrServer) {
-            this.updateSolrServer = updateSolrServer;
-        }
-        
-        public CloudSolrClient getCloudSolrServer() {
-            return cloudSolrServer;
-        }
-
-        public void setCloudSolrServer(CloudSolrClient cloudServer) {
-            cloudSolrServer = cloudServer;
-        }
-
-        public int addReference() {
-            return referenceCounter.incrementAndGet();
-        }
-
-        public int decReference() {
-            return referenceCounter.decrementAndGet();
-        }
-    }
+    @Metadata(label = "advanced", autowired = true)
+    private SolrClient solrClient;
+    @Metadata
+    private String host;
+    @Metadata
+    private int port;
+    @Metadata
+    private String defaultCollection;
+    @Metadata(defaultValue = "" + SolrConstants.DEFAULT_REQUEST_TIMEOUT)
+    private long requestTimeout = SolrConstants.DEFAULT_REQUEST_TIMEOUT;
+    @Metadata(defaultValue = "" + SolrConstants.DEFAULT_CONNECT_TIMEOUT)
+    private long connectionTimeout = SolrConstants.DEFAULT_CONNECT_TIMEOUT;
+    @Metadata(label = "security", secret = true)
+    private String username;
+    @Metadata(label = "security", secret = true)
+    private String password;
+    @Metadata(label = "security")
+    private boolean enableSSL;
 
     public SolrComponent() {
-        super(SolrEndpoint.class);
+        this(null);
+    }
+
+    public SolrComponent(CamelContext context) {
+        super(context);
     }
 
     @Override
     protected Endpoint createEndpoint(String uri, String remaining, Map<String, Object> parameters) throws Exception {
-        Endpoint endpoint = new SolrEndpoint(uri, this, remaining);
+        SolrConfiguration config = new SolrConfiguration();
+        config.setSolrClient(this.getSolrClient());
+        config.setHost(this.getHost());
+        config.setPort(this.getPort());
+        config.setCollection(this.getDefaultCollection());
+        config.setRequestTimeout(this.getRequestTimeout());
+        config.setConnectionTimeout(this.getConnectionTimeout());
+        config.setEnableSSL(this.isEnableSSL());
+        config.setUsername(this.getUsername());
+        config.setPassword(this.getPassword());
+        config.configure(uri);
+
+        Endpoint endpoint = new SolrEndpoint(uri, this, config);
         setProperties(endpoint, parameters);
+
+        // add collection from solrclient if it is not yet defined
+        //     while it might be set on the solr client that could be set from parameters
+        if (config.getCollection() == null && config.getSolrClient() != null) {
+            config.setCollection(config.getSolrClient().getDefaultCollection());
+        }
+
         return endpoint;
     }
 
-    public SolrServerReference getSolrServers(SolrEndpoint endpoint) {
-        return servers.get(endpoint);
+    /**
+     * To use an existing configured solr client, instead of creating a client per endpoint. This allows customizing the
+     * client with specific advanced settings.
+     */
+    public SolrClient getSolrClient() {
+        return solrClient;
     }
 
-    public void addSolrServers(SolrEndpoint endpoint, SolrServerReference servers) {
-        this.servers.put(endpoint, servers);
+    public void setSolrClient(SolrClient solrClient) {
+        this.solrClient = solrClient;
     }
 
-    @Override
-    protected void doShutdown() throws Exception {
-        for (SolrServerReference server : servers.values()) {
-            shutdownServers(server);
-        }
-        servers.clear();
+    /**
+     * The solr instance host name
+     */
+    public String getHost() {
+        return host;
     }
 
-    void shutdownServers(SolrServerReference ref) {
-        shutdownServers(ref, false);
-    }
-    
-    private void shutdownServer(SolrClient server) throws IOException {
-        if (server != null) {
-            LOG.info("Shutting down solr server: {}", server);
-            server.close();
-        }
+    public void setHost(String host) {
+        this.host = host;
     }
 
-    void shutdownServers(SolrServerReference ref, boolean remove) {
-        try {
-            shutdownServer(ref.getSolrServer());
-        } catch (Exception e) {
-            LOG.warn("Error shutting down solr server. This exception is ignored.", e);
-        }
-        try {
-            shutdownServer(ref.getUpdateSolrServer());
-        } catch (Exception e) {
-            LOG.warn("Error shutting down streaming solr server. This exception is ignored.", e);
-        }
-        
-        try {
-            shutdownServer(ref.getCloudSolrServer());
-        } catch (Exception e) {
-            LOG.warn("Error shutting down streaming solr server. This exception is ignored.", e);
-        }
-
-        if (remove) {
-            SolrEndpoint key = null;
-            for (Map.Entry<SolrEndpoint, SolrServerReference> entry : servers.entrySet()) {
-                if (entry.getValue() == ref) {
-                    key = entry.getKey();
-                    break;
-                }
-            }
-            if (key != null) {
-                servers.remove(key);
-            }
-        }
-
+    /**
+     * The solr instance port number
+     */
+    public int getPort() {
+        return port;
     }
+
+    public void setPort(int port) {
+        this.port = port;
+    }
+
+    /**
+     * Solr default collection name
+     */
+    public String getDefaultCollection() {
+        return defaultCollection;
+    }
+
+    public void setDefaultCollection(String defaultCollection) {
+        this.defaultCollection = defaultCollection;
+    }
+
+    /**
+     * The timeout in ms to wait before the socket will time out.
+     */
+    public long getRequestTimeout() {
+        return requestTimeout;
+    }
+
+    public void setRequestTimeout(long requestTimeout) {
+        this.requestTimeout = requestTimeout;
+    }
+
+    /**
+     * The time in ms to wait before connection will time out.
+     */
+    public long getConnectionTimeout() {
+        return connectionTimeout;
+    }
+
+    public void setConnectionTimeout(long connectionTimeout) {
+        this.connectionTimeout = connectionTimeout;
+    }
+
+    /**
+     * Basic authenticate user
+     */
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    /**
+     * Password for authenticating
+     */
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    /**
+     * Enable SSL
+     */
+    public boolean isEnableSSL() {
+        return enableSSL;
+    }
+
+    public void setEnableSSL(boolean enableSSL) {
+        this.enableSSL = enableSSL;
+    }
+
 }

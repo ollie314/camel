@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -29,61 +29,58 @@ import javax.crypto.CipherInputStream;
 import javax.crypto.CipherOutputStream;
 import javax.crypto.spec.IvParameterSpec;
 
-import static javax.crypto.Cipher.DECRYPT_MODE;
-import static javax.crypto.Cipher.ENCRYPT_MODE;
-
 import org.apache.camel.Exchange;
-import org.apache.camel.converter.stream.OutputStreamBuilder;
 import org.apache.camel.spi.DataFormat;
 import org.apache.camel.spi.DataFormatName;
-import org.apache.camel.support.ServiceSupport;
-import org.apache.camel.util.ExchangeHelper;
+import org.apache.camel.spi.annotations.Dataformat;
+import org.apache.camel.support.ExchangeHelper;
+import org.apache.camel.support.builder.OutputStreamBuilder;
+import org.apache.camel.support.service.ServiceSupport;
 import org.apache.camel.util.IOHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static javax.crypto.Cipher.DECRYPT_MODE;
+import static javax.crypto.Cipher.ENCRYPT_MODE;
+
 /**
- * <code>CryptoDataFormat</code> uses a specified key and algorithm to encrypt,
- * decrypt and verify exchange payloads. The Data format allows an
- * initialization vector to be supplied. The use of this initialization vector
- * or IV is different depending on the algorithm type block or streaming, but it
- * is desirable to be able to control it. Also in certain cases it may be
- * necessary to have access to the IV in the decryption phase and as the IV
- * doens't necessarily need to be kept secret it is ok to inline this in the
- * stream and read it out on the other side prior to decryption. For more
- * information on Initialization vectors see
+ * <code>CryptoDataFormat</code> uses a specified key and algorithm to encrypt, decrypt and verify exchange payloads.
+ * The Data format allows an initialization vector to be supplied. The use of this initialization vector or IV is
+ * different depending on the algorithm type block or streaming, but it is desirable to be able to control it. Also in
+ * certain cases it may be necessary to have access to the IV in the decryption phase and as the IV doens't necessarily
+ * need to be kept secret it is ok to inline this in the stream and read it out on the other side prior to decryption.
+ * For more information on Initialization vectors see
  * <ul>
  * <li>http://en.wikipedia.org/wiki/Initialization_vector</li>
  * <li>http://www.herongyang.com/Cryptography/</li>
  * <li>http://en.wikipedia.org/wiki/Block_cipher_modes_of_operation</li>
  * <ul>
  * <p/>
- * To avoid attacks against the encrypted data while it is in transit the
- * {@link CryptoDataFormat} can also calculate a Message Authentication Code for
- * the encrypted exchange contents based on a configurable MAC algorithm. The
- * calculated HMAC is appended to the stream after encryption. It is separated
- * from the stream in the decryption phase. The MAC is recalculated and verified
- * against the transmitted version to insure nothing was tampered with in
- * transit.For more information on Message Authentication Codes see
+ * To avoid attacks against the encrypted data while it is in transit the {@link CryptoDataFormat} can also calculate a
+ * Message Authentication Code for the encrypted exchange contents based on a configurable MAC algorithm. The calculated
+ * HMAC is appended to the stream after encryption. It is separated from the stream in the decryption phase. The MAC is
+ * recalculated and verified against the transmitted version to insure nothing was tampered with in transit.For more
+ * information on Message Authentication Codes see
  * <ul>
  * <li>http://en.wikipedia.org/wiki/HMAC</li>
  * </ul>
  */
+@Dataformat("crypto")
 public class CryptoDataFormat extends ServiceSupport implements DataFormat, DataFormatName {
 
     public static final String KEY = "CamelCryptoKey";
 
     private static final Logger LOG = LoggerFactory.getLogger(CryptoDataFormat.class);
     private static final String INIT_VECTOR = "CamelCryptoInitVector";
-    private String algorithm = "DES/CBC/PKCS5Padding";
+    private String algorithm;
     private String cryptoProvider;
-    private Key configuredkey;
+    private Key key;
     private int bufferSize = 4096;
-    private byte[] initializationVector;
+    private byte[] initVector;
     private boolean inline;
     private String macAlgorithm = "HmacSHA1";
-    private boolean shouldAppendHMAC;
-    private AlgorithmParameterSpec parameterSpec;
+    private boolean shouldAppendHMAC = true;
+    private AlgorithmParameterSpec algorithmParameterSpec;
 
     public CryptoDataFormat() {
     }
@@ -94,7 +91,7 @@ public class CryptoDataFormat extends ServiceSupport implements DataFormat, Data
 
     public CryptoDataFormat(String algorithm, Key key, String cryptoProvider) {
         this.algorithm = algorithm;
-        this.configuredkey = key;
+        this.key = key;
         this.cryptoProvider = cryptoProvider;
     }
 
@@ -107,15 +104,16 @@ public class CryptoDataFormat extends ServiceSupport implements DataFormat, Data
         Cipher cipher = cryptoProvider == null ? Cipher.getInstance(algorithm) : Cipher.getInstance(algorithm, cryptoProvider);
 
         if (key == null) {
-            throw new IllegalStateException("A valid encryption key is required. Either configure the CryptoDataFormat "
-                    + "with a key or provide one in a header using the header name 'CamelCryptoKey'");
+            throw new IllegalStateException(
+                    "A valid encryption key is required. Either configure the CryptoDataFormat "
+                                            + "with a key or provide one in a header using the header name 'CamelCryptoKey'");
         }
 
         if (mode == ENCRYPT_MODE || mode == DECRYPT_MODE) {
-            if (iv != null) {
+            if (algorithmParameterSpec != null) {
+                cipher.init(mode, key, algorithmParameterSpec);
+            } else if (iv != null) {
                 cipher.init(mode, key, new IvParameterSpec(iv));
-            } else if (parameterSpec != null) {
-                cipher.init(mode, key, parameterSpec);
             } else {
                 cipher.init(mode, key);
             }
@@ -123,6 +121,7 @@ public class CryptoDataFormat extends ServiceSupport implements DataFormat, Data
         return cipher;
     }
 
+    @Override
     public void marshal(Exchange exchange, Object graph, OutputStream outputStream) throws Exception {
         byte[] iv = getInitializationVector(exchange);
         Key key = getKey(exchange);
@@ -153,6 +152,7 @@ public class CryptoDataFormat extends ServiceSupport implements DataFormat, Data
         }
     }
 
+    @Override
     public Object unmarshal(final Exchange exchange, final InputStream encryptedStream) throws Exception {
         if (encryptedStream != null) {
             byte[] iv = getInlinedInitializationVector(exchange, encryptedStream);
@@ -210,8 +210,10 @@ public class CryptoDataFormat extends ServiceSupport implements DataFormat, Data
                 iv = new byte[ivLength];
                 int read = encryptedStream.read(iv);
                 if (read != ivLength) {
-                    throw new IOException(String.format("Attempted to read a '%d' byte initialization vector from inputStream but only"
-                            + " '%d' bytes were retrieved", ivLength, read));
+                    throw new IOException(
+                            String.format("Attempted to read a '%d' byte initialization vector from inputStream but only"
+                                          + " '%d' bytes were retrieved",
+                                    ivLength, read));
                 }
             } catch (IOException e) {
                 throw new IOException("Error reading initialization vector from encrypted stream", e);
@@ -225,16 +227,20 @@ public class CryptoDataFormat extends ServiceSupport implements DataFormat, Data
         return shouldAppendHMAC ? new HMACAccumulator(key, macAlgorithm, cryptoProvider, bufferSize) : new HMACAccumulator() {
             byte[] empty = new byte[0];
 
+            @Override
             public void encryptUpdate(byte[] buffer, int read) {
             }
 
+            @Override
             public void decryptUpdate(byte[] buffer, int read) throws IOException {
                 outputStream.write(buffer, 0, read);
             }
 
+            @Override
             public void validate() {
             }
 
+            @Override
             public byte[] getCalculatedMac() {
                 return empty;
             }
@@ -244,7 +250,7 @@ public class CryptoDataFormat extends ServiceSupport implements DataFormat, Data
     private byte[] getInitializationVector(Exchange exchange) {
         byte[] iv = exchange.getIn().getHeader(INIT_VECTOR, byte[].class);
         if (iv == null) {
-            iv = initializationVector;
+            iv = initVector;
         }
         return iv;
     }
@@ -254,29 +260,53 @@ public class CryptoDataFormat extends ServiceSupport implements DataFormat, Data
         if (key != null) {
             exchange.getIn().setHeader(KEY, null);
         } else {
-            key = configuredkey;
+            key = this.key;
         }
         return key;
     }
 
-    public void setInitializationVector(byte[] initializationVector) {
-        if (initializationVector != null) {
-            this.initializationVector = initializationVector;
+    public byte[] getInitVector() {
+        return initVector;
+    }
+
+    public void setInitVector(byte[] initVector) {
+        if (initVector != null) {
+            this.initVector = initVector;
         }
     }
 
     /**
-     * Meant for use with a Symmetric block Cipher and specifies that the
-     * initialization vector should be written to the cipher stream ahead of the
-     * encrypted ciphertext. When the payload is to be decrypted this
-     * initialization vector will need to be read from the stream. Requires that
-     * the formatter has been configured with an init vector that is valid for
-     * the given algorithm.
+     * Meant for use with a Symmetric block Cipher and specifies that the initialization vector should be written to the
+     * cipher stream ahead of the encrypted ciphertext. When the payload is to be decrypted this initialization vector
+     * will need to be read from the stream. Requires that the formatter has been configured with an init vector that is
+     * valid for the given algorithm.
+     *
+     * @param      inline true if the initialization vector should be inlined in the stream.
+     * @deprecated        use {@link #setInline(boolean)}
+     */
+    @Deprecated
+    public void setShouldInlineInitializationVector(boolean inline) {
+        this.inline = inline;
+    }
+
+    public boolean isInline() {
+        return inline;
+    }
+
+    /**
+     * Meant for use with a Symmetric block Cipher and specifies that the initialization vector should be written to the
+     * cipher stream ahead of the encrypted ciphertext. When the payload is to be decrypted this initialization vector
+     * will need to be read from the stream. Requires that the formatter has been configured with an init vector that is
+     * valid for the given algorithm.
      *
      * @param inline true if the initialization vector should be inlined in the stream.
      */
-    public void setShouldInlineInitializationVector(boolean inline) {
+    public void setInline(boolean inline) {
         this.inline = inline;
+    }
+
+    public String getAlgorithm() {
+        return algorithm;
     }
 
     /**
@@ -286,14 +316,20 @@ public class CryptoDataFormat extends ServiceSupport implements DataFormat, Data
         this.algorithm = algorithm;
     }
 
+    public AlgorithmParameterSpec getAlgorithmParameterSpec() {
+        return algorithmParameterSpec;
+    }
+
     /**
-     * Sets a custom {@link AlgorithmParameterSpec} that should be used to
-     * configure the Cipher. Note that if an Initalization vector is provided
-     * then the IvParameterSpec will be used and any value set here will be
-     * ignored
+     * Sets a custom {@link AlgorithmParameterSpec} that should be used to configure the Cipher. Note that if an
+     * Initalization vector is provided then the IvParameterSpec will be used and any value set here will be ignored
      */
     public void setAlgorithmParameterSpec(AlgorithmParameterSpec parameterSpec) {
-        this.parameterSpec = parameterSpec;
+        this.algorithmParameterSpec = parameterSpec;
+    }
+
+    public String getCryptoProvider() {
+        return cryptoProvider;
     }
 
     /**
@@ -303,27 +339,41 @@ public class CryptoDataFormat extends ServiceSupport implements DataFormat, Data
         this.cryptoProvider = cryptoProvider;
     }
 
+    public String getMacAlgorithm() {
+        return macAlgorithm;
+    }
+
     /**
-     * Sets the algorithm used to create the Hash-based Message Authentication
-     * Code (HMAC) appended to the stream.
+     * Sets the algorithm used to create the Hash-based Message Authentication Code (HMAC) appended to the stream.
      */
     public void setMacAlgorithm(String macAlgorithm) {
         this.macAlgorithm = macAlgorithm;
     }
 
+    public boolean isShouldAppendHMAC() {
+        return shouldAppendHMAC;
+    }
+
     /**
-     * Whether a Hash-based Message Authentication Code (HMAC) should be
-     * calculated and appended to the stream.
+     * Whether a Hash-based Message Authentication Code (HMAC) should be calculated and appended to the stream.
      */
     public void setShouldAppendHMAC(boolean shouldAppendHMAC) {
         this.shouldAppendHMAC = shouldAppendHMAC;
+    }
+
+    public Key getKey() {
+        return key;
     }
 
     /**
      * Set the key that should be used to encrypt or decrypt incoming encrypted exchanges.
      */
     public void setKey(Key key) {
-        this.configuredkey = key;
+        this.key = key;
+    }
+
+    public int getBufferSize() {
+        return bufferSize;
     }
 
     /**

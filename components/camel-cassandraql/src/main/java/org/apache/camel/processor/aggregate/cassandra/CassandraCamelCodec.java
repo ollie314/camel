@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,37 +16,41 @@
  */
 package org.apache.camel.processor.aggregate.cassandra;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.nio.ByteBuffer;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
-import org.apache.camel.impl.DefaultExchange;
-import org.apache.camel.impl.DefaultExchangeHolder;
+import org.apache.camel.ExchangePropertyKey;
+import org.apache.camel.support.DefaultExchange;
+import org.apache.camel.support.DefaultExchangeHolder;
+import org.apache.camel.util.ClassLoadingAwareObjectInputStream;
 
 /**
- * Marshall/unmarshall Exchange to/from a ByteBuffer.
- * Inspired from JdbcCamelCodec.
+ * Marshall/unmarshall Exchange to/from a ByteBuffer. Inspired from JdbcCamelCodec.
  */
 public class CassandraCamelCodec {
 
-    public ByteBuffer marshallExchange(CamelContext camelContext, Exchange exchange, boolean allowSerializedHeaders) throws IOException {
+    public ByteBuffer marshallExchange(Exchange exchange, boolean allowSerializedHeaders)
+            throws IOException {
         // use DefaultExchangeHolder to marshal to a serialized object
         DefaultExchangeHolder pe = DefaultExchangeHolder.marshal(exchange, false, allowSerializedHeaders);
-        // add the aggregated size and timeout property as the only properties we want to retain
-        DefaultExchangeHolder.addProperty(pe, Exchange.AGGREGATED_SIZE, exchange.getProperty(Exchange.AGGREGATED_SIZE, Integer.class));
-        DefaultExchangeHolder.addProperty(pe, Exchange.AGGREGATED_TIMEOUT, exchange.getProperty(Exchange.AGGREGATED_TIMEOUT, Long.class));
+        // add the aggregated size and timeout property as the only properties
+        // we want to retain
+        DefaultExchangeHolder.addProperty(pe, Exchange.AGGREGATED_SIZE,
+                exchange.getProperty(ExchangePropertyKey.AGGREGATED_SIZE, Integer.class));
+        DefaultExchangeHolder.addProperty(pe, Exchange.AGGREGATED_TIMEOUT,
+                exchange.getProperty(ExchangePropertyKey.AGGREGATED_TIMEOUT, Long.class));
         // add the aggregated completed by property to retain
-        DefaultExchangeHolder.addProperty(pe, Exchange.AGGREGATED_COMPLETED_BY, exchange.getProperty(Exchange.AGGREGATED_COMPLETED_BY, String.class));
+        DefaultExchangeHolder.addProperty(pe, Exchange.AGGREGATED_COMPLETED_BY,
+                exchange.getProperty(ExchangePropertyKey.AGGREGATED_COMPLETED_BY, String.class));
         // add the aggregated correlation key property to retain
-        DefaultExchangeHolder.addProperty(pe, Exchange.AGGREGATED_CORRELATION_KEY, exchange.getProperty(Exchange.AGGREGATED_CORRELATION_KEY, String.class));
+        DefaultExchangeHolder.addProperty(pe, Exchange.AGGREGATED_CORRELATION_KEY,
+                exchange.getProperty(ExchangePropertyKey.AGGREGATED_CORRELATION_KEY, String.class));
         // and a guard property if using the flexible toolbox aggregator
-        DefaultExchangeHolder.addProperty(pe, Exchange.AGGREGATED_COLLECTION_GUARD, exchange.getProperty(Exchange.AGGREGATED_COLLECTION_GUARD, String.class));
+        DefaultExchangeHolder.addProperty(pe, Exchange.AGGREGATED_COLLECTION_GUARD,
+                exchange.getProperty(Exchange.AGGREGATED_COLLECTION_GUARD, String.class));
         // persist the from endpoint as well
         if (exchange.getFromEndpoint() != null) {
             DefaultExchangeHolder.addProperty(pe, "CamelAggregatedFromEndpoint", exchange.getFromEndpoint().getEndpointUri());
@@ -54,8 +58,10 @@ public class CassandraCamelCodec {
         return ByteBuffer.wrap(serialize(pe));
     }
 
-    public Exchange unmarshallExchange(CamelContext camelContext, ByteBuffer buffer) throws IOException, ClassNotFoundException {
-        DefaultExchangeHolder pe = (DefaultExchangeHolder) deserialize(new ByteBufferInputStream(buffer));
+    public Exchange unmarshallExchange(CamelContext camelContext, ByteBuffer buffer, String deserializationFilter)
+            throws IOException, ClassNotFoundException {
+        DefaultExchangeHolder pe
+                = (DefaultExchangeHolder) deserialize(camelContext, new ByteBufferInputStream(buffer), deserializationFilter);
         Exchange answer = new DefaultExchange(camelContext);
         DefaultExchangeHolder.unmarshal(answer, pe);
         // restore the from endpoint
@@ -63,7 +69,7 @@ public class CassandraCamelCodec {
         if (fromEndpointUri != null) {
             Endpoint fromEndpoint = camelContext.hasEndpoint(fromEndpointUri);
             if (fromEndpoint != null) {
-                answer.setFromEndpoint(fromEndpoint);
+                answer.getExchangeExtension().setFromEndpoint(fromEndpoint);
             }
         }
         return answer;
@@ -77,8 +83,11 @@ public class CassandraCamelCodec {
         return bytesOut.toByteArray();
     }
 
-    private Object deserialize(InputStream bytes) throws IOException, ClassNotFoundException {
-        ObjectInputStream objectIn = new ObjectInputStream(bytes);
+    private Object deserialize(CamelContext camelContext, InputStream bytes, String deserializationFilter)
+            throws IOException, ClassNotFoundException {
+        ClassLoader classLoader = camelContext.getApplicationContextClassLoader();
+        ObjectInputStream objectIn = new ClassLoadingAwareObjectInputStream(classLoader, bytes);
+        objectIn.setObjectInputFilter(ObjectInputFilter.Config.createFilter(deserializationFilter));
         Object object = objectIn.readObject();
         objectIn.close();
         return object;

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,16 +23,16 @@ import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.dataformat.bindy.model.csv.MyCsvRecord;
 import org.apache.camel.impl.DefaultCamelContext;
 import org.apache.camel.model.dataformat.BindyType;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 
 /**
  * The parsing issue when field ends with separator is fixed by updating BindyCvsDataFormat.unquoteTokens(..)<br>
  * See capture.png<br>
- * 
- * The suggested update does fix only the separator at the end of field.
- * !!! The separator in the beginning of the quoted field is still not handled.
+ *
+ * The suggested update does fix only the separator at the end of field. !!! The separator in the beginning of the
+ * quoted field is still not handled.
  *
  */
 public class BindyCsvFieldEndingWithSeparatorIssueTest extends CamelTestSupport {
@@ -53,7 +53,6 @@ public class BindyCsvFieldEndingWithSeparatorIssueTest extends CamelTestSupport 
         ProducerTemplate template = ctx.createProducerTemplate();
         template.sendBody("direct:fromCsv", csvLine.trim());
 
-        
         mock.assertIsSatisfied();
 
         // The algorithm of BindyCvsDataFormat.unquoteTokens(..) does not handle
@@ -65,7 +64,7 @@ public class BindyCsvFieldEndingWithSeparatorIssueTest extends CamelTestSupport 
     @Test
     public void testBindyMoreSeparators() throws Exception {
         CamelContext ctx = new DefaultCamelContext();
-        ctx.addRoutes(createRoute()); 
+        ctx.addRoutes(createRoute());
         ctx.start();
 
         String addressLine1 = "8506 SIX FORKS ROAD, , ,,, ,";
@@ -77,20 +76,20 @@ public class BindyCsvFieldEndingWithSeparatorIssueTest extends CamelTestSupport 
                          + "\",\"SUITE 104\",\"RALEIGH\",\"NC\",\"27615\",\"US\"";
         ProducerTemplate template = ctx.createProducerTemplate();
         template.sendBody("direct:fromCsv", csvLine.trim());
-        
+
         mock.assertIsSatisfied();
 
     }
 
     @Test
-    @Ignore("This issue will be revisit when we have chance to rewrite bindy parser")
+    @Disabled("This issue will be revisit when we have chance to rewrite bindy parser")
     public void testBindySeparatorsAround() throws Exception {
         CamelContext ctx = new DefaultCamelContext();
         ctx.addRoutes(createRoute()); // new ReconciliationRoute()
         ctx.start();
 
         // TODO The separator in the beginning of the quoted field is still not handled.
-        // We may need to convert the separators in the quote into some kind of safe code 
+        // We may need to convert the separators in the quote into some kind of safe code
         String addressLine1 = ",8506 SIX FORKS ROAD,";
 
         MockEndpoint mock = ctx.getEndpoint("mock:result", MockEndpoint.class);
@@ -100,7 +99,7 @@ public class BindyCsvFieldEndingWithSeparatorIssueTest extends CamelTestSupport 
                          + "\",\"SUITE 104\",\"RALEIGH\",\"NC\",\"27615\",\"US\"";
         ProducerTemplate template = ctx.createProducerTemplate();
         template.sendBody("direct:fromCsv", csvLine.trim());
-        
+
         mock.assertIsSatisfied();
 
     }
@@ -108,11 +107,11 @@ public class BindyCsvFieldEndingWithSeparatorIssueTest extends CamelTestSupport 
     private RouteBuilder createRoute() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:fromCsv").unmarshal().bindy(BindyType.Csv, MyCsvRecord.class)
-                    .setProperty("addressLine1", simple("${in.body.addressLine1}"))
-                    .setProperty("addressLine2", simple("${in.body.addressLine2}")).log("${in.body}")
-                    .to("mock:result");
+                        .setProperty("addressLine1", simple("${in.body.addressLine1}"))
+                        .setProperty("addressLine2", simple("${in.body.addressLine2}")).log("${in.body}")
+                        .to("mock:result");
             }
         };
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,10 @@ package org.apache.camel.component.undertow;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class UndertowHeaderTest extends BaseUndertowTest {
 
@@ -35,7 +38,7 @@ public class UndertowHeaderTest extends BaseUndertowTest {
         String out = template.requestBody("http://localhost:" + getPort() + "/headers?param=true", null, String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -50,7 +53,7 @@ public class UndertowHeaderTest extends BaseUndertowTest {
         String out = template.requestBody("http://localhost:" + getPort() + "/headers", "Hello World", String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -61,21 +64,21 @@ public class UndertowHeaderTest extends BaseUndertowTest {
         String out = template.requestBody("http://localhost:" + getPort() + "/hello/headers", null, String.class);
         assertEquals("Hello World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("undertow:http://localhost:{{port}}/headers")
-                    .to("mock:input")
-                    .transform().constant("Bye World");
+                        .to("mock:input")
+                        .transform().constant("Bye World");
 
                 from("undertow:http://localhost:{{port}}/hello?matchOnUriPrefix=true")
-                    .to("mock:input")
-                    .transform().constant("Hello World");
+                        .to("mock:input")
+                        .transform().constant("Hello World");
             }
         };
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,19 +16,19 @@
  */
 package org.apache.camel.component.sjms.support;
 
-import java.util.Random;
+import java.security.SecureRandom;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,9 +46,10 @@ public class MyInOutTestConsumer implements MessageListener {
     private MessageProducer producer;
 
     static {
-        clientQueueName = "client.messages";
+        clientQueueName = "client.messages.MyInOutTestConsumer";
         ackMode = Session.AUTO_ACKNOWLEDGE;
     }
+
     public MyInOutTestConsumer(ConnectionFactory connectionFactory) {
         Connection connection;
         try {
@@ -92,22 +93,23 @@ public class MyInOutTestConsumer implements MessageListener {
     }
 
     private String createRandomString() {
-        Random random = new Random(System.currentTimeMillis());
+        SecureRandom random = new SecureRandom();
         long randomLong = random.nextLong();
         return Long.toHexString(randomLong);
     }
 
+    @Override
     public void onMessage(Message message) {
         String messageText = null;
         try {
             if (message instanceof TextMessage) {
                 TextMessage textMessage = (TextMessage) message;
                 messageText = textMessage.getText();
-                LOG.info("messageText = " + messageText);
+                LOG.info("messageText = {}", messageText);
             }
         } catch (JMSException e) {
             //Handle the exception appropriately
         }
     }
-    
+
 }

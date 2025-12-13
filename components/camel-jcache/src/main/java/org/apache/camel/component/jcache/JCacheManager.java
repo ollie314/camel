@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,12 +19,18 @@ package org.apache.camel.component.jcache;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
 import javax.cache.Cache;
 import javax.cache.CacheManager;
 import javax.cache.Caching;
 import javax.cache.configuration.Configuration;
 import javax.cache.configuration.MutableConfiguration;
 import javax.cache.event.CacheEntryEventFilter;
+import javax.cache.event.EventType;
 import javax.cache.spi.CachingProvider;
 
 import org.apache.camel.CamelContext;
@@ -32,9 +38,9 @@ import org.apache.camel.util.ObjectHelper;
 
 public class JCacheManager<K, V> implements Closeable {
     private final JCacheConfiguration configuration;
-    private final ClassLoader classLoader;
     private final String cacheName;
     private final CamelContext camelContext;
+    private final Lock lock = new ReentrantLock();
     private CachingProvider provider;
     private CacheManager manager;
     private Cache<K, V> cache;
@@ -42,7 +48,6 @@ public class JCacheManager<K, V> implements Closeable {
     public JCacheManager(JCacheConfiguration configuration) {
         this.configuration = configuration;
         this.camelContext = configuration.getCamelContext();
-        this.classLoader = camelContext != null ? camelContext.getApplicationContextClassLoader() : null;
         this.cacheName = configuration.getCacheName();
         this.provider = null;
         this.manager = null;
@@ -52,7 +57,6 @@ public class JCacheManager<K, V> implements Closeable {
     public JCacheManager(Cache<K, V> cache) {
         this.configuration = null;
         this.camelContext = null;
-        this.classLoader = null;
         this.cacheName = cache.getName();
         this.provider = null;
         this.manager = null;
@@ -67,30 +71,39 @@ public class JCacheManager<K, V> implements Closeable {
         return this.configuration;
     }
 
-    public synchronized Cache<K, V> getCache() throws Exception {
-        if (cache == null) {
-            JCacheProvider provider = JCacheProviders.lookup(configuration.getCachingProvider());
-            cache = doGetCache(provider);
-        }
+    public Cache<K, V> getCache() throws Exception {
+        lock.lock();
+        try {
+            if (cache == null) {
+                JCacheProvider provider = JCacheProviders.lookup(configuration.getCachingProvider());
+                cache = doGetCache(provider);
+            }
 
-        return cache;
+            return cache;
+        } finally {
+            lock.unlock();
+        }
     }
 
-    @SuppressWarnings("unchecked")
     @Override
-    public synchronized void close() throws IOException {
-        if (configuration != null) {
-            if (cache != null) {
-                cache.close();
-            }
+    public void close() throws IOException {
+        lock.lock();
+        try {
+            if (configuration != null) {
+                if (cache != null) {
+                    cache.close();
+                }
 
-            if (manager != null) {
-                manager.close();
-            }
+                if (manager != null) {
+                    manager.close();
+                }
 
-            if (provider != null) {
-                provider.close();
+                if (provider != null) {
+                    provider.close();
+                }
             }
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -99,7 +112,16 @@ public class JCacheManager<K, V> implements Closeable {
             return new JCacheEntryEventFilters.Chained(configuration.getEventFilters());
         }
 
-        return new JCacheEntryEventFilters.Named(configuration.getFilteredEvents());
+        if (configuration.getFilteredEvents() != null) {
+            List<EventType> list = new ArrayList<>();
+            for (String s : configuration.getFilteredEvents().split(",")) {
+                EventType et = EventType.valueOf(s);
+                list.add(et);
+            }
+            return new JCacheEntryEventFilters.Named(list);
+        } else {
+            return cacheEntryEvent -> true;
+        }
     }
 
     protected Cache<K, V> doGetCache(JCacheProvider jcacheProvider) throws Exception {
@@ -110,24 +132,24 @@ public class JCacheManager<K, V> implements Closeable {
             }
 
             provider = ObjectHelper.isNotEmpty(jcacheProvider.className())
-                ? Caching.getCachingProvider(jcacheProvider.className())
-                : Caching.getCachingProvider();
+                    ? Caching.getCachingProvider(jcacheProvider.className())
+                    : Caching.getCachingProvider();
 
             manager = provider.getCacheManager(
-                ObjectHelper.isNotEmpty(uri) ? URI.create(uri) : null,
-                null,
-                configuration.getCacheConfigurationProperties());
+                    ObjectHelper.isNotEmpty(uri) ? URI.create(uri) : null,
+                    null,
+                    configuration.getCacheConfigurationProperties());
 
             cache = manager.getCache(cacheName);
             if (cache == null) {
                 if (!configuration.isCreateCacheIfNotExists()) {
                     throw new IllegalStateException(
-                        "Cache " + cacheName + " does not exist and should not be created (createCacheIfNotExists=false)");
+                            "Cache " + cacheName + " does not exist and should not be created (createCacheIfNotExists=false)");
                 }
 
                 cache = manager.createCache(
-                    cacheName,
-                    getOrCreateCacheConfiguration());
+                        cacheName,
+                        getOrCreateCacheConfiguration());
             }
         }
 

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,53 +16,73 @@
  */
 package org.apache.camel.component.smpp;
 
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
+import org.apache.camel.Endpoint;
+import org.apache.camel.spi.ExecutorServiceManager;
+import org.apache.camel.support.service.BaseService;
+import org.apache.camel.support.task.BlockingTask;
+import org.apache.camel.support.task.Tasks;
+import org.apache.camel.support.task.budget.Budgets;
 import org.jsmpp.bean.Alphabet;
 import org.jsmpp.bean.DataSm;
+import org.jsmpp.bean.DeliverSm;
+import org.jsmpp.bean.OptionalParameter;
+import org.jsmpp.bean.OptionalParameter.OctetString;
+import org.jsmpp.bean.OptionalParameter.Tag;
 import org.jsmpp.bean.SubmitMulti;
 import org.jsmpp.bean.SubmitSm;
+import org.jsmpp.extra.SessionState;
+import org.jsmpp.session.SMPPSession;
 import org.jsmpp.util.AbsoluteTimeFormatter;
 import org.jsmpp.util.TimeFormatter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class SmppUtils {
-
     /**
      * See http://unicode.org/Public/MAPPINGS/ETSI/GSM0338.TXT
      */
     public static final short[] ISO_GSM_0338 = {
-        64,     163,    36,     165,    232,    233,    249,    236,
-        242,    199,    10,     216,    248,    13,     197,    229,
-        0,      95,     0,      0,      0,      0,      0,      0,
-        0,      0,      0,      0,      198,    230,    223,    201,
-        32,     33,     34,     35,     164,    37,     38,     39,
-        40,     41,     42,     43,     44,     45,     46,     47,
-        48,     49,     50,     51,     52,     53,     54,     55,
-        56,     57,     58,     59,     60,     61,     62,     63,
-        161,    65,     66,     67,     68,     69,     70,     71,
-        72,     73,     74,     75,     76,     77,     78,     79,
-        80,     81,     82,     83,     84,     85,     86,     87,
-        88,     89,     90,     196,    214,    209,    220,    167,
-        191,    97,     98,     99,     100,    101,    102,    103,
-        104,    105,    106,    107,    108,    109,    110,    111,
-        112,    113,    114,    115,    116,    117,    118,    119,
-        120,    121,    122,    228,    246,    241,    252,    224
+            64, 163, 36, 165, 232, 233, 249, 236,
+            242, 199, 10, 216, 248, 13, 197, 229,
+            0, 95, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 198, 230, 223, 201,
+            32, 33, 34, 35, 164, 37, 38, 39,
+            40, 41, 42, 43, 44, 45, 46, 47,
+            48, 49, 50, 51, 52, 53, 54, 55,
+            56, 57, 58, 59, 60, 61, 62, 63,
+            161, 65, 66, 67, 68, 69, 70, 71,
+            72, 73, 74, 75, 76, 77, 78, 79,
+            80, 81, 82, 83, 84, 85, 86, 87,
+            88, 89, 90, 196, 214, 209, 220, 167,
+            191, 97, 98, 99, 100, 101, 102, 103,
+            104, 105, 106, 107, 108, 109, 110, 111,
+            112, 113, 114, 115, 116, 117, 118, 119,
+            120, 121, 122, 228, 246, 241, 252, 224
     };
 
     /**
      * See http://unicode.org/Public/MAPPINGS/ETSI/GSM0338.TXT
      */
     public static final short[][] ISO_GSM_0338_EXT = {
-        {10, 12},   {20, 94},   {40, 123},  {41, 125},  {47, 92},
-        {60, 91},   {61, 126},  {62, 93},   {64, 124},  {101, 164}
+            { 10, 12 }, { 20, 94 }, { 40, 123 }, { 41, 125 }, { 47, 92 },
+            { 60, 91 }, { 61, 126 }, { 62, 93 }, { 64, 124 }, { 101, 164 }
     };
-    
+
+    private static final Logger LOG = LoggerFactory.getLogger(SmppUtils.class);
     private static final TimeFormatter TIME_FORMATTER = new AbsoluteTimeFormatter();
 
     private SmppUtils() {
     }
-    
+
     public static String formatTime(Date date) {
         return TIME_FORMATTER.format(date);
     }
@@ -80,12 +100,10 @@ public final class SmppUtils {
      *
      * Java format is (yyMMddHHmmSS).
      *
-     * @param date in <tt>String</tt> format.
-     * @return the date
-     * @throws NumberFormatException if there is contains non number on
-     *         <code>date</code> parameter.
-     * @throws IndexOutOfBoundsException if the date length in <tt>String</tt>
-     *         format is less than 10.
+     * @param  date                      in <tt>String</tt> format.
+     * @return                           the date
+     * @throws NumberFormatException     if there is contains non number on <code>date</code> parameter.
+     * @throws IndexOutOfBoundsException if the date length in <tt>String</tt> format is less than 10.
      */
     public static Date string2Date(String date) {
         if (date == null) {
@@ -115,20 +133,37 @@ public final class SmppUtils {
         }
     }
 
+    /**
+     * Returns the payload of a deliverSm
+     *
+     * @param  deliverSm
+     * @return           the shortMessage, by first looking in the shortMessage field of the deliver_sm and if its null
+     *                   or empty, fallbacks to the optional parameter "MESSAGE_PAYLOAD".
+     */
+    public static byte[] getMessageBody(DeliverSm deliverSm) {
+        byte[] body = deliverSm.getShortMessage();
+        if (body == null || body.length == 0) {
+            OptionalParameter param = deliverSm.getOptionalParameter(Tag.MESSAGE_PAYLOAD);
+            if (param instanceof OctetString) {
+                body = ((OctetString) param).getValue();
+            }
+        }
+        return body;
+    }
+
     public static boolean is8Bit(Alphabet alphabet) {
         return alphabet == Alphabet.ALPHA_UNSPECIFIED_2 || alphabet == Alphabet.ALPHA_8_BIT;
     }
 
     /**
      * Decides if the characters in the argument are GSM 3.38 encodeable.
-     * @param aMessage must be a set of characters encoded in ISO-8859-1
-     *                 or a compatible character set.  In particular,
-     *                 UTF-8 encoded text should not be passed to this method.
-     * @return true if the characters can be represented in GSM 3.38
+     *
+     * @param  aMessage must be a set of characters encoded in ISO-8859-1 or a compatible character set. In particular,
+     *                  UTF-8 encoded text should not be passed to this method.
+     * @return          true if the characters can be represented in GSM 3.38
      */
     public static boolean isGsm0338Encodeable(byte[] aMessage) {
-    outer:
-        for (int i = 0; i < aMessage.length; i++) {
+        outer: for (int i = 0; i < aMessage.length; i++) {
             for (int j = 0; j < ISO_GSM_0338.length; j++) {
                 if (ISO_GSM_0338[j] == aMessage[i]) {
                     continue outer;
@@ -143,7 +178,7 @@ public final class SmppUtils {
         }
         return true;
     }
-    
+
     public static SubmitSm copySubmitSm(SubmitSm src) {
         SubmitSm dest = new SubmitSm();
         dest.setCommandId(src.getCommandId());
@@ -178,7 +213,7 @@ public final class SmppUtils {
             dest.setDefaultMode();
         }
         if (src.isEsmeDeliveryAcknowledgement()) {
-            dest.setEsmeDelivertAcknowledgement();
+            dest.setEsmeDeliveryAcknowledgement();
         }
         if (src.isEsmeManualAcknowledgement()) {
             dest.setEsmeManualAcknowledgement();
@@ -265,5 +300,76 @@ public final class SmppUtils {
             dest.setUdhiAndReplyPath();
         }
         return dest;
+    }
+
+    public static boolean isServiceStopping(BaseService service) {
+        return service.isStopping() || service.isStopped();
+    }
+
+    public static boolean isSessionClosed(SMPPSession session) {
+        return session == null || session.getSessionState().equals(SessionState.CLOSED);
+    }
+
+    public static ScheduledExecutorService createExecutor(BaseService service, Endpoint endpoint, String taskName) {
+        if (endpoint.getCamelContext() != null && endpoint.getCamelContext().getExecutorServiceManager() != null) {
+            ExecutorServiceManager manager = endpoint.getCamelContext().getExecutorServiceManager();
+            return manager.newSingleThreadScheduledExecutor(service, taskName);
+        } else {
+            LOG.warn("Not using the Camel scheduled thread executor");
+            return Executors.newSingleThreadScheduledExecutor();
+        }
+    }
+
+    public static BlockingTask newReconnectTask(
+            ScheduledExecutorService service, String taskName, long initialReconnectDelay,
+            long reconnectDelay, int maxReconnect) {
+        return Tasks.backgroundTask()
+                .withBudget(Budgets.iterationTimeBudget()
+                        .withInitialDelay(Duration.ofMillis(initialReconnectDelay))
+                        .withMaxIterations(maxReconnect)
+                        .withUnlimitedDuration()
+                        .withInterval(Duration.ofMillis(reconnectDelay))
+                        .build())
+                .withScheduledExecutor(service)
+                .withName(taskName)
+                .build();
+    }
+
+    public static void shutdownReconnectService(ScheduledExecutorService service) throws InterruptedException {
+        service.shutdown();
+        if (!service.awaitTermination(1, TimeUnit.SECONDS)) {
+            LOG.warn("The reconnect service did not finish executing within the timeout");
+
+            service.shutdownNow();
+        }
+    }
+
+    /**
+     * This method would try to decode the bytes provided a dataCoding.
+     *
+     * Supports: US_ASCII, ISO_8859_1, UTF_16_BE alphabet values
+     *
+     * @param  body                         Body of the message in bytes
+     * @param  dataCoding                   The data coding value
+     * @param  defaultEncoding              The default encoding
+     * @return                              null if body is null or 8bit encoded, or the decoded body on success
+     * @throws UnsupportedEncodingException when the default encoding is unsupported
+     */
+    public static String decodeBody(byte[] body, byte dataCoding, String defaultEncoding)
+            throws UnsupportedEncodingException {
+        Alphabet alphabet = Alphabet.parseDataCoding(dataCoding);
+        if (body == null || SmppUtils.is8Bit(alphabet)) {
+            return null;
+        }
+        switch (alphabet) {
+            case ALPHA_IA5:
+                return new String(body, StandardCharsets.US_ASCII);
+            case ALPHA_LATIN1:
+                return new String(body, StandardCharsets.ISO_8859_1);
+            case ALPHA_UCS2:
+                return new String(body, StandardCharsets.UTF_16BE);
+            default:
+                return new String(body, defaultEncoding);
+        }
     }
 }

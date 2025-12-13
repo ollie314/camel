@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,37 +22,38 @@ import java.util.concurrent.TimeUnit;
 import org.apache.camel.CamelContext;
 import org.apache.camel.EndpointInject;
 import org.apache.camel.LoggingLevel;
+import org.apache.camel.RuntimeCamelException;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.impl.DefaultCamelContext;
 import org.apache.camel.test.AvailablePortFinder;
 import org.apache.camel.test.junit.rule.mllp.MllpClientResource;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Rule;
-import org.junit.Test;
-
-import static org.apache.camel.test.mllp.Hl7MessageGenerator.generateMessage;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.apache.camel.test.mllp.Hl7TestMessageGenerator;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 public class MllpTcpServerConsumerBindTimeoutTest extends CamelTestSupport {
-    @Rule
+
+    @RegisterExtension
     public MllpClientResource mllpClient = new MllpClientResource();
 
-    @EndpointInject(uri = "mock://result")
+    @EndpointInject("mock://result")
     MockEndpoint result;
+
+    @Override
+    public boolean isUseAdviceWith() {
+        return true;
+    }
 
     @Override
     protected CamelContext createCamelContext() throws Exception {
         DefaultCamelContext context = (DefaultCamelContext) super.createCamelContext();
 
         context.setUseMDCLogging(true);
-        context.setName(this.getClass().getSimpleName());
+        context.getCamelContextExtension().setName(this.getClass().getSimpleName());
 
         return context;
-    }
-
-    @Override
-    public boolean isUseAdviceWith() {
-        return true;
     }
 
     @Override
@@ -66,7 +67,7 @@ public class MllpTcpServerConsumerBindTimeoutTest extends CamelTestSupport {
             int responseTimeout = 5000;
 
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 String routeId = "mllp-test-receiver-route";
 
                 onCompletion()
@@ -87,18 +88,15 @@ public class MllpTcpServerConsumerBindTimeoutTest extends CamelTestSupport {
     public void testReceiveSingleMessage() throws Exception {
         result.expectedMessageCount(1);
 
-        Thread tmpThread = new Thread() {
-            public void run() {
-                try {
-                    ServerSocket tmpSocket = new ServerSocket(mllpClient.getMllpPort());
-                    Thread.sleep(15000);
-                    tmpSocket.close();
-                } catch (Exception ex) {
-                    throw new RuntimeException("Exception caught in dummy listener", ex);
-                }
+        Thread tmpThread = new Thread(() -> {
+            try {
+                ServerSocket tmpSocket = new ServerSocket(mllpClient.getMllpPort());
+                Thread.sleep(15000);
+                tmpSocket.close();
+            } catch (Exception ex) {
+                throw new RuntimeCamelException("Exception caught in dummy listener", ex);
             }
-
-        };
+        });
 
         tmpThread.start();
 
@@ -106,10 +104,9 @@ public class MllpTcpServerConsumerBindTimeoutTest extends CamelTestSupport {
 
         mllpClient.connect();
 
-        mllpClient.sendMessageAndWaitForAcknowledgement(generateMessage(), 10000);
+        mllpClient.sendMessageAndWaitForAcknowledgement(Hl7TestMessageGenerator.generateMessage(), 10000);
 
-        assertMockEndpointsSatisfied(10, TimeUnit.SECONDS);
+        MockEndpoint.assertIsSatisfied(context, 10, TimeUnit.SECONDS);
     }
 
 }
-

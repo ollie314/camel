@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,16 +17,14 @@
 package org.apache.camel.itest.jms;
 
 import java.io.Serializable;
-import javax.xml.bind.annotation.XmlAccessType;
-import javax.xml.bind.annotation.XmlAccessorType;
-import javax.xml.bind.annotation.XmlAttribute;
-import javax.xml.bind.annotation.XmlRootElement;
+
+import jakarta.xml.bind.annotation.XmlAccessType;
+import jakarta.xml.bind.annotation.XmlAccessorType;
+import jakarta.xml.bind.annotation.XmlAttribute;
+import jakarta.xml.bind.annotation.XmlRootElement;
 
 import org.apache.camel.util.ObjectHelper;
 
-/**
- * @version 
- */
 @XmlRootElement
 @XmlAccessorType(XmlAccessType.FIELD)
 public class PurchaseOrder implements Serializable {
@@ -46,16 +44,16 @@ public class PurchaseOrder implements Serializable {
     @Override
     public boolean equals(Object o) {
         if (o instanceof PurchaseOrder) {
-            PurchaseOrder that = (PurchaseOrder)o;
+            PurchaseOrder that = (PurchaseOrder) o;
             return ObjectHelper.equal(this.name, that.name) && ObjectHelper.equal(this.amount, that.amount)
-                   && ObjectHelper.equal(this.price, that.price);
+                    && ObjectHelper.equal(this.price, that.price);
         }
         return false;
     }
 
     @Override
     public int hashCode() {
-        return name.hashCode() + (int)Math.round(price * 100) + (int)Math.round(amount * 100);
+        return name.hashCode() + (int) Math.round(price * 100) + (int) Math.round(amount * 100);
     }
 
     public double getAmount() {

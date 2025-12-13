@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,7 +16,7 @@
  */
 package org.apache.camel.component.mail;
 
-import javax.mail.Folder;
+import jakarta.mail.Folder;
 
 /**
  * Is used for doing post processing tasks on the mailbox once the normal processing ended. This includes for example

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,112 +16,132 @@
  */
 package org.apache.camel.component.mllp;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class MllpAcknowledgementExceptionTest {
-    static final String HL7_MESSAGE = "MSH|^~\\&|APP_A|FAC_A|^org^sys||||ADT^A04^ADT_A04|||2.6" + '\r'
-            + "PID|1||1100832^^^^PI||TEST^FIG||98765432|U||R|435 MAIN STREET^^LONGMONT^CO^80503||123-456-7890|||S" + '\r'
-            + '\r' + '\n';
+/**
+ * Tests for the class.
+ */
+public class MllpAcknowledgementExceptionTest extends MllpExceptionTestSupport {
+    static final String TEST_EXCEPTION_MESSAGE = "Test Acknowledgment Message";
 
-    static final String HL7_ACKNOWLEDGEMENT = "MSH|^~\\&|^org^sys||APP_A|FAC_A|||ACK^A04^ADT_A04|||2.6" + '\r' + "MSA|AA|" + '\r' + '\n';
+    MllpAcknowledgementException instance;
 
-    static final String EXCEPTION_MESSAGE_WITH_LOG_PHI_DISABLED = MllpAcknowledgementDeliveryException.EXCEPTION_MESSAGE;
-    static final String EXCEPTION_MESSAGE_WITH_LOG_PHI_ENABLED =
-            String.format("%s:\n\tHL7 Message: %s\n\tHL7 Acknowledgement: %s",
-                    MllpAcknowledgementDeliveryException.EXCEPTION_MESSAGE,
-                    new String(HL7_MESSAGE).replaceAll("\r", "<CR>").replaceAll("\n", "<LF>"),
-                    new String(HL7_ACKNOWLEDGEMENT).replaceAll("\r", "<CR>").replaceAll("\n", "<LF>")
-            );
-
-    Exception exception;
-
-    Logger log = LoggerFactory.getLogger(this.getClass());
-
-    @Before
-    public void setUp() throws Exception {
-        exception = new MllpAcknowledgementDeliveryException(HL7_MESSAGE.getBytes(), HL7_ACKNOWLEDGEMENT.getBytes());
-    }
-
-    @After
-    public void tearDown() throws Exception {
-        System.clearProperty(MllpComponent.MLLP_LOG_PHI_PROPERTY);
-    }
-
-
+    /**
+     * Description of test.
+     *
+     */
     @Test
-    public void testLogPhiDefault() throws Exception {
-        String exceptionMessage = exception.getMessage();
+    public void testConstructorOne() {
+        instance = new MllpAcknowledgementExceptionStub(TEST_EXCEPTION_MESSAGE, LOG_PHI_TRUE);
 
-        assertEquals(EXCEPTION_MESSAGE_WITH_LOG_PHI_ENABLED, exceptionMessage);
+        assertNull(instance.getCause());
+        assertTrue(instance.getMessage().startsWith(TEST_EXCEPTION_MESSAGE));
+        assertNull(instance.hl7MessageBytes);
+        assertNull(instance.hl7AcknowledgementBytes);
     }
 
+    /**
+     * Description of test.
+     *
+     */
     @Test
-    public void testLogPhiDisabled() throws Exception {
-        System.setProperty(MllpComponent.MLLP_LOG_PHI_PROPERTY, "false");
+    public void testConstructorTwo() {
+        instance = new MllpAcknowledgementExceptionStub(TEST_EXCEPTION_MESSAGE, CAUSE, LOG_PHI_TRUE);
 
-        String exceptionMessage = exception.getMessage();
-
-        assertEquals(EXCEPTION_MESSAGE_WITH_LOG_PHI_DISABLED, exceptionMessage);
+        assertSame(CAUSE, instance.getCause());
+        assertTrue(instance.getMessage().startsWith(TEST_EXCEPTION_MESSAGE));
+        assertNull(instance.hl7MessageBytes);
+        assertNull(instance.hl7AcknowledgementBytes);
     }
 
+    /**
+     * Description of test.
+     *
+     */
     @Test
-    public void testLogPhiEnabled() throws Exception {
-        System.setProperty(MllpComponent.MLLP_LOG_PHI_PROPERTY, "true");
+    public void testConstructorThree() {
+        instance = new MllpAcknowledgementExceptionStub(TEST_EXCEPTION_MESSAGE, HL7_MESSAGE_BYTES, LOG_PHI_TRUE);
 
-        String exceptionMessage = exception.getMessage();
-
-        assertEquals(EXCEPTION_MESSAGE_WITH_LOG_PHI_ENABLED, exceptionMessage);
+        assertNull(instance.getCause());
+        assertTrue(instance.getMessage().startsWith(TEST_EXCEPTION_MESSAGE));
+        assertArrayEquals(HL7_MESSAGE_BYTES, instance.hl7MessageBytes);
+        assertNull(instance.hl7AcknowledgementBytes);
     }
 
+    /**
+     * Description of test.
+     *
+     */
     @Test
-    public void testNullMessage() throws Exception {
-        final String expectedMessage =
-                String.format("%s:\n\tHL7 Message: null\n\tHL7 Acknowledgement: %s",
-                        MllpAcknowledgementDeliveryException.EXCEPTION_MESSAGE,
-                        new String(HL7_ACKNOWLEDGEMENT).replaceAll("\r", "<CR>").replaceAll("\n", "<LF>")
-                );
+    public void testConstructorFour() {
+        instance = new MllpAcknowledgementExceptionStub(
+                TEST_EXCEPTION_MESSAGE, HL7_MESSAGE_BYTES, HL7_ACKNOWLEDGEMENT_BYTES, LOG_PHI_TRUE);
 
-        exception = new MllpAcknowledgementDeliveryException(null, HL7_ACKNOWLEDGEMENT.getBytes());
-
-        System.setProperty(MllpComponent.MLLP_LOG_PHI_PROPERTY, "true");
-        String exceptionMessage = exception.getMessage();
-
-        assertEquals(expectedMessage, exceptionMessage);
+        assertNull(instance.getCause());
+        assertTrue(instance.getMessage().startsWith(TEST_EXCEPTION_MESSAGE));
+        assertArrayEquals(HL7_MESSAGE_BYTES, instance.hl7MessageBytes);
+        assertArrayEquals(HL7_ACKNOWLEDGEMENT_BYTES, instance.hl7AcknowledgementBytes);
     }
 
+    /**
+     * Description of test.
+     *
+     */
     @Test
-    public void testNullAcknowledgement() throws Exception {
-        final String expectedMessage =
-                String.format("%s:\n\tHL7 Message: %s\n\tHL7 Acknowledgement: null",
-                        MllpAcknowledgementDeliveryException.EXCEPTION_MESSAGE,
-                        new String(HL7_MESSAGE).replaceAll("\r", "<CR>").replaceAll("\n", "<LF>")
-                );
+    public void testConstructorFive() {
+        instance = new MllpAcknowledgementExceptionStub(TEST_EXCEPTION_MESSAGE, HL7_MESSAGE_BYTES, CAUSE, LOG_PHI_TRUE);
 
-        exception = new MllpAcknowledgementDeliveryException(HL7_MESSAGE.getBytes(), null);
-
-        System.setProperty(MllpComponent.MLLP_LOG_PHI_PROPERTY, "true");
-        String exceptionMessage = exception.getMessage();
-
-        assertEquals(expectedMessage, exceptionMessage);
+        assertSame(CAUSE, instance.getCause());
+        assertTrue(instance.getMessage().startsWith(TEST_EXCEPTION_MESSAGE));
+        assertArrayEquals(HL7_MESSAGE_BYTES, instance.hl7MessageBytes);
+        assertNull(instance.hl7AcknowledgementBytes);
     }
 
+    /**
+     * Description of test.
+     *
+     */
     @Test
-    public void testToString() throws Exception {
-        final String expectedString =
-                "org.apache.camel.component.mllp.MllpAcknowledgementDeliveryException: "
-                        + "{hl7Message="
-                        +      "MSH|^~\\&|APP_A|FAC_A|^org^sys||||ADT^A04^ADT_A04|||2.6<CR>"
-                        +      "PID|1||1100832^^^^PI||TEST^FIG||98765432|U||R|435 MAIN STREET^^LONGMONT^CO^80503||123-456-7890|||S<CR><CR><LF>"
-                        + ", hl7Acknowledgement="
-                        +      "MSH|^~\\&|^org^sys||APP_A|FAC_A|||ACK^A04^ADT_A04|||2.6<CR>MSA|AA|<CR><LF>"
-                        + "}";
+    public void testConstructorSix() {
+        instance = new MllpAcknowledgementExceptionStub(
+                TEST_EXCEPTION_MESSAGE, HL7_MESSAGE_BYTES, HL7_ACKNOWLEDGEMENT_BYTES, CAUSE, LOG_PHI_TRUE);
 
-        assertEquals(expectedString, exception.toString());
+        assertSame(CAUSE, instance.getCause());
+        assertTrue(instance.getMessage().startsWith(TEST_EXCEPTION_MESSAGE));
+        assertArrayEquals(HL7_MESSAGE_BYTES, instance.hl7MessageBytes);
+        assertArrayEquals(HL7_ACKNOWLEDGEMENT_BYTES, instance.hl7AcknowledgementBytes);
     }
+
+    static class MllpAcknowledgementExceptionStub extends MllpAcknowledgementException {
+        MllpAcknowledgementExceptionStub(String message, boolean logPhi) {
+            super(message, logPhi);
+        }
+
+        MllpAcknowledgementExceptionStub(String message, Throwable cause, boolean logPhi) {
+            super(message, cause, logPhi);
+        }
+
+        MllpAcknowledgementExceptionStub(String message, byte[] hl7Message, boolean logPhi) {
+            super(message, hl7Message, logPhi);
+        }
+
+        MllpAcknowledgementExceptionStub(String message, byte[] hl7Message, byte[] hl7Acknowledgement, boolean logPhi) {
+            super(message, hl7Message, hl7Acknowledgement, logPhi);
+        }
+
+        MllpAcknowledgementExceptionStub(String message, byte[] hl7Message, Throwable cause, boolean logPhi) {
+            super(message, hl7Message, cause, logPhi);
+        }
+
+        MllpAcknowledgementExceptionStub(String message, byte[] hl7Message, byte[] hl7Acknowledgement, Throwable cause,
+                                         boolean logPhi) {
+            super(message, hl7Message, hl7Acknowledgement, cause, logPhi);
+        }
+    }
+
 }

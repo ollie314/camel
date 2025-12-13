@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,14 +17,19 @@
 package org.apache.camel.component.telegram;
 
 /**
- * A collection of supported media type for outgoing messages (produced).
- * It is meant to be put in the message headers using key {@link TelegramConstants#TELEGRAM_MEDIA_TYPE}.
+ * A collection of supported media type for outgoing messages (produced). It is meant to be put in the message headers
+ * using key {@link TelegramConstants#TELEGRAM_MEDIA_TYPE}.
  */
 public enum TelegramMediaType {
 
-    TEXT("txt"), PHOTO_PNG("png"), PHOTO_JPG("jpg"), AUDIO("mp3"), VIDEO("mp4");
+    TEXT("txt"),
+    PHOTO_PNG("png"),
+    PHOTO_JPG("jpg"),
+    AUDIO("mp3"),
+    VIDEO("mp4"),
+    DOCUMENT("-");
 
-    private String fileExtension;
+    private final String fileExtension;
 
     TelegramMediaType(String fileExtension) {
         this.fileExtension = fileExtension;

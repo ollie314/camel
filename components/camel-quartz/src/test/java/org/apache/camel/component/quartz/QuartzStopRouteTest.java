@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,37 +18,29 @@ package org.apache.camel.component.quartz;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
-public class QuartzStopRouteTest extends BaseQuartzTest {
+class QuartzStopRouteTest extends BaseQuartzTest {
 
     @Test
-    public void testQuartzStop() throws Exception {
+    void testQuartzSuspend() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMinimumMessageCount(1);
 
-        assertMockEndpointsSatisfied();
+        mock.assertIsSatisfied();
 
-        context.stopRoute("foo");
+        context.getRouteController().stopRoute("foo");
 
-        int size = mock.getReceivedCounter();
-
-        resetMocks();
-
+        mock.reset();
         mock.expectedMessageCount(0);
         mock.assertIsSatisfied(3000);
 
-        assertEquals("Should not schedule when stopped", size, size);
-
-        resetMocks();
+        mock.reset();
         mock.expectedMinimumMessageCount(1);
 
-        context.startRoute("foo");
+        context.getRouteController().startRoute("foo");
 
-        assertMockEndpointsSatisfied();
+        mock.assertIsSatisfied();
     }
 
     @Override

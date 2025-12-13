@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,21 +18,29 @@ package org.apache.camel.processor.aggregate.jdbc;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.impl.DefaultExchange;
-import org.junit.Test;
+import org.apache.camel.support.DefaultExchange;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 public class JdbcAggregationRepositoryRecoverExistingTest extends AbstractJdbcAggregationTestSupport {
 
     @Override
     void configureJdbcAggregationRepository() {
+        super.configureJdbcAggregationRepository();
+
         repo.setReturnOldExchange(true);
         repo.setUseRecovery(true);
     }
-    
+
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
+                configureJdbcAggregationRepository();
+
                 // no routes added by default
             }
         };
@@ -46,9 +54,10 @@ public class JdbcAggregationRepositoryRecoverExistingTest extends AbstractJdbcAg
         Exchange exchange1 = new DefaultExchange(context);
         exchange1.getIn().setBody("counter:1");
         Exchange actual = repo.add(context, "foo", exchange1);
-        assertEquals(null, actual);
+        assertNull(actual);
 
-        // Remove it, which makes it in the pre confirm stage
+        // Get and remove it, which makes it in the pre confirm stage
+        exchange1 = repo.get(context, "foo");
         repo.remove(context, "foo", exchange1);
 
         String id = exchange1.getExchangeId();

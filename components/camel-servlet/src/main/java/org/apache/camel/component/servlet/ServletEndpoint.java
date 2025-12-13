@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,7 +19,9 @@ package org.apache.camel.component.servlet;
 import java.net.URI;
 import java.net.URISyntaxException;
 
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
+import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
 import org.apache.camel.http.common.DefaultHttpBinding;
@@ -31,19 +33,26 @@ import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriPath;
 
 /**
- * To use a HTTP Servlet as entry for Camel routes when running in a servlet container.
+ * Serve HTTP requests by a Servlet.
  */
-@UriEndpoint(scheme = "servlet", extendsScheme = "http", title = "Servlet",
-        syntax = "servlet:contextPath", consumerOnly = true, consumerClass = ServletConsumer.class, label = "http")
+@UriEndpoint(firstVersion = "2.0.0", scheme = "servlet", extendsScheme = "http", title = "Servlet",
+             syntax = "servlet:contextPath", consumerOnly = true, category = { Category.HTTP })
+@Metadata(excludeProperties = "httpUri", annotations = {
+        "protocol=http",
+})
 public class ServletEndpoint extends HttpCommonEndpoint {
 
     private HttpBinding binding;
 
-    @UriPath(label = "consumer") @Metadata(required = "true")
+    @UriPath(label = "consumer")
+    @Metadata(required = true)
     private String contextPath;
-
     @UriParam(label = "consumer", defaultValue = "CamelServlet")
     private String servletName;
+    @UriParam(label = "consumer,advanced")
+    private boolean attachmentMultipartBinding;
+    @UriParam(label = "consumer,advanced")
+    private String fileNameExtWhitelist;
 
     public ServletEndpoint() {
     }
@@ -63,12 +72,15 @@ public class ServletEndpoint extends HttpCommonEndpoint {
         // make sure we include servlet variant of the http binding
         if (this.binding == null) {
             // is attachment binding enabled?
-            if (getComponent().isAttachmentMultipartBinding()) {
+            if (isAttachmentMultipartBinding()) {
                 this.binding = new AttachmentHttpBinding();
             } else {
                 this.binding = new DefaultHttpBinding();
             }
+            this.binding.setFileNameExtWhitelist(getFileNameExtWhitelist());
             this.binding.setTransferException(isTransferException());
+            this.binding.setMuteException(isMuteException());
+            this.binding.setLogException(isLogException());
             if (getComponent() != null) {
                 this.binding.setAllowJavaSerializedObject(getComponent().isAllowJavaSerializedObject());
             }
@@ -109,9 +121,40 @@ public class ServletEndpoint extends HttpCommonEndpoint {
         return servletName;
     }
 
+    public boolean isAttachmentMultipartBinding() {
+        return attachmentMultipartBinding;
+    }
+
+    /**
+     * Whether to automatic bind multipart/form-data as attachments on the Camel {@link Exchange}.
+     * <p/>
+     * The options attachmentMultipartBinding=true and disableStreamCache=false cannot work together. Remove
+     * disableStreamCache to use AttachmentMultipartBinding.
+     * <p/>
+     * This is turn off by default as this may require servlet specific configuration to enable this when using
+     * Servlet's.
+     */
+    public void setAttachmentMultipartBinding(boolean attachmentMultipartBinding) {
+        this.attachmentMultipartBinding = attachmentMultipartBinding;
+    }
+
+    public String getFileNameExtWhitelist() {
+        return fileNameExtWhitelist;
+    }
+
+    /**
+     * Whitelist of accepted filename extensions for accepting uploaded files.
+     * <p/>
+     * Multiple extensions can be separated by comma, such as txt,xml.
+     */
+    public void setFileNameExtWhitelist(String fileNameExtWhitelist) {
+        this.fileNameExtWhitelist = fileNameExtWhitelist;
+    }
+
     @Override
     public Producer createProducer() throws Exception {
-        throw new UnsupportedOperationException("You cannot create producer with servlet endpoint, please consider to use http or http4 endpoint.");
+        throw new UnsupportedOperationException(
+                "You cannot create producer with servlet endpoint, please consider to use http endpoint.");
     }
 
     @Override

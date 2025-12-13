@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,14 +21,14 @@ import java.net.URL;
 import org.apache.camel.EndpointInject;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import static org.apache.camel.Exchange.HTTP_QUERY;
 import static org.apache.camel.Exchange.HTTP_RAW_QUERY;
 
 public class NettyHttpRawQueryTest extends BaseNettyTest {
 
-    @EndpointInject(uri = "mock:test")
+    @EndpointInject("mock:test")
     MockEndpoint mockEndpoint;
 
     @Test
@@ -40,16 +40,16 @@ public class NettyHttpRawQueryTest extends BaseNettyTest {
 
         new URL("http://localhost:" + getPort() + "/?" + query).openConnection().getInputStream().close();
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("netty-http:http://0.0.0.0:{{port}}/")
-                    .to(mockEndpoint);
+                        .to(mockEndpoint);
             }
         };
     }

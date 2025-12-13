@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,7 +16,7 @@
  */
 package org.apache.camel.dataformat.soap;
 
-import javax.xml.ws.Holder;
+import jakarta.xml.ws.Holder;
 
 import com.example.customerservice.multipart.Company;
 import com.example.customerservice.multipart.CompanyType;
@@ -78,13 +78,14 @@ public class MultiPartCustomerServiceImpl implements MultiPartCustomerService {
         customer.setRevenue(100000);
         response.getReturn().add(customer);
     }
-    
+
     public Customer getLastSavedCustomer() {
         return lastSavedCustomer;
     }
 
     @Override
-    public void saveCustomerToo(SaveCustomer parameters, Product product,
+    public void saveCustomerToo(
+            SaveCustomer parameters, Product product,
             Holder<Company> company) {
         if (product == null) {
             throw new IllegalArgumentException("product may not be null.");

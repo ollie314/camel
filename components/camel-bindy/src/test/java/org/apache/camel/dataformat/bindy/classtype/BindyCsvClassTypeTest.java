@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,11 +22,14 @@ import java.util.GregorianCalendar;
 import java.util.TimeZone;
 
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.dataformat.bindy.model.simple.oneclass.Order;
 import org.apache.camel.model.dataformat.BindyDataFormat;
 import org.apache.camel.model.dataformat.BindyType;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  *
@@ -41,7 +44,7 @@ public class BindyCsvClassTypeTest extends CamelTestSupport {
 
         template.sendBody("direct:in", generateOrder());
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -52,7 +55,7 @@ public class BindyCsvClassTypeTest extends CamelTestSupport {
         String data = "1,B2,Keira,Knightley,ISIN,XX23456789,BUY,Share,400.25,EUR,14-01-2009,16-02-2010 23:21:59\r\n";
         template.sendBody("direct:out", data);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         Order order = getMockEndpoint("mock:out").getReceivedExchanges().get(0).getIn().getBody(Order.class);
         assertEquals(1, order.getOrderNr());
@@ -101,22 +104,22 @@ public class BindyCsvClassTypeTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                BindyDataFormat bindy = new BindyDataFormat();
-                bindy.setClassType(Order.class);
-                bindy.setLocale("en");
-                bindy.setType(BindyType.Csv);
+            public void configure() {
+                BindyDataFormat bindy = new BindyDataFormat()
+                        .classType(Order.class)
+                        .locale("en")
+                        .csv();
 
                 from("direct:in")
-                    .marshal(bindy)
-                    .to("mock:in");
+                        .marshal(bindy)
+                        .to("mock:in");
 
                 from("direct:out")
-                    .unmarshal().bindy(BindyType.Csv, Order.class)
-                    .to("mock:out");
+                        .unmarshal().bindy(BindyType.Csv, Order.class)
+                        .to("mock:out");
             }
         };
     }

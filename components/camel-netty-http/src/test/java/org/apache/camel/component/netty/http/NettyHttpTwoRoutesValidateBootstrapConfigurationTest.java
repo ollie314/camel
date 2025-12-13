@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,7 +17,10 @@
 package org.apache.camel.component.netty.http;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class NettyHttpTwoRoutesValidateBootstrapConfigurationTest extends BaseNettyTest {
 
@@ -30,13 +33,13 @@ public class NettyHttpTwoRoutesValidateBootstrapConfigurationTest extends BaseNe
     public void testTwoRoutes() throws Exception {
         context.addRoutes(new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("netty-http:http://0.0.0.0:{{port}}/foo?option.child.keepAlive=false")
+            public void configure() {
+                from("netty-http:http://0.0.0.0:{{port}}/foo?reconnect=false")
                         .to("mock:foo")
                         .transform().constant("Bye World");
 
                 // we cannot have a 2nd route on same port with different option that the 1st route
-                from("netty-http:http://0.0.0.0:{{port}}/bar?option.child.keepAlive=true")
+                from("netty-http:http://0.0.0.0:{{port}}/bar?reconnect=true")
                         .to("mock:bar")
                         .transform().constant("Bye Camel");
             }

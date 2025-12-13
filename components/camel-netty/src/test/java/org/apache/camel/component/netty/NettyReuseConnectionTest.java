@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,7 +17,9 @@
 package org.apache.camel.component.netty;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  *
@@ -27,18 +29,18 @@ public class NettyReuseConnectionTest extends BaseNettyTest {
     private String uri = "netty:tcp://localhost:{{port}}?sync=true&disconnect=false";
 
     @Test
-    public void testReuseConnection() throws Exception {
+    public void testReuseConnection() {
         for (int i = 0; i < 20; i++) {
-            String out = template.requestBody(uri, "" + i, String.class);
+            String out = template.requestBody(uri, Integer.toString(i), String.class);
             assertEquals("Reply " + i, out);
         }
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from(uri).transform().simple("Reply ${body}");
             }
         };

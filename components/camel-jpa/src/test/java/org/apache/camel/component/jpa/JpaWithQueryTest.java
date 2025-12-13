@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,10 +17,14 @@
 package org.apache.camel.component.jpa;
 
 import org.apache.camel.examples.MultiSteps;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.condition.DisabledIfSystemProperty;
 
-/**
- * @version 
- */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+@Timeout(30)
+@DisabledIfSystemProperty(named = "ci.env.name", matches = ".*",
+                          disabledReason = "Apache CI is hanging on this test")
 public class JpaWithQueryTest extends JpaWithNamedQueryTest {
 
     @Override
@@ -30,6 +34,6 @@ public class JpaWithQueryTest extends JpaWithNamedQueryTest {
 
     @Override
     protected String getEndpointUri() {
-        return "jpa://" + MultiSteps.class.getName() + "?consumer.query=select o from " + entityName + " o where o.step = 1";
+        return "jpa://" + MultiSteps.class.getName() + "?query=select o from " + entityName + " o where o.step = 1";
     }
 }

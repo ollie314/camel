@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,12 +19,10 @@ package org.apache.camel.language.groovy;
 import java.net.URLEncoder;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
 public class LanguageGroovyRouteTest extends CamelTestSupport {
 
     @Test
@@ -33,16 +31,16 @@ public class LanguageGroovyRouteTest extends CamelTestSupport {
 
         template.sendBody("direct:start", 3);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
             public void configure() throws Exception {
                 // START SNIPPET: e1
-                String script = URLEncoder.encode("request.body * 2", "UTF-8");
+                String script = URLEncoder.encode("body * 2", "UTF-8");
                 from("direct:start").to("language:groovy:" + script).to("mock:result");
                 // END SNIPPET: e1
             }

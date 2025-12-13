@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,53 +16,93 @@
  */
 package org.apache.camel.component.nats;
 
-import java.util.Properties;
+import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 
+import io.nats.client.Connection;
+import io.nats.client.Nats;
+import io.nats.client.Options;
+import io.nats.client.Options.Builder;
+import io.nats.client.api.ConsumerConfiguration;
+import org.apache.camel.spi.HeaderFilterStrategy;
 import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriParams;
 import org.apache.camel.spi.UriPath;
-import org.apache.camel.util.jsse.SSLContextParameters;
+import org.apache.camel.support.DefaultHeaderFilterStrategy;
+import org.apache.camel.support.jsse.SSLContextParameters;
+import org.apache.camel.util.ObjectHelper;
 
 @UriParams
 public class NatsConfiguration {
 
     @UriPath
-    @Metadata(required = "true")
-    private String servers;
-    @UriParam
-    @Metadata(required = "true")
+    @Metadata(required = true)
     private String topic;
-    @UriParam(defaultValue = "true")
+    @UriParam(label = "common")
+    private String servers;
+    @UriParam(label = "advanced")
+    private Connection connection;
+    @UriParam(label = "common", defaultValue = "true")
     private boolean reconnect = true;
-    @UriParam(defaultValue = "false")
-    private boolean pedantic;
-    @UriParam(defaultValue = "false")
-    private boolean verbose;
-    @UriParam(defaultValue = "false")
-    private boolean ssl;
-    @UriParam(defaultValue = "2000")
+    @UriParam(label = "common", defaultValue = "2000")
     private int reconnectTimeWait = 2000;
-    @UriParam(defaultValue = "3")
-    private int maxReconnectAttempts = 3;
-    @UriParam(defaultValue = "4000")
-    private int pingInterval = 4000;
+    @UriParam(label = "common")
+    private boolean pedantic;
+    @UriParam
+    private boolean verbose;
+    @UriParam(defaultValue = "60")
+    private int maxReconnectAttempts = Options.DEFAULT_MAX_RECONNECT;
+    @UriParam(defaultValue = "120000")
+    private int pingInterval = 120000;
+    @UriParam(label = "common", defaultValue = "2000")
+    private int connectionTimeout = 2000;
+    @UriParam(label = "common", defaultValue = "2")
+    private int maxPingsOut = Options.DEFAULT_MAX_PINGS_OUT;
+    @UriParam(label = "common", defaultValue = "5000")
+    private int requestCleanupInterval = 5000;
+    @UriParam(label = "producer", defaultValue = "20000")
+    private long requestTimeout = 20000L;
     @UriParam(label = "producer")
     private String replySubject;
-    @UriParam(defaultValue = "false")
+    @UriParam
     private boolean noRandomizeServers;
+    @UriParam
+    private boolean noEcho;
     @UriParam(label = "consumer")
     private String queueName;
+    @UriParam(label = "consumer")
+    private boolean replyToDisabled;
     @UriParam(label = "consumer")
     private String maxMessages;
     @UriParam(label = "consumer", defaultValue = "10")
     private int poolSize = 10;
+    @UriParam(label = "common", defaultValue = "true")
+    private boolean flushConnection = true;
+    @UriParam(label = "common", defaultValue = "1000")
+    private int flushTimeout = 1000;
     @UriParam(label = "security")
     private boolean secure;
     @UriParam(label = "security")
-    private boolean tlsDebug;
-    @UriParam(label = "security", description = "SSL configuration")
     private SSLContextParameters sslContextParameters;
+    @UriParam(label = "security")
+    String credentialsFilePath;
+    @UriParam(label = "advanced")
+    private boolean traceConnection;
+    @UriParam(label = "advanced")
+    private HeaderFilterStrategy headerFilterStrategy = new DefaultHeaderFilterStrategy();
+    @UriParam(label = "common", defaultValue = "false")
+    private boolean jetstreamEnabled = false;
+    @UriParam(label = "common")
+    private String jetstreamName;
+    @UriParam(label = "advanced", defaultValue = "true")
+    private boolean jetstreamAsync = true;
+    @UriParam(label = "advanced")
+    private ConsumerConfiguration consumerConfiguration;
+    @UriParam(label = "advanced", defaultValue = "true")
+    private boolean pullSubscription = true;
+    @UriParam(label = "advanced")
+    private String durableName;
 
     /**
      * URLs to one or more NAT servers. Use comma to separate URLs when specifying multiple servers.
@@ -87,9 +127,20 @@ public class NatsConfiguration {
     }
 
     /**
+     * Reference an already instantiated connection to Nats server
+     */
+    public Connection getConnection() {
+        return connection;
+    }
+
+    public void setConnection(Connection connection) {
+        this.connection = connection;
+    }
+
+    /**
      * Whether or not using reconnection feature
      */
-    public boolean getReconnect() {
+    public boolean isReconnect() {
         return reconnect;
     }
 
@@ -98,9 +149,9 @@ public class NatsConfiguration {
     }
 
     /**
-     * Whether or not running in pedantic mode (this affects performace)
+     * Whether or not running in pedantic mode (this affects performance)
      */
-    public boolean getPedantic() {
+    public boolean isPedantic() {
         return pedantic;
     }
 
@@ -111,23 +162,12 @@ public class NatsConfiguration {
     /**
      * Whether or not running in verbose mode
      */
-    public boolean getVerbose() {
+    public boolean isVerbose() {
         return verbose;
     }
 
     public void setVerbose(boolean verbose) {
         this.verbose = verbose;
-    }
-
-    /**
-     * Whether or not using SSL
-     */
-    public boolean getSsl() {
-        return ssl;
-    }
-
-    public void setSsl(boolean ssl) {
-        this.ssl = ssl;
     }
 
     /**
@@ -153,6 +193,39 @@ public class NatsConfiguration {
     }
 
     /**
+     * maximum number of pings have not received a response allowed by the client
+     */
+    public int getMaxPingsOut() {
+        return maxPingsOut;
+    }
+
+    public void setMaxPingsOut(int maxPingsOut) {
+        this.maxPingsOut = maxPingsOut;
+    }
+
+    /**
+     * Interval to clean up cancelled/timed out requests.
+     */
+    public int getRequestCleanupInterval() {
+        return requestCleanupInterval;
+    }
+
+    public void setRequestCleanupInterval(int requestCleanupInterval) {
+        this.requestCleanupInterval = requestCleanupInterval;
+    }
+
+    /**
+     * Request timeout in milliseconds
+     */
+    public void setRequestTimeout(long requestTimeout) {
+        this.requestTimeout = requestTimeout;
+    }
+
+    public long getRequestTimeout() {
+        return this.requestTimeout;
+    }
+
+    /**
      * Ping interval to be aware if connection is still alive (in milliseconds)
      */
     public int getPingInterval() {
@@ -162,7 +235,17 @@ public class NatsConfiguration {
     public void setPingInterval(int pingInterval) {
         this.pingInterval = pingInterval;
     }
-    
+
+    /**
+     * Timeout for connection attempts. (in milliseconds)
+     */
+    public int getConnectionTimeout() {
+        return connectionTimeout;
+    }
+
+    public void setConnectionTimeout(int connectionTimeout) {
+        this.connectionTimeout = connectionTimeout;
+    }
 
     /**
      * the subject to which subscribers should send response
@@ -178,12 +261,24 @@ public class NatsConfiguration {
     /**
      * Whether or not randomizing the order of servers for the connection attempts
      */
-    public boolean getNoRandomizeServers() {
+    public boolean isNoRandomizeServers() {
         return noRandomizeServers;
     }
 
     public void setNoRandomizeServers(boolean noRandomizeServers) {
         this.noRandomizeServers = noRandomizeServers;
+    }
+
+    /**
+     * Turn off echo. If supported by the gnatsd version you are connecting to this flag will prevent the server from
+     * echoing messages back to the connection if it has subscriptions on the subject being published to.
+     */
+    public boolean isNoEcho() {
+        return noEcho;
+    }
+
+    public void setNoEcho(boolean noEcho) {
+        this.noEcho = noEcho;
     }
 
     /**
@@ -197,8 +292,19 @@ public class NatsConfiguration {
         this.queueName = queueName;
     }
 
+    public boolean isReplyToDisabled() {
+        return replyToDisabled;
+    }
+
     /**
-     * Stop receiving messages from a topic we are subscribing to after maxMessages 
+     * Can be used to turn off sending back reply message in the consumer.
+     */
+    public void setReplyToDisabled(boolean replyToDisabled) {
+        this.replyToDisabled = replyToDisabled;
+    }
+
+    /**
+     * Stop receiving messages from a topic we are subscribing to after maxMessages
      */
     public String getMaxMessages() {
         return maxMessages;
@@ -209,7 +315,7 @@ public class NatsConfiguration {
     }
 
     /**
-     * Consumer pool size
+     * Consumer thread pool size (default is 10)
      */
     public int getPoolSize() {
         return poolSize;
@@ -217,6 +323,28 @@ public class NatsConfiguration {
 
     public void setPoolSize(int poolSize) {
         this.poolSize = poolSize;
+    }
+
+    public boolean isFlushConnection() {
+        return flushConnection;
+    }
+
+    /**
+     * Define if we want to flush connection when stopping or not
+     */
+    public void setFlushConnection(boolean flushConnection) {
+        this.flushConnection = flushConnection;
+    }
+
+    public int getFlushTimeout() {
+        return flushTimeout;
+    }
+
+    /**
+     * Set the flush timeout (in milliseconds)
+     */
+    public void setFlushTimeout(int flushTimeout) {
+        this.flushTimeout = flushTimeout;
     }
 
     /**
@@ -231,14 +359,17 @@ public class NatsConfiguration {
     }
 
     /**
-     * TLS Debug, it will add additional console output
+     * Get the header filter strategy
      */
-    public boolean isTlsDebug() {
-        return tlsDebug;
+    public HeaderFilterStrategy getHeaderFilterStrategy() {
+        return headerFilterStrategy;
     }
 
-    public void setTlsDebug(boolean tlsDebug) {
-        this.tlsDebug = tlsDebug;
+    /**
+     * To use a custom header filter strategy.
+     */
+    public void setHeaderFilterStrategy(HeaderFilterStrategy headerFilterStrategy) {
+        this.headerFilterStrategy = headerFilterStrategy;
     }
 
     /**
@@ -252,38 +383,195 @@ public class NatsConfiguration {
         this.sslContextParameters = sslContextParameters;
     }
 
-    private static <T> void addPropertyIfNotNull(Properties props, String key, T value) {
-        if (value != null) {
-            props.put(key, value);
+    /**
+     * If we use useCredentialsFile to true we'll need to set the credentialsFilePath option. It can be loaded by
+     * default from classpath, but you can prefix with classpath:, file:, or http: to load the resource from different
+     * systems.
+     */
+    public String getCredentialsFilePath() {
+        return credentialsFilePath;
+    }
+
+    public void setCredentialsFilePath(String credentialsFilePath) {
+        this.credentialsFilePath = credentialsFilePath;
+    }
+
+    public Builder createOptions() throws NoSuchAlgorithmException, IllegalArgumentException {
+        Builder builder = new Options.Builder();
+        builder.server(splitServers());
+        if (isVerbose()) {
+            builder.verbose();
         }
+        if (isTraceConnection()) {
+            builder.traceConnection();
+        }
+        if (isPedantic()) {
+            builder.pedantic();
+        }
+        if (isSecure()) {
+            builder.secure();
+        }
+        if (!isReconnect()) {
+            builder.noReconnect();
+        } else {
+            builder.maxReconnects(getMaxReconnectAttempts());
+            builder.reconnectWait(Duration.ofMillis(getReconnectTimeWait()));
+        }
+        builder.pingInterval(Duration.ofMillis(getPingInterval()));
+        builder.connectionTimeout(Duration.ofMillis(getConnectionTimeout()));
+        builder.maxPingsOut(getMaxPingsOut());
+        builder.requestCleanupInterval(Duration.ofMillis(getRequestCleanupInterval()));
+        if (isNoRandomizeServers()) {
+            builder.noRandomize();
+        }
+        if (isNoEcho()) {
+            builder.noEcho();
+        }
+        return builder;
     }
 
-    public Properties createProperties() {
-        Properties props = new Properties();
-        addPropertyIfNotNull(props, NatsPropertiesConstants.NATS_PROPERTY_URL, splitServers());
-        addPropertyIfNotNull(props, NatsPropertiesConstants.NATS_PROPERTY_VERBOSE, getVerbose());
-        addPropertyIfNotNull(props, NatsPropertiesConstants.NATS_PROPERTY_PEDANTIC, getPedantic());
-        addPropertyIfNotNull(props, NatsPropertiesConstants.NATS_PROPERTY_SSL, getSsl());
-        addPropertyIfNotNull(props, NatsPropertiesConstants.NATS_PROPERTY_RECONNECT, getReconnect());
-        addPropertyIfNotNull(props, NatsPropertiesConstants.NATS_PROPERTY_MAX_RECONNECT_ATTEMPTS, getMaxReconnectAttempts());
-        addPropertyIfNotNull(props, NatsPropertiesConstants.NATS_PROPERTY_RECONNECT_TIME_WAIT, getReconnectTimeWait());
-        addPropertyIfNotNull(props, NatsPropertiesConstants.NATS_PROPERTY_PING_INTERVAL, getPingInterval());
-        addPropertyIfNotNull(props, NatsPropertiesConstants.NATS_PROPERTY_DONT_RANDOMIZE_SERVERS, getNoRandomizeServers());
-        return props;
-    }
-
-    private String splitServers() {
+    protected String splitServers() {
         StringBuilder servers = new StringBuilder();
         String prefix = "nats://";
 
-        String[] pieces = getServers().split(",");
+        String srvspec = getServers();
+        ObjectHelper.notNull(srvspec, "Servers");
+
+        String[] pieces = srvspec.split(",");
         for (int i = 0; i < pieces.length; i++) {
             if (i < pieces.length - 1) {
-                servers.append(prefix + pieces[i] + ",");
+                if (pieces[i].contains("://")) {
+                    servers.append(pieces[i]).append(',');
+                } else {
+                    servers.append(prefix).append(pieces[i]).append(',');
+                }
             } else {
-                servers.append(prefix + pieces[i]);
+                if (pieces[i].contains("://")) {
+                    servers.append(pieces[i]);
+                } else {
+                    servers.append(prefix).append(pieces[i]);
+                }
             }
         }
         return servers.toString();
+    }
+
+    /**
+     * Whether or not connection trace messages should be printed to standard out for fine grained debugging of
+     * connection issues.
+     */
+    public boolean isTraceConnection() {
+        return traceConnection;
+    }
+
+    public void setTraceConnection(boolean traceConnection) {
+        this.traceConnection = traceConnection;
+    }
+
+    /**
+     * Whether to enable JetStream support for this endpoint.
+     */
+    public boolean isJetstreamEnabled() {
+        return jetstreamEnabled;
+    }
+
+    /**
+     * Sets whether to enable JetStream support for this endpoint.
+     */
+    public void setJetstreamEnabled(boolean jetstreamEnabled) {
+        this.jetstreamEnabled = jetstreamEnabled;
+    }
+
+    /**
+     * The name of the JetStream stream to use. If not specified, a default stream will be used if JetStream is enabled.
+     */
+    public String getJetstreamName() {
+        return jetstreamName;
+    }
+
+    /**
+     * Sets the name of the JetStream stream to use.
+     */
+    public void setJetstreamName(String jetstreamName) {
+        this.jetstreamName = jetstreamName;
+    }
+
+    /**
+     * Whether to operate JetStream requests asynchronously. This can improve performance but requires careful handling
+     * of results.
+     */
+    public boolean isJetstreamAsync() {
+        return jetstreamAsync;
+    }
+
+    /**
+     * Sets whether to operate JetStream requests asynchronously.
+     */
+    public void setJetstreamAsync(boolean jetstreamAsync) {
+        this.jetstreamAsync = jetstreamAsync;
+    }
+
+    /**
+     * Allows the entire NATS JetStream Consumer Configuration object to be provided directly.
+     * <p>
+     * This provides fine-grained control over all consumer properties (e.g., ack policies, max deliver, replay
+     * policies) and overrides any individual consumer-related options set separately via the Camel URI parameters.
+     */
+    public ConsumerConfiguration getConsumerConfiguration() {
+        return consumerConfiguration;
+    }
+
+    /**
+     * Sets a custom {@code ConsumerConfiguration} object for the JetStream consumer.
+     * <p>
+     * This is an advanced option typically used when you need to configure properties not exposed as simple Camel URI
+     * parameters. When set, this object will be used to build the final consumer subscription options.
+     */
+    public void setConsumerConfiguration(ConsumerConfiguration consumerConfiguration) {
+        this.consumerConfiguration = consumerConfiguration;
+    }
+
+    /**
+     * Whether the consumer subscription type is a **Pull Subscription** ({@code true}) or a **Push Subscription**
+     * ({@code false}) when using JetStream.
+     * <p>
+     * **Pull Subscriptions** require the consumer to explicitly fetch messages. **Push Subscriptions** automatically
+     * deliver messages to the consumer. The default setting is {@code true} (Pull Subscription).
+     */
+    public boolean isPullSubscription() {
+        return pullSubscription;
+    }
+
+    /**
+     * Sets the consumer subscription type for JetStream.
+     * <p>
+     * Set to {@code true} to use a **Pull Subscription** (consumer explicitly requests messages). Set to {@code false}
+     * to use a **Push Subscription** (messages are automatically delivered).
+     */
+    public void setPullSubscription(boolean pullSubscription) {
+        this.pullSubscription = pullSubscription;
+    }
+
+    /**
+     * The name to assign to the JetStream durable consumer.
+     * <p>
+     * If set, the consumer becomes **durable**, allowing subscriptions to bind to it and resume message processing
+     * until the consumer is explicitly deleted. This name is crucial for resilient message processing.
+     * <p>
+     * A durable name cannot contain whitespace, '.', '*', '>', path separators (forward or backward slash), or
+     * non-printable characters.
+     */
+    public String getDurableName() {
+        return durableName;
+    }
+
+    /**
+     * Sets the name to assign to the JetStream durable consumer.
+     * <p>
+     * Setting this value makes the consumer durable. The value is used to set the {@code durable()} field in the
+     * underlying NATS {@code ConsumerConfiguration.Builder}.
+     */
+    public void setDurableName(String durableName) {
+        this.durableName = durableName;
     }
 }

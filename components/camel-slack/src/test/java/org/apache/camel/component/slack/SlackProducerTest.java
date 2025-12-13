@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,31 +16,72 @@
  */
 package org.apache.camel.component.slack;
 
-import org.apache.camel.test.blueprint.CamelBlueprintTestSupport;
-import org.junit.Test;
+import java.util.Collections;
 
-public class SlackProducerTest extends CamelBlueprintTestSupport {
+import com.slack.api.model.Message;
+import com.slack.api.model.block.SectionBlock;
+import com.slack.api.model.block.composition.MarkdownTextObject;
+import org.apache.camel.EndpointInject;
+import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.direct.DirectEndpoint;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.AvailablePortFinder;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-    @Override
-    protected String getBlueprintDescriptor() {
-        return "OSGI-INF/blueprint/blueprint.xml";
-    }
+public class SlackProducerTest extends CamelTestSupport {
+
+    protected static final int UNDERTOW_PORT = AvailablePortFinder.getNextAvailable();
+
+    @EndpointInject("mock:errors")
+    MockEndpoint errors;
+
+    @EndpointInject("direct:test")
+    DirectEndpoint test;
 
     @Test
     public void testSlackMessage() throws Exception {
-        getMockEndpoint("mock:errors").expectedMessageCount(0);
+        errors.expectedMessageCount(0);
 
-        template.sendBody("direct:test", "Hello from Camel!");
+        template.sendBody(test, "Hello from Camel!");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
-    public void testSlackError() throws Exception {
-        getMockEndpoint("mock:errors").expectedMessageCount(1);
+    public void testSlackAPIModelMessage() throws Exception {
+        errors.expectedMessageCount(0);
 
-        template.sendBody("direct:error", "Error from Camel!");
+        Message message = new Message();
+        message.setBlocks(Collections.singletonList(SectionBlock
+                .builder()
+                .text(MarkdownTextObject
+                        .builder()
+                        .text("*Hello from Camel!*")
+                        .build())
+                .build()));
 
-        assertMockEndpointsSatisfied();
+        template.sendBody(test, message);
+
+        MockEndpoint.assertIsSatisfied(context);
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
+        return new RouteBuilder() {
+            @Override
+            public void configure() {
+                SlackComponent slack = new SlackComponent();
+                slack.setWebhookUrl("http://localhost:" + UNDERTOW_PORT + "/slack/webhook");
+                context.addComponent("slack", slack);
+
+                onException(Exception.class).handled(true).to(errors);
+
+                final String slackUser = System.getProperty("SLACK_USER", "CamelTest");
+                from("undertow:http://localhost:" + UNDERTOW_PORT + "/slack/webhook").setBody(constant("{\"ok\": true}"));
+
+                from(test).to(String.format("slack:#general?iconEmoji=:camel:&username=%s", slackUser));
+            }
+        };
     }
 }

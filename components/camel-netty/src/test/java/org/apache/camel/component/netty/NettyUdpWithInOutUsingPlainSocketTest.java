@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,13 +23,13 @@ import java.net.InetAddress;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * @version 
- */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 public class NettyUdpWithInOutUsingPlainSocketTest extends BaseNettyTest {
     private static final Logger LOG = LoggerFactory.getLogger(NettyUdpWithInOutUsingPlainSocketTest.class);
 
@@ -63,14 +63,18 @@ public class NettyUdpWithInOutUsingPlainSocketTest extends BaseNettyTest {
         return new String(receive.getData(), 0, receive.getLength());
     }
 
+    @Override
     protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
                 from("netty:udp://127.0.0.1:{{port}}?textline=true&sync=true").process(new Processor() {
-                    public void process(Exchange exchange) throws Exception {
+                    public void process(Exchange exchange) {
                         String s = exchange.getIn().getBody(String.class);
-                        LOG.debug("Server got: " + s);
-                        exchange.getOut().setBody("Hello " + s);
+                        LOG.debug("Server got: {}", s);
+                        exchange.getMessage().setBody("Hello " + s);
+                        // just make the remote address is there
+                        assertNotNull(exchange.getIn().getHeader(NettyConstants.NETTY_REMOTE_ADDRESS),
+                                "The remote address header should not be Null");
                     }
                 });
             }

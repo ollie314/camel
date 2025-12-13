@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,20 +16,26 @@
  */
 package org.apache.camel.component.netty.http;
 
-import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import java.util.concurrent.TimeUnit;
 
+import org.apache.camel.builder.RouteBuilder;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.fail;
+
+@DisabledOnOs(OS.WINDOWS)
 public class NettyHttpSuspendResume503Test extends BaseNettyTest {
 
-    private String serverUri = "netty-http:http://localhost:" + getPort() + "/cool?disconnect=true";
+    private final String serverUri = "netty-http:http://localhost:" + getPort() + "/cool?disconnect=true";
 
     @Test
-    public void testNettySuspendResume() throws Exception {
-        // these tests does not run well on Windows
-        if (isPlatform("windows")) {
-            return;
-        }
-
+    public void testNettySuspendResume() {
         context.getShutdownStrategy().setTimeout(50);
 
         String reply = template.requestBody(serverUri, "World", String.class);
@@ -52,21 +58,20 @@ public class NettyHttpSuspendResume503Test extends BaseNettyTest {
 
         // resume
         consumer.resume();
-
-        Thread.sleep(2000);
-
-        // and send request which should be processed
-        reply = template.requestBody(serverUri, "Moon", String.class);
-        assertEquals("Bye Moon", reply);
+        await().atMost(2, TimeUnit.SECONDS)
+                .untilAsserted(() -> {
+                    String nextReply = template.requestBody(serverUri, "Moon", String.class);
+                    assertEquals("Bye Moon", nextReply);
+                });
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from(serverUri).routeId("foo")
-                    .transform(body().prepend("Bye "));
+                        .transform(body().prepend("Bye "));
             }
         };
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,6 @@ package org.apache.camel.component.hazelcast.seda;
 
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriParams;
-import org.apache.camel.spi.UriPath;
 
 /**
  * Hazelcast SEDA Component configuration.
@@ -33,6 +32,8 @@ public class HazelcastSedaConfiguration {
     private int concurrentConsumers = 1;
     @UriParam(label = "seda", defaultValue = "1000")
     private int pollTimeout = 1000;
+    @UriParam(label = "seda", defaultValue = "1000")
+    private int onErrorDelay = 1000;
     @UriParam(label = "seda")
     private boolean transferExchange;
     @UriParam(label = "seda")
@@ -81,8 +82,8 @@ public class HazelcastSedaConfiguration {
     }
 
     /**
-     * The timeout used when consuming from the SEDA queue. When a timeout occurs, the consumer can check whether
-     * it is allowed to continue running. Setting a lower value allows the consumer to react more quickly upon shutdown.
+     * The timeout used when consuming from the SEDA queue. When a timeout occurs, the consumer can check whether it is
+     * allowed to continue running. Setting a lower value allows the consumer to react more quickly upon shutdown.
      */
     public void setPollTimeout(int pollTimeout) {
         this.pollTimeout = pollTimeout;
@@ -93,7 +94,22 @@ public class HazelcastSedaConfiguration {
     }
 
     /**
-     * If set to true the whole Exchange will be transfered. If header or body contains not serializable objects, they will be skipped.
+     * Milliseconds before consumer continues polling after an error has occurred.
+     */
+    public void setOnErrorDelay(int onErrorDelay) {
+        if (onErrorDelay < 0) {
+            throw new IllegalArgumentException("Property onErrorDelay must be a positive number, was " + onErrorDelay);
+        }
+        this.onErrorDelay = onErrorDelay;
+    }
+
+    public int getOnErrorDelay() {
+        return onErrorDelay;
+    }
+
+    /**
+     * If set to true the whole Exchange will be transfered. If header or body contains not serializable objects, they
+     * will be skipped.
      */
     public void setTransferExchange(boolean transferExchange) {
         this.transferExchange = transferExchange;
@@ -104,8 +120,8 @@ public class HazelcastSedaConfiguration {
     }
 
     /**
-     * If set to true then the consumer runs in transaction mode, where the messages in the seda queue will only be removed
-     * if the transaction commits, which happens when the processing is complete.
+     * If set to true then the consumer runs in transaction mode, where the messages in the seda queue will only be
+     * removed if the transaction commits, which happens when the processing is complete.
      */
     public void setTransacted(boolean transacted) {
         this.transacted = transacted;

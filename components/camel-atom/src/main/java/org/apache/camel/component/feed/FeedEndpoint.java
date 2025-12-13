@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,16 +16,14 @@
  */
 package org.apache.camel.component.feed;
 
-import java.util.Date;
-
 import org.apache.camel.Consumer;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
-import org.apache.camel.impl.DefaultPollingEndpoint;
 import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriPath;
+import org.apache.camel.support.DefaultPollingEndpoint;
 import org.apache.camel.util.ObjectHelper;
 
 /**
@@ -33,51 +31,46 @@ import org.apache.camel.util.ObjectHelper;
  */
 public abstract class FeedEndpoint extends DefaultPollingEndpoint {
 
-    @UriPath @Metadata(required = "true")
+    @UriPath(description = "The URI to the feed to poll.")
+    @Metadata(required = true)
     protected String feedUri;
-    @UriParam(defaultValue = "true")
+    @UriParam(defaultValue = "true", description = "Sets whether or not entries should be sent "
+                                                   + "individually or whether the entire feed should be sent as a single message")
     protected boolean splitEntries = true;
-    @UriParam
-    protected Date lastUpdate;
-    @UriParam(defaultValue = "true")
-    protected boolean filter = true;
-    @UriParam(defaultValue = "true")
-    private boolean feedHeader = true;
-    @UriParam
-    private boolean sortEntries;
-    @UriParam(defaultValue = "true")
-    private boolean throttleEntries = true;
-    @UriParam
-    private String username;
-    @UriParam
-    private String password;
 
-    public FeedEndpoint() {
+    @UriParam(label = "advanced", defaultValue = "true", description = "Sets whether to add the feed object as a header.")
+    private boolean feedHeader = true;
+    @UriParam(description = "Sets whether to sort entries by published date. Only works when splitEntries = true.")
+    private boolean sortEntries;
+    @UriParam(defaultValue = "true", description = "Sets whether all entries identified in a "
+                                                   + "single feed poll should be delivered immediately. If true, only one entry is processed "
+                                                   + "per delay. Only applicable when splitEntries = true.")
+    private boolean throttleEntries = true;
+
+    protected FeedEndpoint() {
     }
 
-    public FeedEndpoint(String endpointUri, FeedComponent component, String feedUri) {
+    protected FeedEndpoint(String endpointUri, FeedComponent component, String feedUri) {
         super(endpointUri, component);
         this.feedUri = feedUri;
     }
 
-    public boolean isSingleton() {
-        return true;
-    }
-
+    @Override
     public Producer createProducer() throws Exception {
         throw new UnsupportedOperationException("FeedProducer is not implemented");
     }
 
+    @Override
     public Consumer createConsumer(Processor processor) throws Exception {
         ObjectHelper.notNull(feedUri, "feedUri");
 
         FeedPollingConsumer answer;
         if (isSplitEntries()) {
-            answer = createEntryPollingConsumer(this, processor, filter, lastUpdate, throttleEntries);
+            answer = createEntryPollingConsumer(this, processor, throttleEntries);
         } else {
             answer = createPollingConsumer(this, processor);
         }
-        
+
         // ScheduledPollConsumer default delay is 500 millis and that is too often for polling a feed,
         // so we override with a new default value. End user can override this value by providing a consumer.delay parameter
         answer.setDelay(FeedPollingConsumer.DEFAULT_CONSUMER_DELAY);
@@ -85,9 +78,12 @@ public abstract class FeedEndpoint extends DefaultPollingEndpoint {
         return answer;
     }
 
-    protected abstract FeedPollingConsumer createPollingConsumer(FeedEndpoint feedEndpoint, Processor processor) throws Exception;
+    protected abstract FeedPollingConsumer createPollingConsumer(FeedEndpoint feedEndpoint, Processor processor)
+            throws Exception;
 
-    protected abstract FeedPollingConsumer createEntryPollingConsumer(FeedEndpoint feedEndpoint, Processor processor, boolean filter, Date lastUpdate, boolean throttleEntries) throws Exception;
+    protected abstract FeedPollingConsumer createEntryPollingConsumer(
+            FeedEndpoint feedEndpoint, Processor processor, boolean throttleEntries)
+            throws Exception;
 
     protected Exchange createExchangeWithFeedHeader(Object feed, String header) {
         Exchange exchange = createExchange();
@@ -95,22 +91,22 @@ public abstract class FeedEndpoint extends DefaultPollingEndpoint {
             exchange.getIn().setHeader(header, feed);
         }
         return exchange;
-    }    
-    
+    }
+
     /**
      * Creates an Exchange with the entries as the in body.
      *
-     * @param feed   the atom feed
-     * @return the created exchange
+     * @param  feed the atom feed
+     * @return      the created exchange
      */
     public abstract Exchange createExchange(Object feed);
 
     /**
      * Creates an Exchange with the given entry as the in body.
      *
-     * @param feed   the feed
-     * @param entry  the entry as the in body
-     * @return the created exchange
+     * @param  feed  the feed
+     * @param  entry the entry as the in body
+     * @return       the created exchange
      */
     public abstract Exchange createExchange(Object feed, Object entry);
 
@@ -144,34 +140,10 @@ public abstract class FeedEndpoint extends DefaultPollingEndpoint {
     }
 
     /**
-     * Sets whether or not entries should be sent individually or whether the entire
-     * feed should be sent as a single message
+     * Sets whether entries should be sent individually or whether the entire feed should be sent as a single message
      */
     public void setSplitEntries(boolean splitEntries) {
         this.splitEntries = splitEntries;
-    }
-
-    public Date getLastUpdate() {
-        return lastUpdate;
-    }
-
-    /**
-     * Sets the timestamp to be used for filtering entries from the atom feeds.
-     * This options is only in conjunction with the splitEntries.
-     */
-    public void setLastUpdate(Date lastUpdate) {
-        this.lastUpdate = lastUpdate;
-    }
-
-    public boolean isFilter() {
-        return filter;
-    }
-
-    /**
-     * Sets whether to use filtering or not of the entries.
-     */
-    public void setFilter(boolean filter) {
-        this.filter = filter;
     }
 
     /**
@@ -194,8 +166,9 @@ public abstract class FeedEndpoint extends DefaultPollingEndpoint {
 
     public boolean isSortEntries() {
         return sortEntries;
-    }      
+    }
 
+    @Override
     public boolean isLenientProperties() {
         // true to allow dynamic URI options to be configured and passed to external system for eg. the HttpProducer
         return true;
@@ -203,7 +176,7 @@ public abstract class FeedEndpoint extends DefaultPollingEndpoint {
 
     /**
      * Sets whether all entries identified in a single feed poll should be delivered immediately. If true, only one
-     * entry is processed per consumer.delay. Only applicable when splitEntries = true.
+     * entry is processed per delay. Only applicable when splitEntries = true.
      */
     public void setThrottleEntries(boolean throttleEntries) {
         this.throttleEntries = throttleEntries;
@@ -212,30 +185,5 @@ public abstract class FeedEndpoint extends DefaultPollingEndpoint {
     public boolean isThrottleEntries() {
         return this.throttleEntries;
     }
-    
-    public String getUsername() {
-        return username;
-    }
-
-    /**
-     * Sets the username to be used for basic authentication when polling from a HTTP feed
-     */
-    public void setUsername(String username) {
-        this.username = username;
-    }
-
-    public String getPassword() {
-        return password;
-    }
-
-    /**
-     * Sets the password to be used for basic authentication when polling from a HTTP feed
-     */
-    public void setPassword(String password) {
-        this.password = password;
-    }
-
-    // Implementation methods
-    //-------------------------------------------------------------------------
 
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,43 +16,57 @@
  */
 package org.apache.camel.component.smpp;
 
-import java.io.IOException;
+import java.util.concurrent.ScheduledExecutorService;
 
 import org.apache.camel.Exchange;
+import org.apache.camel.support.task.BackgroundTask;
+import org.apache.camel.support.task.budget.Budgets;
+import org.apache.camel.util.ReflectionHelper;
 import org.jsmpp.bean.BindType;
+import org.jsmpp.bean.InterfaceVersion;
 import org.jsmpp.bean.NumberingPlanIndicator;
 import org.jsmpp.bean.TypeOfNumber;
+import org.jsmpp.extra.SessionState;
 import org.jsmpp.session.BindParameter;
 import org.jsmpp.session.SMPPSession;
 import org.jsmpp.session.SessionStateListener;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.MockedStatic;
 
-import static org.easymock.EasyMock.createMock;
-import static org.easymock.EasyMock.expect;
-import static org.easymock.EasyMock.isA;
-import static org.easymock.EasyMock.replay;
-import static org.easymock.EasyMock.verify;
-import static org.junit.Assert.assertSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.isA;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * JUnit test class for <code>org.apache.camel.component.smpp.SmppProducer</code>
- * 
- * @version 
  */
 public class SmppProducerTest {
-    
+
     private SmppProducer producer;
     private SmppConfiguration configuration;
     private SmppEndpoint endpoint;
     private SMPPSession session;
 
-    @Before
+    @BeforeEach
     public void setUp() {
         configuration = new SmppConfiguration();
-        endpoint = createMock(SmppEndpoint.class);
-        session = createMock(SMPPSession.class);
-        
+        configuration.setServiceType("CMT");
+        configuration.setSystemType("cp");
+        configuration.setPassword("password");
+        configuration.setInterfaceVersion("5.0");
+        endpoint = mock(SmppEndpoint.class);
+        session = mock(SMPPSession.class);
+
         producer = new SmppProducer(endpoint, configuration) {
             SMPPSession createSMPPSession() {
                 return session;
@@ -60,95 +74,104 @@ public class SmppProducerTest {
         };
     }
 
-    private void doStartExpectations() throws IOException {
-        expect(endpoint.getConnectionString())
-            .andReturn("smpp://smppclient@localhost:2775")
-            .times(2);
-        session.setEnquireLinkTimer(5000); //expectation
-        session.setTransactionTimer(10000); //expectation
-        session.addSessionStateListener(isA(SessionStateListener.class));
-        expect(session.connectAndBind(
-            "localhost",
-            new Integer(2775),
-            new BindParameter(
+    @Test
+    public void doStartShouldStartANewSmppSession() throws Exception {
+        when(endpoint.getConnectionString())
+                .thenReturn("smpp://smppclient@localhost:2775");
+        BindParameter expectedBindParameters = new BindParameter(
+                BindType.BIND_TX,
+                "smppclient",
+                "password",
+                "cp",
+                TypeOfNumber.UNKNOWN,
+                NumberingPlanIndicator.UNKNOWN,
+                "",
+                InterfaceVersion.IF_50);
+        when(session.connectAndBind("localhost", Integer.valueOf(2775), expectedBindParameters))
+                .thenReturn("1");
+        when(endpoint.isSingleton()).thenReturn(true);
+
+        producer.doStart();
+
+        verify(session).setEnquireLinkTimer(60000);
+        verify(session).setTransactionTimer(10000);
+        verify(session).addSessionStateListener(isA(SessionStateListener.class));
+        verify(session).connectAndBind("localhost", Integer.valueOf(2775), expectedBindParameters);
+    }
+
+    @Test
+    public void doStopShouldNotCloseTheSMPPSessionIfItIsNull() throws Exception {
+        when(endpoint.getConnectionString())
+                .thenReturn("smpp://smppclient@localhost:2775");
+        when(endpoint.isSingleton()).thenReturn(true);
+
+        producer.doStop();
+    }
+
+    @Test
+    public void doStopShouldCloseTheSMPPSession() throws Exception {
+        when(endpoint.getConnectionString())
+                .thenReturn("smpp://smppclient@localhost:2775");
+        when(endpoint.isSingleton()).thenReturn(true);
+
+        producer.doStart();
+        producer.doStop();
+
+        verify(session).removeSessionStateListener(isA(SessionStateListener.class));
+        verify(session).unbindAndClose();
+    }
+
+    @Test
+    public void processInOnlyShouldExecuteTheCommand() throws Exception {
+        SmppBinding binding = mock(SmppBinding.class);
+        Exchange exchange = mock(Exchange.class);
+        SmppCommand command = mock(SmppCommand.class);
+        when(endpoint.getBinding()).thenReturn(binding);
+        when(binding.createSmppCommand(session, exchange)).thenReturn(command);
+
+        producer.doStart();
+        producer.process(exchange);
+
+        verify(command).execute(exchange);
+    }
+
+    @Test
+    public void getterShouldReturnTheSetValues() {
+        assertSame(endpoint, producer.getEndpoint());
+        assertSame(configuration, producer.getConfiguration());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = SessionState.class, names = { "UNBOUND", "CLOSED" })
+    public void internalSessionStateListenerShouldCloseSessionAndReconnect(SessionState sessionState) throws Exception {
+        try (MockedStatic<SmppUtils> smppUtilsMock = mockStatic(SmppUtils.class)) {
+            ScheduledExecutorService reconnectService = (ScheduledExecutorService) ReflectionHelper
+                    .getField(SmppProducer.class.getDeclaredField("reconnectService"), producer);
+            SessionStateListener sessionStateListener = (SessionStateListener) ReflectionHelper
+                    .getField(SmppProducer.class.getDeclaredField("internalSessionStateListener"), producer);
+            when(endpoint.getConnectionString())
+                    .thenReturn("smpp://smppclient@localhost:2775");
+            BindParameter expectedBindParameters = new BindParameter(
                     BindType.BIND_TX,
                     "smppclient",
                     "password",
                     "cp",
                     TypeOfNumber.UNKNOWN,
                     NumberingPlanIndicator.UNKNOWN,
-                    ""))).andReturn("1");
-        expect(endpoint.getConnectionString())
-            .andReturn("smpp://smppclient@localhost:2775");
-        expect(endpoint.isSingleton()).andReturn(true);
-    }
-    
-    @Test
-    public void doStartShouldStartANewSmppSession() throws Exception {
-        doStartExpectations();
-    
-        replay(endpoint, session);
-    
-        producer.doStart();
-    
-        verify(endpoint, session);
-    }
+                    "",
+                    InterfaceVersion.IF_50);
+            when(session.connectAndBind("localhost", Integer.valueOf(2775), expectedBindParameters))
+                    .thenReturn("1");
+            when(endpoint.isSingleton()).thenReturn(true);
+            when(endpoint.getCamelContext()).thenReturn(null);
+            smppUtilsMock.when(() -> SmppUtils.newReconnectTask(any(), anyString(), anyLong(), anyLong(), anyInt()))
+                    .thenReturn(new BackgroundTask.BackgroundTaskBuilder().withScheduledExecutor(reconnectService)
+                            .withBudget(Budgets.timeBudget().build()).build());
 
-    @Test
-    public void doStopShouldNotCloseTheSMPPSessionIfItIsNull() throws Exception {
-        expect(endpoint.getConnectionString())
-            .andReturn("smpp://smppclient@localhost:2775")
-            .times(3);
-        expect(endpoint.isSingleton()).andReturn(true);
+            producer.doStart();
 
-        replay(session, endpoint);
-        
-        producer.doStop();
-        
-        verify(session, endpoint);
-    }
-    
-    @Test
-    public void doStopShouldCloseTheSMPPSession() throws Exception {
-        doStartExpectations();
-        expect(endpoint.getConnectionString())
-            .andReturn("smpp://smppclient@localhost:2775")
-            .times(2);
-        session.removeSessionStateListener(isA(SessionStateListener.class));
-        session.unbindAndClose();
-        expect(endpoint.getConnectionString())
-            .andReturn("smpp://smppclient@localhost:2775");
-        expect(endpoint.isSingleton()).andReturn(true);
-
-        replay(session, endpoint);
-        
-        producer.doStart();
-        producer.doStop();
-        
-        verify(session, endpoint);
-    }
-    
-    @Test
-    public void processInOnlyShouldExecuteTheCommand() throws Exception {
-        doStartExpectations();
-        SmppBinding binding = createMock(SmppBinding.class);
-        Exchange exchange = createMock(Exchange.class);
-        SmppCommand command = createMock(SmppCommand.class);
-        expect(endpoint.getBinding()).andReturn(binding);
-        expect(binding.createSmppCommand(session, exchange)).andReturn(command);
-        command.execute(exchange);
-        
-        replay(session, endpoint, binding, exchange, command);
-        
-        producer.doStart();
-        producer.process(exchange);
-        
-        verify(session, endpoint, binding, exchange, command);
-    }
-    
-    @Test
-    public void getterShouldReturnTheSetValues() {
-        assertSame(endpoint, producer.getEndpoint());
-        assertSame(configuration, producer.getConfiguration());
+            sessionStateListener.onStateChange(SessionState.CLOSED, SessionState.BOUND_TX, null);
+            verify(session).unbindAndClose();
+        }
     }
 }

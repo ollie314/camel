@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,29 +24,38 @@ import java.util.Map;
 import com.codahale.metrics.MetricRegistry;
 import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
+import org.apache.camel.ExtendedCamelContext;
 import org.apache.camel.RuntimeCamelException;
+import org.apache.camel.impl.engine.DefaultBeanIntrospection;
 import org.apache.camel.spi.Registry;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.apache.camel.support.PluginHelper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
-import static org.junit.Assert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.AdditionalAnswers.returnsFirstArg;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class MetricsComponentTest {
 
     @Mock
     private CamelContext camelContext;
+
+    @Mock
+    private ExtendedCamelContext ecc;
 
     @Mock
     private Registry camelRegistry;
@@ -58,8 +67,8 @@ public class MetricsComponentTest {
 
     private MetricsComponent component;
 
-    @Before
-    public void setUp() throws Exception {
+    @BeforeEach
+    public void setUp() {
         component = new MetricsComponent();
         inOrder = Mockito.inOrder(camelContext, camelRegistry, metricRegistry);
     }
@@ -68,10 +77,17 @@ public class MetricsComponentTest {
     public void testCreateEndpoint() throws Exception {
         component.setCamelContext(camelContext);
         when(camelContext.getRegistry()).thenReturn(camelRegistry);
-        when(camelRegistry.lookupByNameAndType(MetricsComponent.METRIC_REGISTRY_NAME, MetricRegistry.class)).thenReturn(metricRegistry);
-        Map<String, Object> params = new HashMap<String, Object>();
+        when(camelContext.resolvePropertyPlaceholders(anyString())).then(returnsFirstArg());
+        when(camelRegistry.lookupByNameAndType(MetricsComponent.METRIC_REGISTRY_NAME, MetricRegistry.class))
+                .thenReturn(metricRegistry);
+        when(camelContext.getCamelContextExtension()).thenReturn(ecc);
+        when(PluginHelper.getBeanIntrospection(ecc)).thenReturn(new DefaultBeanIntrospection());
+        when(PluginHelper.getConfigurerResolver(ecc)).thenReturn((name, context) -> null);
+
+        Map<String, Object> params = new HashMap<>();
         Long value = System.currentTimeMillis();
         params.put("mark", value);
+        component.init();
         Endpoint result = component.createEndpoint("metrics:meter:long.meter", "meter:long.meter", params);
         assertThat(result, is(notNullValue()));
         assertThat(result, is(instanceOf(MetricsEndpoint.class)));
@@ -80,7 +96,8 @@ public class MetricsComponentTest {
         assertThat(me.getMetricsName(), is("long.meter"));
         assertThat(me.getRegistry(), is(metricRegistry));
         inOrder.verify(camelContext, times(1)).getRegistry();
-        inOrder.verify(camelRegistry, times(1)).lookupByNameAndType(MetricsComponent.METRIC_REGISTRY_NAME, MetricRegistry.class);
+        inOrder.verify(camelRegistry, times(1)).lookupByNameAndType(MetricsComponent.METRIC_REGISTRY_NAME,
+                MetricRegistry.class);
         inOrder.verify(camelContext, times(1)).getTypeConverter();
         inOrder.verifyNoMoreInteractions();
     }
@@ -89,10 +106,17 @@ public class MetricsComponentTest {
     public void testCreateEndpoints() throws Exception {
         component.setCamelContext(camelContext);
         when(camelContext.getRegistry()).thenReturn(camelRegistry);
-        when(camelRegistry.lookupByNameAndType(MetricsComponent.METRIC_REGISTRY_NAME, MetricRegistry.class)).thenReturn(metricRegistry);
-        Map<String, Object> params = new HashMap<String, Object>();
-        Long value = System.currentTimeMillis();
+        when(camelContext.resolvePropertyPlaceholders(anyString())).then(returnsFirstArg());
+        when(camelRegistry.lookupByNameAndType(MetricsComponent.METRIC_REGISTRY_NAME, MetricRegistry.class))
+                .thenReturn(metricRegistry);
+        when(camelContext.getCamelContextExtension()).thenReturn(ecc);
+        when(PluginHelper.getBeanIntrospection(ecc)).thenReturn(new DefaultBeanIntrospection());
+        when(PluginHelper.getConfigurerResolver(ecc)).thenReturn((name, context) -> null);
+
+        Map<String, Object> params = new HashMap<>();
+        long value = System.currentTimeMillis();
         params.put("mark", value);
+        component.init();
         Endpoint result = component.createEndpoint("metrics:meter:long.meter", "meter:long.meter", params);
         assertThat(result, is(notNullValue()));
         assertThat(result, is(instanceOf(MetricsEndpoint.class)));
@@ -101,7 +125,7 @@ public class MetricsComponentTest {
         assertThat(me.getMetricsName(), is("long.meter"));
         assertThat(me.getRegistry(), is(metricRegistry));
 
-        params = new HashMap<String, Object>();
+        params = new HashMap<>();
         params.put("increment", value + 1);
         params.put("decrement", value - 1);
 
@@ -115,13 +139,14 @@ public class MetricsComponentTest {
         assertThat(ce.getRegistry(), is(metricRegistry));
 
         inOrder.verify(camelContext, times(1)).getRegistry();
-        inOrder.verify(camelRegistry, times(1)).lookupByNameAndType(MetricsComponent.METRIC_REGISTRY_NAME, MetricRegistry.class);
-        inOrder.verify(camelContext, times(2)).getTypeConverter();
+        inOrder.verify(camelRegistry, times(1)).lookupByNameAndType(MetricsComponent.METRIC_REGISTRY_NAME,
+                MetricRegistry.class);
+        inOrder.verify(camelContext, times(3)).getTypeConverter();
         inOrder.verifyNoMoreInteractions();
     }
 
     @Test
-    public void testGetMetricsName() throws Exception {
+    public void testGetMetricsName() {
         assertThat(component.getMetricsName("meter:metric-a"), is("metric-a"));
         assertThat(component.getMetricsName("meter:metric-a:sub-b"), is("metric-a:sub-b"));
         assertThat(component.getMetricsName("metric-a"), is("metric-a"));
@@ -130,71 +155,72 @@ public class MetricsComponentTest {
     }
 
     @Test
-    public void testCreateNewEndpointForCounter() throws Exception {
+    public void testCreateNewEndpointForCounter() {
         Endpoint endpoint = new MetricsEndpoint(null, null, metricRegistry, MetricsType.COUNTER, "a name");
         assertThat(endpoint, is(notNullValue()));
         assertThat(endpoint, is(instanceOf(MetricsEndpoint.class)));
     }
 
     @Test
-    public void testCreateNewEndpointForMeter() throws Exception {
+    public void testCreateNewEndpointForMeter() {
         Endpoint endpoint = new MetricsEndpoint(null, null, metricRegistry, MetricsType.METER, "a name");
         assertThat(endpoint, is(notNullValue()));
         assertThat(endpoint, is(instanceOf(MetricsEndpoint.class)));
     }
 
     @Test
-    public void testCreateNewEndpointForGauge() throws Exception {
+    public void testCreateNewEndpointForGauge() {
         MetricsEndpoint endpoint = new MetricsEndpoint(null, null, metricRegistry, MetricsType.GAUGE, "a name");
         assertThat(endpoint, is(notNullValue()));
         assertThat(endpoint, is(instanceOf(MetricsEndpoint.class)));
     }
 
     @Test
-    public void testCreateNewEndpointForHistogram() throws Exception {
+    public void testCreateNewEndpointForHistogram() {
         Endpoint endpoint = new MetricsEndpoint(null, null, metricRegistry, MetricsType.HISTOGRAM, "a name");
         assertThat(endpoint, is(notNullValue()));
         assertThat(endpoint, is(instanceOf(MetricsEndpoint.class)));
     }
 
     @Test
-    public void testCreateNewEndpointForTimer() throws Exception {
+    public void testCreateNewEndpointForTimer() {
         Endpoint endpoint = new MetricsEndpoint(null, null, metricRegistry, MetricsType.TIMER, "a name");
         assertThat(endpoint, is(notNullValue()));
         assertThat(endpoint, is(instanceOf(MetricsEndpoint.class)));
     }
 
     @Test
-    public void testGetMetricsType() throws Exception {
+    public void testGetMetricsType() {
         for (MetricsType type : EnumSet.allOf(MetricsType.class)) {
             assertThat(component.getMetricsType(type.toString() + ":metrics-name"), is(type));
         }
     }
 
     @Test
-    public void testGetMetricsTypeNotSet() throws Exception {
+    public void testGetMetricsTypeNotSet() {
         assertThat(component.getMetricsType("no-metrics-type"), is(MetricsComponent.DEFAULT_METRICS_TYPE));
     }
 
-    @Test(expected = RuntimeCamelException.class)
-    public void testGetMetricsTypeNotFound() throws Exception {
-        component.getMetricsType("unknown-metrics:metrics-name");
+    @Test
+    public void testGetMetricsTypeNotFound() {
+        assertThrows(RuntimeCamelException.class,
+                () -> component.getMetricsType("unknown-metrics:metrics-name"));
     }
 
     @Test
-    public void testGetOrCreateMetricRegistryFoundInCamelRegistry() throws Exception {
+    public void testGetOrCreateMetricRegistryFoundInCamelRegistry() {
         when(camelRegistry.lookupByNameAndType("name", MetricRegistry.class)).thenReturn(metricRegistry);
-        MetricRegistry result = component.getOrCreateMetricRegistry(camelRegistry, "name");
+        MetricRegistry result = MetricsComponent.getOrCreateMetricRegistry(camelRegistry, "name");
         assertThat(result, is(metricRegistry));
         inOrder.verify(camelRegistry, times(1)).lookupByNameAndType("name", MetricRegistry.class);
         inOrder.verifyNoMoreInteractions();
     }
 
     @Test
-    public void testGetOrCreateMetricRegistryFoundInCamelRegistryByType() throws Exception {
+    public void testGetOrCreateMetricRegistryFoundInCamelRegistryByType() {
         when(camelRegistry.lookupByNameAndType("name", MetricRegistry.class)).thenReturn(null);
         when(camelRegistry.findByType(MetricRegistry.class)).thenReturn(Collections.singleton(metricRegistry));
-        MetricRegistry result = component.getOrCreateMetricRegistry(camelRegistry, "name");
+        MetricRegistry result = MetricsComponent.getOrCreateMetricRegistry(camelRegistry, "name");
         assertThat(result, is(metricRegistry));
         inOrder.verify(camelRegistry, times(1)).lookupByNameAndType("name", MetricRegistry.class);
         inOrder.verify(camelRegistry, times(1)).findByType(MetricRegistry.class);
@@ -202,10 +228,10 @@ public class MetricsComponentTest {
     }
 
     @Test
-    public void testGetOrCreateMetricRegistryNotFoundInCamelRegistry() throws Exception {
+    public void testGetOrCreateMetricRegistryNotFoundInCamelRegistry() {
         when(camelRegistry.lookupByNameAndType("name", MetricRegistry.class)).thenReturn(null);
-        when(camelRegistry.findByType(MetricRegistry.class)).thenReturn(Collections.<MetricRegistry>emptySet());
-        MetricRegistry result = component.getOrCreateMetricRegistry(camelRegistry, "name");
+        when(camelRegistry.findByType(MetricRegistry.class)).thenReturn(Collections.<MetricRegistry> emptySet());
+        MetricRegistry result = MetricsComponent.getOrCreateMetricRegistry(camelRegistry, "name");
         assertThat(result, is(notNullValue()));
         assertThat(result, is(not(metricRegistry)));
         inOrder.verify(camelRegistry, times(1)).lookupByNameAndType("name", MetricRegistry.class);
@@ -214,17 +240,17 @@ public class MetricsComponentTest {
     }
 
     @Test
-    public void testGetMetricRegistryFromCamelRegistry() throws Exception {
+    public void testGetMetricRegistryFromCamelRegistry() {
         when(camelRegistry.lookupByNameAndType("name", MetricRegistry.class)).thenReturn(metricRegistry);
-        MetricRegistry result = component.getMetricRegistryFromCamelRegistry(camelRegistry, "name");
+        MetricRegistry result = MetricsComponent.getMetricRegistryFromCamelRegistry(camelRegistry, "name");
         assertThat(result, is(metricRegistry));
         inOrder.verify(camelRegistry, times(1)).lookupByNameAndType("name", MetricRegistry.class);
         inOrder.verifyNoMoreInteractions();
     }
 
     @Test
-    public void testCreateMetricRegistry() throws Exception {
-        MetricRegistry registry = component.createMetricRegistry();
+    public void testCreateMetricRegistry() {
+        MetricRegistry registry = MetricsComponent.createMetricRegistry();
         assertThat(registry, is(notNullValue()));
     }
 }

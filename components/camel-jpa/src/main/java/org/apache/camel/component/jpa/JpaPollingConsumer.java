@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,31 +24,33 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import javax.persistence.Entity;
-import javax.persistence.EntityManager;
-import javax.persistence.EntityManagerFactory;
-import javax.persistence.Query;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceException;
+import jakarta.persistence.Query;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.impl.PollingConsumerSupport;
-import org.apache.camel.util.ObjectHelper;
+import org.apache.camel.RuntimeCamelException;
+import org.apache.camel.support.PollingConsumerSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.transaction.TransactionStatus;
-import org.springframework.transaction.support.TransactionCallback;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import static org.apache.camel.component.jpa.JpaHelper.getTargetEntityManager;
 
 public class JpaPollingConsumer extends PollingConsumerSupport {
 
-    private static final Logger LOG = LoggerFactory.getLogger(JpaProducer.class);
-    private transient ExecutorService executorService;
+    private static final Logger LOG = LoggerFactory.getLogger(JpaPollingConsumer.class);
+
+    private volatile ExecutorService executorService;
     private final EntityManagerFactory entityManagerFactory;
-    private final TransactionTemplate transactionTemplate;
+    private final TransactionStrategy transactionStrategy;
     private String query;
     private String namedQuery;
     private String nativeQuery;
+    private LockModeType lockModeType = LockModeType.PESSIMISTIC_WRITE;
     private Class<?> resultClass;
     private QueryFactory queryFactory;
     private Map<String, Object> parameters;
@@ -56,7 +58,7 @@ public class JpaPollingConsumer extends PollingConsumerSupport {
     public JpaPollingConsumer(JpaEndpoint endpoint) {
         super(endpoint);
         this.entityManagerFactory = endpoint.getEntityManagerFactory();
-        this.transactionTemplate = endpoint.createTransactionTemplate();
+        this.transactionStrategy = endpoint.getTransactionStrategy();
     }
 
     @Override
@@ -86,6 +88,14 @@ public class JpaPollingConsumer extends PollingConsumerSupport {
 
     public void setNativeQuery(String nativeQuery) {
         this.nativeQuery = nativeQuery;
+    }
+
+    public LockModeType getLockModeType() {
+        return lockModeType;
+    }
+
+    public void setLockModeType(LockModeType lockModeType) {
+        this.lockModeType = lockModeType;
     }
 
     public Class<?> getResultClass() {
@@ -118,40 +128,57 @@ public class JpaPollingConsumer extends PollingConsumerSupport {
         final EntityManager entityManager = getTargetEntityManager(null, entityManagerFactory,
                 getEndpoint().isUsePassedInEntityManager(), getEndpoint().isSharedEntityManager(), true);
 
-        Object out = transactionTemplate.execute(new TransactionCallback<Object>() {
-            public Object doInTransaction(TransactionStatus status) {
+        Exchange exchange = getEndpoint().createExchange();
+        exchange.getIn().setHeader(JpaConstants.ENTITY_MANAGER, entityManager);
+        transactionStrategy.executeInTransaction(new Runnable() {
+            @Override
+            public void run() {
                 if (getEndpoint().isJoinTransaction()) {
                     entityManager.joinTransaction();
                 }
 
-                Query query = getQueryFactory().createQuery(entityManager);
-                configureParameters(query);
-                LOG.trace("Created query {}", query);
+                Query innerQuery = getQueryFactory().createQuery(entityManager);
+                configureParameters(innerQuery);
 
-                Object answer;
-                List<?> results = query.getResultList();
-
-                if (results != null && results.size() == 1) {
-                    // we only have 1 entity so return that
-                    answer = results.get(0);
-                } else {
-                    // we have more data so return a list
-                    answer = results;
+                if (getEndpoint().isConsumeLockEntity()) {
+                    innerQuery.setLockMode(getLockModeType());
                 }
 
-                // commit
-                LOG.debug("Flushing EntityManager");
-                entityManager.flush();
-                // must clear after flush
-                entityManager.clear();
+                LOG.trace("Created query {}", innerQuery);
 
-                return answer;
+                Object answer;
+
+                try {
+                    List<?> results = innerQuery.getResultList();
+
+                    if (results != null && results.size() == 1) {
+                        // we only have 1 entity so return that
+                        answer = results.get(0);
+                    } else {
+                        // we have more data so return a list
+                        answer = results;
+                    }
+
+                    // commit
+                    LOG.debug("Flushing EntityManager");
+                    entityManager.flush();
+
+                    // must clear after flush
+                    entityManager.clear();
+
+                } catch (PersistenceException e) {
+                    LOG.info("Disposing EntityManager {} on {} due to coming transaction rollback", entityManager, this);
+
+                    entityManager.close();
+
+                    throw e;
+                }
+
+                exchange.getIn().setBody(answer);
             }
 
         });
 
-        Exchange exchange = createExchange(out, entityManager);
-        exchange.getIn().setBody(out);
         return exchange;
     }
 
@@ -172,8 +199,11 @@ public class JpaPollingConsumer extends PollingConsumerSupport {
         Future<Exchange> future = executorService.submit((Callable<Exchange>) this::receive);
         try {
             return future.get(timeout, TimeUnit.MILLISECONDS);
-        } catch (ExecutionException | InterruptedException e) {
-            throw ObjectHelper.wrapRuntimeCamelException(e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw RuntimeCamelException.wrapRuntimeCamelException(e);
+        } catch (ExecutionException e) {
+            throw RuntimeCamelException.wrapRuntimeCamelException(e);
         } catch (TimeoutException e) {
             // ignore as we hit timeout then return null
         }
@@ -182,11 +212,14 @@ public class JpaPollingConsumer extends PollingConsumerSupport {
     }
 
     @Override
-    protected void doStart() throws Exception {
+    protected void doInit() throws Exception {
+        super.doInit();
+
         if (queryFactory == null) {
             queryFactory = createQueryFactory();
             if (queryFactory == null) {
-                throw new IllegalArgumentException("No queryType property configured on this consumer, nor an entityType configured on the endpoint so cannot consume");
+                throw new IllegalArgumentException(
+                        "No queryType property configured on this consumer, nor an entityType configured on the endpoint so cannot consume");
             }
         }
     }
@@ -250,7 +283,7 @@ public class JpaPollingConsumer extends PollingConsumerSupport {
         Entity entity = clazz.getAnnotation(Entity.class);
 
         // Check if the property name has been defined for Entity annotation
-        if (entity != null && !entity.name().equals("")) {
+        if (entity != null && !entity.name().isEmpty()) {
             return entity.name();
         } else {
             return null;

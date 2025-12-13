@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,12 +19,8 @@ package org.apache.camel.component.sjms;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.component.sjms.support.JmsTestSupport;
+import org.junit.jupiter.api.Test;
 
-import org.junit.Test;
-
-/**
- * @version
- */
 public class JmsSelectorTest extends JmsTestSupport {
 
     @Override
@@ -41,17 +37,19 @@ public class JmsSelectorTest extends JmsTestSupport {
         resultEndpoint.expectedBodiesReceived(expectedBody2);
         resultEndpoint.message(0).header("cheese").isEqualTo("y");
 
-        template.sendBodyAndHeader("sjms:test.a", expectedBody, "cheese", "x");
-        template.sendBodyAndHeader("sjms:test.a", expectedBody2, "cheese", "y");
+        template.sendBodyAndHeader("sjms:test.a.JmsSelectorTest", expectedBody, "cheese", "x");
+        template.sendBodyAndHeader("sjms:test.a.JmsSelectorTest", expectedBody2, "cheese", "y");
 
         resultEndpoint.assertIsSatisfied();
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("sjms:test.a").to("log:test-before?showAll=true").to("sjms:test.b");
-                from("sjms:test.b?messageSelector=cheese='y'").to("log:test-after?showAll=true").to("mock:result");
+            public void configure() {
+                from("sjms:test.a.JmsSelectorTest").to("log:test-before?showAll=true").to("sjms:test.b.JmsSelectorTest");
+                from("sjms:test.b.JmsSelectorTest?messageSelector=cheese='y'").to("log:test-after?showAll=true")
+                        .to("mock:result");
             }
         };
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,26 +17,15 @@
 package org.apache.camel.component.weather;
 
 import org.apache.camel.component.weather.geolocation.GeoLocation;
-import org.apache.camel.component.weather.geolocation.GeoLocationProvider;
-import org.apache.commons.codec.binary.StringUtils;
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.HttpStatus;
-import org.apache.commons.httpclient.methods.GetMethod;
-import org.codehaus.jackson.JsonNode;
-import org.codehaus.jackson.map.ObjectMapper;
 
 import static org.apache.camel.component.weather.WeatherMode.JSON;
-import static org.apache.camel.component.weather.WeatherUnits.METRIC;
 import static org.apache.camel.util.ObjectHelper.isEmpty;
-import static org.apache.camel.util.ObjectHelper.notNull;
 
 /**
- * Logic for determining the query based on the provided
- * configuration.
+ * Logic for determining the query based on the provided configuration.
  */
 public class WeatherQuery {
     private final WeatherConfiguration weatherConfiguration;
-    private GeoLocationProvider geoLocationProvider;
 
     public WeatherQuery(WeatherConfiguration weatherConfiguration) {
         this.weatherConfiguration = weatherConfiguration;
@@ -48,23 +37,20 @@ public class WeatherQuery {
 
     public String getQuery(String location) throws Exception {
         String answer = "http://api.openweathermap.org/data/2.5/";
-        boolean point = false;
-
         if (weatherConfiguration.getLat() != null && weatherConfiguration.getLon() != null
                 && weatherConfiguration.getRightLon() == null && weatherConfiguration.getTopLat() == null) {
             location = createLatLonQueryString();
-            point = true;
         } else if (weatherConfiguration.getLat() != null && weatherConfiguration.getLon() != null
                 && weatherConfiguration.getRightLon() != null && weatherConfiguration.getTopLat() != null) {
             location = "bbox=" + weatherConfiguration.getLon() + ","
-                    + weatherConfiguration.getLat() + ","
-                    + weatherConfiguration.getRightLon() + ","
-                    + weatherConfiguration.getTopLat() + ","
-                    + weatherConfiguration.getZoom() + "&cluster=yes";
+                       + weatherConfiguration.getLat() + ","
+                       + weatherConfiguration.getRightLon() + ","
+                       + weatherConfiguration.getTopLat() + ","
+                       + weatherConfiguration.getZoom() + "&cluster=yes";
         } else if (!isEmpty(weatherConfiguration.getZip())) {
             location = "zip=" + weatherConfiguration.getZip();
-        } else if (weatherConfiguration.getIds() != null && weatherConfiguration.getIds().size() > 0) {
-            location = "id=" + String.join(",", weatherConfiguration.getIds());
+        } else if (weatherConfiguration.getIds() != null && !weatherConfiguration.getIds().isEmpty()) {
+            location = "id=" + weatherConfiguration.getIds();
         } else if (isEmpty(location) || "current".equals(location)) {
             GeoLocation geoLocation = getCurrentGeoLocation();
             weatherConfiguration.setLat(geoLocation.getLatitude());
@@ -117,8 +103,8 @@ public class WeatherQuery {
             } else {
                 answer = "find?";
             }
-        } else if (weatherConfiguration.getIds() != null && weatherConfiguration.getIds().size() > 0) {
-            if (weatherConfiguration.getIds().size() == 1) {
+        } else if (weatherConfiguration.getIds() != null && !weatherConfiguration.getIds().isEmpty()) {
+            if (weatherConfiguration.getIdsAsList().size() == 1) {
                 if (!isEmpty(weatherConfiguration.getPeriod())) {
                     if (weatherConfiguration.getWeatherApi() == WeatherApi.Hourly) {
                         answer = "forecast?";
@@ -158,10 +144,7 @@ public class WeatherQuery {
     }
 
     GeoLocation getCurrentGeoLocation() throws Exception {
-        return geoLocationProvider.getCurrentGeoLocation();
+        return weatherConfiguration.getGeoLocationProvider().getCurrentGeoLocation();
     }
 
-    void setGeoLocationProvider(GeoLocationProvider geoLocationProvider) {
-        this.geoLocationProvider = geoLocationProvider;
-    }
 }

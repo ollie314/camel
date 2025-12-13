@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,9 +16,9 @@
  */
 package org.apache.camel.examples;
 
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.Id;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
 
 import org.apache.camel.component.jpa.PreConsumed;
 import org.slf4j.Logger;
@@ -26,8 +26,6 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Represents a task which is added to the database, then removed from the database when it is consumed
- *
- * @version 
  */
 @Entity
 public class SendEmail {

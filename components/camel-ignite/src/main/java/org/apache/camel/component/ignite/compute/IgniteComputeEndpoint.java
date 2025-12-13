@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,42 +16,56 @@
  */
 package org.apache.camel.component.ignite.compute;
 
-import java.net.URI;
 import java.util.Map;
 
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
 import org.apache.camel.component.ignite.AbstractIgniteEndpoint;
 import org.apache.camel.component.ignite.ClusterGroupExpression;
-import org.apache.camel.component.ignite.IgniteComponent;
+import org.apache.camel.component.ignite.IgniteConstants;
+import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
+import org.apache.camel.spi.UriPath;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCompute;
 
+import static org.apache.camel.component.ignite.IgniteConstants.SCHEME_COMPUTE;
+
 /**
- * Ignite Compute endpoint.
+ * Run <a href="https://apacheignite.readme.io/docs/compute-grid">compute operations</a> on an Ignite cluster.
+ *
+ * You can pass an IgniteCallable, an IgniteRunnable, an IgniteClosure, or collections of them, along with their
+ * parameters if necessary. This endpoint only supports producers.
  */
-@UriEndpoint(scheme = "ignite:compute", title = "Ignite Compute", syntax = "ignite:compute:[endpointId]", label = "nosql,cache,compute", producerOnly = true)
+@UriEndpoint(firstVersion = "2.17.0", scheme = SCHEME_COMPUTE, title = "Ignite Compute", syntax = "ignite-compute:endpointId",
+             category = { Category.CACHE, Category.CLUSTERING }, producerOnly = true, headersClass = IgniteConstants.class)
 public class IgniteComputeEndpoint extends AbstractIgniteEndpoint {
 
-    @UriParam
+    @UriPath
+    @Metadata(required = true)
+    private String endpointId;
+
+    @UriParam(label = "producer")
     private ClusterGroupExpression clusterGroupExpression;
 
-    @UriParam
+    @UriParam(label = "producer")
+    @Metadata(required = true)
     private IgniteComputeExecutionType executionType;
 
-    @UriParam
+    @UriParam(label = "producer")
     private String taskName;
 
-    @UriParam
+    @UriParam(label = "producer")
     private String computeName;
 
-    @UriParam
+    @UriParam(label = "producer")
     private Long timeoutMillis;
 
-    public IgniteComputeEndpoint(String uri, URI remainingUri, Map<String, Object> parameters, IgniteComponent igniteComponent) throws ClassNotFoundException {
+    public IgniteComputeEndpoint(String uri, String remaining, Map<String, Object> parameters,
+                                 IgniteComputeComponent igniteComponent) {
         super(uri, igniteComponent);
     }
 
@@ -67,7 +81,8 @@ public class IgniteComputeEndpoint extends AbstractIgniteEndpoint {
 
     public IgniteCompute createIgniteCompute() {
         Ignite ignite = ignite();
-        IgniteCompute compute = clusterGroupExpression == null ? ignite.compute() : ignite.compute(clusterGroupExpression.getClusterGroup(ignite));
+        IgniteCompute compute = clusterGroupExpression == null
+                ? ignite.compute() : ignite.compute(clusterGroupExpression.getClusterGroup(ignite));
 
         if (computeName != null) {
             compute = compute.withName(computeName);
@@ -81,18 +96,43 @@ public class IgniteComputeEndpoint extends AbstractIgniteEndpoint {
     }
 
     /**
+     * Gets the endpoint ID.
+     */
+    public String getEndpointId() {
+        return endpointId;
+    }
+
+    /**
+     * The endpoint ID (not used).
+     */
+    public void setEndpointId(String endpointId) {
+        this.endpointId = endpointId;
+    }
+
+    /**
+     * Gets the cluster group expression.
+     */
+    public ClusterGroupExpression getClusterGroupExpression() {
+        return clusterGroupExpression;
+    }
+
+    /**
+     * An expression that returns the Cluster Group for the IgniteCompute instance.
+     */
+    public void setClusterGroupExpression(ClusterGroupExpression clusterGroupExpression) {
+        this.clusterGroupExpression = clusterGroupExpression;
+    }
+
+    /**
      * Gets the execution type of this producer.
-     * 
-     * @return
      */
     public IgniteComputeExecutionType getExecutionType() {
         return executionType;
     }
 
     /**
-     * Sets the execution type of this producer.
-     * 
-     * @param executionType
+     * The compute operation to perform. Possible values: CALL, BROADCAST, APPLY, EXECUTE, RUN, AFFINITY_CALL,
+     * AFFINITY_RUN. The component expects different payload types depending on the operation.
      */
     public void setExecutionType(IgniteComputeExecutionType executionType) {
         this.executionType = executionType;
@@ -100,53 +140,43 @@ public class IgniteComputeEndpoint extends AbstractIgniteEndpoint {
 
     /**
      * Gets the task name, only applicable if using the {@link IgniteComputeExecutionType#EXECUTE} execution type.
-     * 
-     * @return
      */
     public String getTaskName() {
         return taskName;
     }
 
     /**
-     * Sets the task name, only applicable if using the {@link IgniteComputeExecutionType#EXECUTE} execution type.
-     * 
-     * @param taskName
+     * The task name, only applicable if using the {@link IgniteComputeExecutionType#EXECUTE} execution type.
      */
     public void setTaskName(String taskName) {
         this.taskName = taskName;
     }
 
     /**
-     * Gets the name of the compute job, which will be set via {@link IgniteCompute#withName(String)}. 
-     * 
-     * @return
+     * Gets the name of the compute job, which will be set via {@link IgniteCompute#withName(String)}.
      */
     public String getComputeName() {
         return computeName;
     }
 
     /**
-     * Sets the name of the compute job, which will be set via {@link IgniteCompute#withName(String)}.
-     * 
-     * @param computeName
+     * The name of the compute job, which will be set via {@link IgniteCompute#withName(String)}.
      */
     public void setComputeName(String computeName) {
         this.computeName = computeName;
     }
 
     /**
-     * Gets the timeout interval for triggered jobs, in milliseconds, which will be set via {@link IgniteCompute#withTimeout(long)}.
-     * 
-     * @return
+     * Gets the timeout interval for triggered jobs, in milliseconds, which will be set via
+     * {@link IgniteCompute#withTimeout(long)}.
      */
     public Long getTimeoutMillis() {
         return timeoutMillis;
     }
 
     /**
-     * Sets the timeout interval for triggered jobs, in milliseconds, which will be set via {@link IgniteCompute#withTimeout(long)}.
-     * 
-     * @param timeoutMillis
+     * The timeout interval for triggered jobs, in milliseconds, which will be set via
+     * {@link IgniteCompute#withTimeout(long)}.
      */
     public void setTimeoutMillis(Long timeoutMillis) {
         this.timeoutMillis = timeoutMillis;

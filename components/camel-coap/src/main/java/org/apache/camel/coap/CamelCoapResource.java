@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -29,14 +29,19 @@ import org.eclipse.californium.core.coap.OptionSet;
 import org.eclipse.californium.core.network.Exchange;
 import org.eclipse.californium.core.server.resources.CoapExchange;
 import org.eclipse.californium.core.server.resources.Resource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 final class CamelCoapResource extends CoapResource {
+
+    private static final Logger LOG = LoggerFactory.getLogger(CamelCoapResource.class);
+
     private final Map<String, CoAPConsumer> consumers = new ConcurrentHashMap<>();
     private final List<CamelCoapResource> possibles;
 
     CamelCoapResource(String name, CoAPConsumer consumer) {
         super(name);
-        consumers.put(consumer.getCoapEndpoint().getCoapMethod(), consumer);
+        addConsumer(consumer);
         possibles = null;
     }
 
@@ -44,22 +49,26 @@ final class CamelCoapResource extends CoapResource {
         super(name);
         this.possibles = possibles;
     }
-    
+
     void addConsumer(CoAPConsumer consumer) {
-        consumers.put(consumer.getCoapEndpoint().getCoapMethod(), consumer);
+        CoAPEndpoint coapEndpoint = consumer.getCoapEndpoint();
+        String coapMethodRestrict = CoAPHelper.getDefaultMethodRestrict(coapEndpoint.getCoapMethodRestrict());
+        for (String method : coapMethodRestrict.split(",")) {
+            consumers.put(method.trim(), consumer);
+        }
     }
-    
+
     @Override
     public Resource getChild(String name) {
         if (possibles != null) {
-            //FIXME - find which might work...    
+            // FIXME - find which might work...
         }
         Resource child = super.getChild(name);
         if (child == null) {
             final List<CamelCoapResource> possibles = new LinkedList<>();
             for (Resource r : getChildren()) {
                 if (r.getName().startsWith("{") && r.getName().endsWith("}")) {
-                    possibles.add((CamelCoapResource)r);
+                    possibles.add((CamelCoapResource) r);
                 }
             }
             if (possibles.size() == 1) {
@@ -71,6 +80,7 @@ final class CamelCoapResource extends CoapResource {
         }
         return child;
     }
+
     @Override
     public void handleRequest(Exchange exchange) {
         org.apache.camel.Exchange camelExchange = null;
@@ -82,12 +92,13 @@ final class CamelCoapResource extends CoapResource {
         try {
             consumer = consumers.get(exchange.getRequest().getCode().name());
             if (consumer == null) {
-                consumer = consumers.get("*");
+                cexchange.respond(ResponseCode.METHOD_NOT_ALLOWED);
+                return;
             }
-            
-            camelExchange = consumer.getEndpoint().createExchange();
+
+            camelExchange = consumer.createExchange(false);
             consumer.createUoW(camelExchange);
-            
+
             OptionSet options = exchange.getRequest().getOptions();
             for (String s : options.getUriQuery()) {
                 int i = s.indexOf('=');
@@ -97,12 +108,12 @@ final class CamelCoapResource extends CoapResource {
                     camelExchange.getIn().setHeader(s.substring(0, i), s.substring(i + 1));
                 }
             }
-            
+
             if (options.hasContentFormat()) {
                 String mt = MediaTypeRegistry.toString(options.getContentFormat());
-                camelExchange.getIn().setHeader(org.apache.camel.Exchange.CONTENT_TYPE, mt);
+                camelExchange.getIn().setHeader(CoAPConstants.CONTENT_TYPE, mt);
             }
-            
+
             List<String> path = exchange.getRequest().getOptions().getUriPath();
             LinkedList<Resource> resources = new LinkedList<>();
             Resource r = this;
@@ -122,21 +133,37 @@ final class CamelCoapResource extends CoapResource {
                 }
                 res++;
             }
-            
-            byte bytes[] = exchange.getCurrentRequest().getPayload();
+
+            byte[] bytes = exchange.getRequest().getPayload();
             camelExchange.getIn().setBody(bytes);
-                       
-            consumer.getProcessor().process(camelExchange);            
-            Message target = camelExchange.hasOut() ? camelExchange.getOut() : camelExchange.getIn();
-            
-            int format = MediaTypeRegistry.parse(target.getHeader(org.apache.camel.Exchange.CONTENT_TYPE, String.class));
+
+            consumer.getProcessor().process(camelExchange);
+            Message target = camelExchange.getMessage();
+
+            Long maxAge = target.getHeader(CoAPConstants.COAP_MAX_AGE, Long.class);
+            if (maxAge != null) {
+                cexchange.setMaxAge(maxAge);
+            }
+
+            byte[] eTag = target.getHeader(CoAPConstants.COAP_ETAG, byte[].class);
+            if (eTag != null) {
+                cexchange.setETag(eTag);
+            }
+
+            int format = MediaTypeRegistry.parse(target.getHeader(CoAPConstants.CONTENT_TYPE, String.class));
             cexchange.respond(ResponseCode.CONTENT, target.getBody(byte[].class), format);
 
         } catch (Exception e) {
             cexchange.respond(ResponseCode.INTERNAL_SERVER_ERROR, e.getMessage());
         } finally {
-            if (camelExchange != null) {
-                consumer.doneUoW(camelExchange);
+            if (consumer != null) {
+                if (camelExchange != null) {
+                    consumer.doneUoW(camelExchange);
+                }
+                consumer.releaseExchange(camelExchange, false);
+            } else {
+                LOG.warn(
+                        "Skipping releasing the consumer exchange because the consumer is null. It may haven't been properly created earlier - exception was thrown");
             }
         }
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,11 +19,10 @@ package org.apache.camel.component.ignite.messaging;
 import java.util.UUID;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.ExchangePattern;
 import org.apache.camel.Message;
 import org.apache.camel.Processor;
 import org.apache.camel.component.ignite.IgniteConstants;
-import org.apache.camel.impl.DefaultConsumer;
+import org.apache.camel.support.DefaultConsumer;
 import org.apache.ignite.IgniteMessaging;
 import org.apache.ignite.lang.IgniteBiPredicate;
 import org.slf4j.Logger;
@@ -44,12 +43,12 @@ public class IgniteMessagingConsumer extends DefaultConsumer {
 
         @Override
         public boolean apply(UUID uuid, Object payload) {
-            Exchange exchange = endpoint.createExchange(ExchangePattern.InOnly);
-            Message in = exchange.getIn();
-            in.setBody(payload);
-            in.setHeader(IgniteConstants.IGNITE_MESSAGING_TOPIC, endpoint.getTopic());
-            in.setHeader(IgniteConstants.IGNITE_MESSAGING_UUID, uuid);
+            Exchange exchange = createExchange(true);
             try {
+                Message in = exchange.getIn();
+                in.setBody(payload);
+                in.setHeader(IgniteConstants.IGNITE_MESSAGING_TOPIC, endpoint.getTopic());
+                in.setHeader(IgniteConstants.IGNITE_MESSAGING_UUID, uuid);
                 if (LOG.isTraceEnabled()) {
                     LOG.trace("Processing Ignite message for subscription {} with payload {}.", uuid, payload);
                 }
@@ -72,7 +71,7 @@ public class IgniteMessagingConsumer extends DefaultConsumer {
         super.doStart();
 
         messaging.localListen(endpoint.getTopic(), predicate);
-        
+
         LOG.info("Started Ignite Messaging consumer for topic {}.", endpoint.getTopic());
     }
 
@@ -81,7 +80,7 @@ public class IgniteMessagingConsumer extends DefaultConsumer {
         super.doStop();
 
         messaging.stopLocalListen(endpoint.getTopic(), predicate);
-        
+
         LOG.info("Stopped Ignite Messaging consumer for topic {}.", endpoint.getTopic());
     }
 

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,44 +16,51 @@
  */
 package org.apache.camel.component.sql.stored;
 
+import java.io.IOException;
+
 import org.apache.camel.component.sql.stored.template.TemplateParser;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 
+import static org.junit.jupiter.api.Assertions.assertSame;
+
 public class TemplateCacheTest extends CamelTestSupport {
 
     private EmbeddedDatabase db;
 
-    @Before
-    public void setUp() throws Exception {
+    @Override
+
+    public void doPreSetup() throws Exception {
         db = new EmbeddedDatabaseBuilder()
-                .setType(EmbeddedDatabaseType.DERBY).addScript("sql/storedProcedureTest.sql").build();
-        super.setUp();
+                .setName(getClass().getSimpleName())
+                .setType(EmbeddedDatabaseType.DERBY)
+                .addScript("sql/storedProcedureTest.sql").build();
+
     }
 
-    @After
-    public void tearDown() throws Exception {
-        super.tearDown();
-        db.shutdown();
+    @Override
+    public void doPostTearDown() throws Exception {
+        if (db != null) {
+            db.shutdown();
+        }
     }
 
     @Test
-    public void shouldCacheTemplateFunctions() throws InterruptedException {
+    public void shouldCacheTemplateFunctions() throws IOException {
         JdbcTemplate jdbcTemplate = new JdbcTemplate(db);
-        CallableStatementWrapperFactory fac = new CallableStatementWrapperFactory(jdbcTemplate, new TemplateParser());
+        try (CallableStatementWrapperFactory fac
+                = new CallableStatementWrapperFactory(jdbcTemplate, new TemplateParser(context.getClassResolver()), false)) {
+            BatchCallableStatementCreatorFactory batchFactory1 = fac.getTemplateForBatch("FOO()");
+            BatchCallableStatementCreatorFactory batchFactory2 = fac.getTemplateForBatch("FOO()");
+            assertSame(batchFactory1, batchFactory2);
 
-        BatchCallableStatementCreatorFactory batchFactory1 = fac.getTemplateForBatch("FOO()");
-        BatchCallableStatementCreatorFactory batchFactory2 = fac.getTemplateForBatch("FOO()");
-        assertSame(batchFactory1, batchFactory2);
-
-        TemplateStoredProcedure templateStoredProcedure1 = fac.getTemplateStoredProcedure("FOO()");
-        TemplateStoredProcedure templateStoredProcedure2 = fac.getTemplateStoredProcedure("FOO()");
-        assertSame(templateStoredProcedure1, templateStoredProcedure2);
+            TemplateStoredProcedure templateStoredProcedure1 = fac.getTemplateStoredProcedure("FOO()");
+            TemplateStoredProcedure templateStoredProcedure2 = fac.getTemplateStoredProcedure("FOO()");
+            assertSame(templateStoredProcedure1, templateStoredProcedure2);
+        }
     }
 }

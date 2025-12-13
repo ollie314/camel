@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,8 +18,8 @@ package org.apache.camel.component.xquery;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
 /**
  * Unit test to verify that headers can be propogated through this component.
@@ -31,13 +31,13 @@ public class XQueryPropogateHeadersTest extends CamelTestSupport {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMessageCount(1);
         mock.expectedBodiesReceived("<transformed sender=\"bar\" subject=\"Hey\"><mail><subject>Hey</subject>"
-            + "<body>Hello world!</body></mail></transformed>");
+                                    + "<body>Hello world!</body></mail></transformed>");
         mock.expectedHeaderReceived("foo", "bar");
 
         template.sendBodyAndHeader("direct:one",
-            "<mail><subject>Hey</subject><body>Hello world!</body></mail>", "foo", "bar");
+                "<mail><subject>Hey</subject><body>Hello world!</body></mail>", "foo", "bar");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -48,9 +48,9 @@ public class XQueryPropogateHeadersTest extends CamelTestSupport {
         mock.expectedHeaderReceived("foo", "bar");
 
         template.sendBodyAndHeader("direct:two",
-            "<person name='James' city='London'/>", "foo", "bar");
+                "<person name='James' city='London'/>", "foo", "bar");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -61,25 +61,26 @@ public class XQueryPropogateHeadersTest extends CamelTestSupport {
         mock.expectedHeaderReceived("foo", "bar");
 
         template.sendBodyAndHeader("direct:three",
-            "<person name='James' city='London'/>", "foo", "bar");
+                "<person name='James' city='London'/>", "foo", "bar");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:one")
-                    .to("xquery:org/apache/camel/component/xquery/transform_with_headers.xquery")
-                    .to("mock:result");
+                        .to("xquery:org/apache/camel/component/xquery/transform_with_headers.xquery")
+                        .to("mock:result");
 
                 from("direct:two")
-                    .transform().xquery("/person/@city", String.class)
-                    .to("mock:result");
+                        .transform().xquery("/person/@city", String.class)
+                        .to("mock:result");
 
                 from("direct:three")
-                    .setBody().xquery("/person/@city", String.class)
-                    .to("mock:result");
+                        .setBody().xquery("/person/@city", String.class)
+                        .to("mock:result");
             }
         };
     }

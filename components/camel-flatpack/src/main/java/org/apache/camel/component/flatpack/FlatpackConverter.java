@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
@@ -28,12 +29,10 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
 import net.sf.flatpack.DataSet;
+import net.sf.flatpack.Record;
 import org.apache.camel.Converter;
 
-/**
- * @version 
- */
-@Converter
+@Converter(generateLoader = true)
 public final class FlatpackConverter {
 
     private FlatpackConverter() {
@@ -41,19 +40,24 @@ public final class FlatpackConverter {
     }
 
     @Converter
-    public static Map<String, Object> toMap(DataSet dataSet) {
-        Map<String, Object> map = new HashMap<String, Object>();
-        putValues(map, dataSet);
+    public static Map<String, Object> toMap(Record recordObj) {
+        Map<String, Object> map = new HashMap<>();
+        if (recordObj instanceof DataSet dataSet) {
+            putValues(map, dataSet);
+        } else {
+            putValues(map, recordObj);
+        }
+
         return map;
     }
 
     @Converter
     public static List<Map<String, Object>> toList(DataSet dataSet) {
-        List<Map<String, Object>> answer = new ArrayList<Map<String, Object>>();
+        List<Map<String, Object>> answer = new ArrayList<>();
         dataSet.goTop();
 
         while (dataSet.next()) {
-            Map<String, Object> map = new HashMap<String, Object>();
+            Map<String, Object> map = new HashMap<>();
             putValues(map, dataSet);
             answer.add(map);
         }
@@ -62,8 +66,18 @@ public final class FlatpackConverter {
     }
 
     @Converter
+    public static String toString(DataSet dataSet) {
+        // force using toString from DataSet as we do not want conversion of each element
+        return dataSet.toString();
+    }
+
+    @Converter
     public static Document toDocument(DataSet dataSet) throws ParserConfigurationException {
-        Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument();
+        DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+        dbf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+
+        Document doc = dbf.newDocumentBuilder().newDocument();
 
         if (dataSet.getIndex() == -1) {
             Element list = doc.createElement("Dataset");
@@ -93,14 +107,26 @@ public final class FlatpackConverter {
         }
     }
 
+    /**
+     * Puts the values of the record into the map
+     */
+    private static void putValues(Map<String, Object> map, Record recordObj) {
+        String[] columns = getColumns(recordObj);
+
+        for (String column : columns) {
+            String value = recordObj.getString(column);
+            map.put(column, value);
+        }
+    }
+
     private static Element createDatasetRecord(DataSet dataSet, Document doc) {
-        Element record;
+        Element element;
         if (dataSet.isRecordID(FlatpackComponent.HEADER_ID)) {
-            record = doc.createElement("DatasetHeader");
+            element = doc.createElement("DatasetHeader");
         } else if (dataSet.isRecordID(FlatpackComponent.TRAILER_ID)) {
-            record = doc.createElement("DatasetTrailer");
+            element = doc.createElement("DatasetTrailer");
         } else {
-            record = doc.createElement("DatasetRecord");
+            element = doc.createElement("DatasetRecord");
         }
 
         String[] columns = getColumns(dataSet);
@@ -112,13 +138,13 @@ public final class FlatpackConverter {
             columnElement.setAttribute("name", column);
             columnElement.setTextContent(value);
 
-            record.appendChild(columnElement);
+            element.appendChild(columnElement);
         }
 
-        return record;
+        return element;
     }
 
-    private static String[] getColumns(DataSet dataSet) {
+    private static String[] getColumns(Record dataSet) {
         // the columns can vary depending on header, body or trailer
         if (dataSet.isRecordID(FlatpackComponent.HEADER_ID)) {
             return dataSet.getColumns(FlatpackComponent.HEADER_ID);

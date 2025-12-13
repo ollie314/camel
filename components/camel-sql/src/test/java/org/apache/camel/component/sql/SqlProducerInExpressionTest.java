@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,17 +21,17 @@ import org.apache.camel.builder.RouteBuilder;
 public class SqlProducerInExpressionTest extends SqlProducerInTest {
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // required for the sql component
                 getContext().getComponent("sql", SqlComponent.class).setDataSource(db);
 
                 from("direct:query")
-                    .to("sql:classpath:sql/selectProjectsInExpression.sql")
-                    .to("log:query")
-                    .to("mock:query");
+                        .to("sql:classpath:sql/selectProjectsInExpression.sql")
+                        .to("log:query")
+                        .to("mock:query");
             }
         };
     }

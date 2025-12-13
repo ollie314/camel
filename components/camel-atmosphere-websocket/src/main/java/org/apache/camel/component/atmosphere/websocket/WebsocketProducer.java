@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,7 +26,7 @@ import java.util.concurrent.Executors;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
-import org.apache.camel.impl.DefaultProducer;
+import org.apache.camel.support.DefaultProducer;
 import org.atmosphere.websocket.WebSocket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,7 +38,7 @@ public class WebsocketProducer extends DefaultProducer {
     private static final transient Logger LOG = LoggerFactory.getLogger(WebsocketProducer.class);
 
     private static ExecutorService executor = Executors.newSingleThreadExecutor();
-    
+
     public WebsocketProducer(WebsocketEndpoint endpoint) {
         super(endpoint);
     }
@@ -57,27 +57,27 @@ public class WebsocketProducer extends DefaultProducer {
             LOG.debug("Ignoring a null message");
             return;
         }
-        
-        if (!(message instanceof String || message instanceof byte[] 
-            || message instanceof Reader || message instanceof InputStream)) {
+
+        if (!(message instanceof String || message instanceof byte[]
+                || message instanceof Reader || message instanceof InputStream)) {
             // fallback to use String
             if (LOG.isInfoEnabled()) {
-                LOG.info("Using String for unexpected message type {} ", message.getClass());
+                LOG.info("Using String for unexpected message type {}", message.getClass());
             }
-            message = in.getBody(String.class);    
+            message = in.getBody(String.class);
         }
-        
-        // REVISIT Reader and InputStream handling at Producer 
-        // special conversion for Reader and InputStream for now 
+
+        // REVISIT Reader and InputStream handling at Producer
+        // special conversion for Reader and InputStream for now
         if (message instanceof Reader) {
             message = in.getBody(String.class);
         } else if (message instanceof InputStream) {
             message = in.getBody(byte[].class);
         }
 
-        log.debug("Sending to {}", message);
+        LOG.debug("Sending to {}", message);
         if (getEndpoint().isSendToAll()) {
-            log.debug("Sending to all -> {}", message);
+            LOG.debug("Sending to all -> {}", message);
             //TODO consider using atmosphere's broadcast or a more configurable async send
             for (final WebSocket websocket : getEndpoint().getWebSocketStore().getAllWebSockets()) {
                 sendMessage(websocket, message);
@@ -93,39 +93,37 @@ public class WebsocketProducer extends DefaultProducer {
 
     private void messageDistributor(final List<String> connectionKeyList, final Object message) {
         if (connectionKeyList == null) {
-            throw new IllegalArgumentException("Failed to send message to multiple connections; connetion key list is not set.");
+            throw new IllegalArgumentException(
+                    "Failed to send message to multiple connections; connetion key list is not set.");
         }
 
         List<String> notValidConnectionKeys = new ArrayList<>();
 
         for (final String connectionKey : connectionKeyList) {
-            log.debug("Sending to connection key {} -> {}", connectionKey, message);
+            LOG.debug("Sending to connection key {} -> {}", connectionKey, message);
             sendMessage(getWebSocket(connectionKey, notValidConnectionKeys), message);
         }
 
         if (!notValidConnectionKeys.isEmpty()) {
-            log.debug("Some connections have not received the message {}",  message);
+            LOG.debug("Some connections have not received the message {}", message);
             getEndpoint().getWebsocketConsumer().sendNotDeliveredMessage(notValidConnectionKeys, message);
         }
     }
 
     private void sendMessage(final WebSocket websocket, final Object message) {
         if (websocket != null && message != null) {
-            executor.execute(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        if (message instanceof String) {
-                            websocket.write((String) message);
-                        } else if (message instanceof byte[]) {
-                            websocket.write((byte[]) message, 0, ((byte[]) message).length);
-                        } else {
-                            // this should not happen unless one of the supported types is missing above.
-                            LOG.warn("unexpected message type {}", message.getClass());
-                        }
-                    } catch (Exception e) {
-                        LOG.error("Error when writing to websocket", e);
+            executor.execute(() -> {
+                try {
+                    if (message instanceof String) {
+                        websocket.write((String) message);
+                    } else if (message instanceof byte[]) {
+                        websocket.write((byte[]) message, 0, ((byte[]) message).length);
+                    } else {
+                        // this should not happen unless one of the supported types is missing above.
+                        LOG.warn("unexpected message type {}", message.getClass());
                     }
+                } catch (Exception e) {
+                    LOG.error("Error when writing to websocket", e);
                 }
             });
         }
@@ -140,7 +138,7 @@ public class WebsocketProducer extends DefaultProducer {
             if (websocket == null) {
                 //collect for call back to handle not sent message(s) to guaranty delivery
                 notValidConnectionKeys.add(connectionKey);
-                log.debug("Failed to send message to single connection; connetion key is not valid. {}",  connectionKey);
+                LOG.debug("Failed to send message to single connection; connetion key is not valid. {}", connectionKey);
             }
         }
         return websocket;

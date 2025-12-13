@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,32 +17,44 @@
 package org.apache.camel.component.jms;
 
 import java.util.concurrent.CountDownLatch;
-import javax.jms.ConnectionFactory;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.Consumer;
+import org.apache.camel.ConsumerTemplate;
 import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
 import org.apache.camel.ExchangePattern;
-import org.apache.camel.Processor;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.infra.artemis.services.ArtemisService;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * A simple request/reply using custom reply to header.
  */
-public class JmsSimpleRequestCustomReplyToTest extends CamelTestSupport {
+public class JmsSimpleRequestCustomReplyToTest extends AbstractJMSTest {
 
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
     private static final Logger LOG = LoggerFactory.getLogger(JmsSimpleRequestCustomReplyToTest.class);
     private static String myReplyTo;
-    protected String componentName = "activemq";
+    protected final String componentName = "activemq";
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
     private CountDownLatch latch = new CountDownLatch(1);
 
     @Test
@@ -55,26 +67,26 @@ public class JmsSimpleRequestCustomReplyToTest extends CamelTestSupport {
         MockEndpoint result = getMockEndpoint("mock:result");
         result.expectedMessageCount(1);
 
-        Exchange out = template.request("activemq:queue:hello", new Processor() {
-            public void process(Exchange exchange) throws Exception {
-                exchange.setPattern(ExchangePattern.InOnly);
-                exchange.getIn().setHeader("MyReplyQeueue", "foo");
-                exchange.getIn().setBody("Hello World");
-            }
+        Exchange out = template.request("activemq:queue:JmsSimpleRequestCustomReplyToTest", exchange -> {
+            exchange.setPattern(ExchangePattern.InOnly);
+            exchange.getIn().setHeader("MyReplyQeueue", "JmsSimpleRequestCustomReplyToTest.reply");
+            exchange.getIn().setBody("Hello World");
         });
 
         result.assertIsSatisfied();
         assertNotNull(out);
-        assertFalse(out.hasOut());
+        /*
+          The getMessage returns the In message if the Out one is not present. Therefore, we check if
+          the body of the returned message equals to the In one and infer that the out one was null.
+         */
+        assertEquals("Hello World", out.getMessage().getBody(), "There shouldn't be an out message");
 
         // get the reply from the special reply queue
         Endpoint end = context.getEndpoint(componentName + ":" + myReplyTo);
-        final Consumer consumer = end.createConsumer(new Processor() {
-            public void process(Exchange exchange) throws Exception {
-                assertEquals("Late reply", exchange.getIn().getBody());
-                latch.countDown();
+        final Consumer consumer = end.createConsumer(exchange -> {
+            assertEquals("Late reply", exchange.getIn().getBody());
+            latch.countDown();
 
-            }
         });
         // reset latch
         latch = new CountDownLatch(1);
@@ -84,54 +96,64 @@ public class JmsSimpleRequestCustomReplyToTest extends CamelTestSupport {
         consumer.stop();
     }
 
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
+    }
+
     private class SendLateReply implements Runnable {
 
+        @Override
         public void run() {
             try {
                 LOG.debug("Waiting for latch");
-                latch.await();
-
                 // wait 1 sec after latch before sending he late replay
-                Thread.sleep(1000);
+                latch.await(1, TimeUnit.SECONDS);
             } catch (Exception e) {
                 // ignore
             }
 
             LOG.debug("Sending late reply");
-            template.send(componentName + ":" + myReplyTo, new Processor() {
-                public void process(Exchange exchange) throws Exception {
-                    exchange.setPattern(ExchangePattern.InOnly);
-                    exchange.getIn().setBody("Late reply");
-                }
+            template.send(componentName + ":" + myReplyTo, exchange -> {
+                exchange.setPattern(ExchangePattern.InOnly);
+                exchange.getIn().setBody("Late reply");
             });
         }
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-        JmsComponent jms = camelContext.getComponent("activemq", JmsComponent.class);
-        // as this is a unit test I dont want to wait 20 sec before timeout occurs, so we use 10
-        jms.getConfiguration().setRequestTimeout(10000);
-
-        return camelContext;
+    @Override
+    protected String getComponentName() {
+        return "activemq";
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected JmsComponent setupComponent(CamelContext camelContext, ArtemisService service, String componentName) {
+        final JmsComponent component = super.setupComponent(camelContext, service, componentName);
+
+        // as this is a unit test I don't want to wait 20 sec before timeout occurs, so we use 10
+        component.getConfiguration().setRequestTimeout(10000);
+        return component;
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from(componentName + ":queue:hello").process(new Processor() {
-                    public void process(Exchange exchange) throws Exception {
-                        assertEquals("Hello World", exchange.getIn().getBody());
+            public void configure() {
+                from(componentName + ":queue:JmsSimpleRequestCustomReplyToTest").process(exchange -> {
+                    assertEquals("Hello World", exchange.getIn().getBody());
 
-                        myReplyTo = exchange.getIn().getHeader("MyReplyQeueue", String.class);
-                        LOG.debug("ReplyTo: " + myReplyTo);
+                    myReplyTo = exchange.getIn().getHeader("MyReplyQeueue", String.class);
+                    LOG.debug("ReplyTo: {}", myReplyTo);
 
-                        LOG.debug("Ahh I cannot send a reply. Someone else must do it.");
-                        latch.countDown();
-                    }
+                    LOG.debug("Ahh I cannot send a reply. Someone else must do it.");
+                    latch.countDown();
                 }).to("mock:result");
             }
         };

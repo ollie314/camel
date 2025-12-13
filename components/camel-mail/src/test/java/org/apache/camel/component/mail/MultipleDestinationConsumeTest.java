@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,31 +18,35 @@ package org.apache.camel.component.mail;
 
 import java.util.Enumeration;
 import java.util.Iterator;
-import java.util.Properties;
 
-import javax.mail.Address;
-import javax.mail.Header;
-import javax.mail.Message;
-import javax.mail.Session;
-import javax.mail.Transport;
-import javax.mail.internet.InternetAddress;
-import javax.mail.internet.MimeMessage;
+import jakarta.mail.Address;
+import jakarta.mail.Header;
+import jakarta.mail.Message;
+import jakarta.mail.Session;
+import jakarta.mail.Transport;
+import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mail.Mailbox.MailboxUser;
+import org.apache.camel.component.mail.Mailbox.Protocol;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.support.ObjectHelper;
+import org.apache.camel.test.junit5.CamelTestSupport;
 import org.apache.camel.util.CastUtils;
-import org.apache.camel.util.ObjectHelper;
-import org.junit.Before;
-import org.junit.Test;
-import org.jvnet.mock_javamail.Mailbox;
+import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-/**
- * @version 
- */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 public class MultipleDestinationConsumeTest extends CamelTestSupport {
-    private String body = "hello world!";
+    private static final MailboxUser james = Mailbox.getOrCreateUser("james", "secret");
+    private static final MailboxUser bar = Mailbox.getOrCreateUser("bar", "secret");
+    private Logger log = LoggerFactory.getLogger(getClass());
+    private String body = "hello world!\r\n";
     private Session mailSession;
 
     @Test
@@ -56,8 +60,9 @@ public class MultipleDestinationConsumeTest extends CamelTestSupport {
         message.setText(body);
 
         message.setRecipients(Message.RecipientType.TO,
-                              new Address[] {new InternetAddress("james@localhost"),
-                                             new InternetAddress("bar@localhost")});
+                new Address[] {
+                        new InternetAddress(james.getEmail()),
+                        new InternetAddress(bar.getEmail()) });
 
         Transport.send(message);
 
@@ -67,14 +72,14 @@ public class MultipleDestinationConsumeTest extends CamelTestSupport {
         Exchange exchange = resultEndpoint.getReceivedExchanges().get(0);
 
         org.apache.camel.Message in = exchange.getIn();
-        assertNotNull("Should have headers", in.getHeaders());
+        assertNotNull(in.getHeaders(), "Should have headers");
 
         MailMessage msg = (MailMessage) exchange.getIn();
         Message inMessage = msg != null ? msg.getMessage() : null;
-        assertNotNull("In message has no JavaMail message!", inMessage);
+        assertNotNull(inMessage, "In message has no JavaMail message!");
 
         String text = in.getBody(String.class);
-        assertEquals("mail body", body, text);
+        assertEquals(body, text, "mail body");
 
         // need to use iterator as some mail impl returns String[] and others a single String with comma as separator
         // so we let Camel create an iterator so we can use the same code for the test
@@ -83,9 +88,9 @@ public class MultipleDestinationConsumeTest extends CamelTestSupport {
         int i = 0;
         while (it.hasNext()) {
             if (i == 0) {
-                assertEquals("james@localhost", it.next().trim());
+                assertEquals(james.getEmail(), it.next().trim());
             } else {
-                assertEquals("bar@localhost", it.next().trim());
+                assertEquals(bar.getEmail(), it.next().trim());
             }
             i++;
         }
@@ -94,25 +99,20 @@ public class MultipleDestinationConsumeTest extends CamelTestSupport {
         while (iter.hasMoreElements()) {
             Header header = iter.nextElement();
             String[] value = message.getHeader(header.getName());
-            log.debug("Header: " + header.getName() + " has value: " + ObjectHelper.asString(value));
+            log.debug("Header: {} has value: {}", header.getName(), org.apache.camel.util.ObjectHelper.asString(value));
         }
     }
 
     @Override
-    @Before
-    public void setUp() throws Exception {
-        Properties properties = new Properties();
-        properties.put("mail.smtp.host", "localhost");
-        mailSession = Session.getInstance(properties, null);
-
-        super.setUp();
+    public void doPreSetup() throws Exception {
+        mailSession = Mailbox.getSmtpSession();
     }
 
     @Override
     protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
-                from("pop3://james@localhost?password=foo").to("mock:result");
+                from(james.uriPrefix(Protocol.pop3) + "&initialDelay=100&delay=100&closeFolder=false").to("mock:result");
             }
         };
     }

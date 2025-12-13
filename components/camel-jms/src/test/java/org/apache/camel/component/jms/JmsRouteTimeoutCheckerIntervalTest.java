@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,59 +16,91 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
-
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
 import org.apache.camel.ExchangeTimedOutException;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.RuntimeCamelException;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.infra.artemis.services.ArtemisService;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Unit test for testing request timeout with a InOut exchange.
  */
-public class JmsRouteTimeoutCheckerIntervalTest extends CamelTestSupport {
+@TestInstance(TestInstance.Lifecycle.PER_METHOD)
+public class JmsRouteTimeoutCheckerIntervalTest extends AbstractJMSTest {
+
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
-    public void testTimeout() throws Exception {
+    public void testTimeout() {
         try {
-            // send a in-out with a timeout for 1 sec 
-            template.requestBody("activemq:queue:slow?requestTimeout=1000", "Hello World");
+            // send a in-out with a timeout for 1 sec
+            template.requestBody("activemq:queue:JmsRouteTimeoutCheckerIntervalTest.slow?requestTimeout=1000", "Hello World");
             fail("Should have timed out with an exception");
         } catch (RuntimeCamelException e) {
-            assertTrue("Should have timed out with an exception", e.getCause() instanceof ExchangeTimedOutException);
+            assertTrue(e.getCause() instanceof ExchangeTimedOutException, "Should have timed out with an exception");
         }
     }
 
     @Test
-    public void testNoTimeout() throws Exception {
+    public void testNoTimeout() {
         // START SNIPPET: e1
         // send a in-out with a timeout for 5 sec
-        Object out = template.requestBody("activemq:queue:slow?requestTimeout=5000", "Hello World");
+        Object out = template.requestBody("activemq:queue:JmsRouteTimeoutCheckerIntervalTest.slow?requestTimeout=5000",
+                "Hello World");
         // END SNIPPET: e1
         assertEquals("Bye World", out);
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        JmsComponent activmq = jmsComponentAutoAcknowledge(connectionFactory);
-        // check 4 times per second
-        activmq.setRequestTimeoutCheckerInterval(250);
-        camelContext.addComponent("activemq", activmq);
-
-        return camelContext;
+    @Override
+    protected String getComponentName() {
+        return "activemq";
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected JmsComponent setupComponent(CamelContext camelContext, ArtemisService service, String componentName) {
+        final JmsComponent component = super.setupComponent(camelContext, service, componentName);
+
+        // check 4 times per second
+        component.getConfiguration().setRequestTimeoutCheckerInterval(250);
+        return component;
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("activemq:queue:slow").delay(3000).transform(constant("Bye World"));
+            public void configure() {
+                from("activemq:queue:JmsRouteTimeoutCheckerIntervalTest.slow").delay(3000).transform(constant("Bye World"));
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
     }
 }

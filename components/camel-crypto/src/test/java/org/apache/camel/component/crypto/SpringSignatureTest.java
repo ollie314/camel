@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -25,17 +25,20 @@ import java.security.cert.Certificate;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.impl.JndiRegistry;
 import org.apache.camel.spring.SpringCamelContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
 
-
-public class SpringSignatureTest extends SignatureTests {
+public class SpringSignatureTest extends SignatureTest {
 
     private static KeyPair rsaPair;
+    private static KeyPair dsaPair;
 
+    @Override
     protected CamelContext createCamelContext() throws Exception {
         rsaPair = getKeyPair("RSA");
-        return SpringCamelContext.springCamelContext("org/apache/camel/component/crypto/SpringSignatureTests.xml");
+        dsaPair = getKeyPair("DSA");
+        return SpringCamelContext.springCamelContext(
+                new ClassPathXmlApplicationContext("org/apache/camel/component/crypto/SpringSignatureTest.xml"), true);
     }
 
     public static KeyStore keystore() throws Exception {
@@ -43,7 +46,7 @@ public class SpringSignatureTest extends SignatureTests {
     }
 
     public static PrivateKey privateKeyFromKeystore() throws Exception {
-        return new SignatureTests().getKeyFromKeystore();
+        return new SignatureTest().getKeyFromKeystore();
     }
 
     public static Certificate certificateFromKeystore() throws Exception {
@@ -53,7 +56,7 @@ public class SpringSignatureTest extends SignatureTests {
 
     public static PrivateKey privateKey() throws Exception {
         KeyStore keystore = loadKeystore();
-        return (PrivateKey)keystore.getKey("bob", "letmein".toCharArray());
+        return (PrivateKey) keystore.getKey("bob", "letmein".toCharArray());
     }
 
     public static PublicKey publicKey() throws Exception {
@@ -62,25 +65,28 @@ public class SpringSignatureTest extends SignatureTests {
         return cert.getPublicKey();
     }
 
-    public static PrivateKey privateRSAKey() throws Exception {
+    public static PrivateKey privateRSAKey() {
         return rsaPair.getPrivate();
     }
 
-    public static PublicKey publicRSAKey() throws Exception {
+    public static PrivateKey privateDSAKey() {
+        return dsaPair.getPrivate();
+    }
+
+    public static PublicKey publicRSAKey() {
         return rsaPair.getPublic();
     }
 
-    public static SecureRandom random() throws Exception {
+    public static PublicKey publicDSAKey() {
+        return dsaPair.getPublic();
+    }
+
+    public static SecureRandom random() {
         return new SecureRandom();
     }
 
     @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        return super.createRegistry();
-    }
-
-    @Override
-    protected RouteBuilder[] createRouteBuilders() throws Exception {
+    protected RouteBuilder[] createRouteBuilders() {
         return new RouteBuilder[] {};
     }
 }

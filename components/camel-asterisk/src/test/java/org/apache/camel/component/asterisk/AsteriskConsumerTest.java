@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,13 +21,15 @@ import java.util.List;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Ignore("CAMEL-10321: Set host, username and password test asterisk consumer.")
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@Disabled("CAMEL-10321: Set host, username and password test asterisk consumer.")
 public class AsteriskConsumerTest extends CamelTestSupport {
     private static final Logger LOG = LoggerFactory.getLogger(AsteriskConsumerTest.class);
 
@@ -35,29 +37,32 @@ public class AsteriskConsumerTest extends CamelTestSupport {
     private String username = "username";
     private String password = "password";
 
-    @Ignore
+    @Disabled
     @Test
-    public void testReceiveTraps() throws Exception {
+    void testReceiveTraps() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMinimumMessageCount(1);
         mock.assertIsSatisfied();
         List<Exchange> events = mock.getExchanges();
         if (LOG.isInfoEnabled()) {
             for (Exchange e : events) {
-                LOG.info("ASTERISK EVENTS: " + e.getIn().getBody(String.class));
+                LOG.info("ASTERISK EVENTS: {}", e.getIn().getBody(String.class));
             }
         }
     }
 
     @Test
-    public void testStartRoute() throws Exception {
+    void testStartRoute() {
         // do nothing here , just make sure the camel route can started.
+        assertTrue(context.isStarted());
     }
 
+    @Override
     protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
-                from("asterisk:myVoIP?hostname=" + hostname + "&username=" + username + "&password=" + password).id("route1").transform(body().convertToString()).to("mock:result");
+                from("asterisk:myVoIP?hostname=" + hostname + "&username=" + username + "&password=" + password).id("route1")
+                        .transform(body().convertToString()).to("mock:result");
             }
         };
     }

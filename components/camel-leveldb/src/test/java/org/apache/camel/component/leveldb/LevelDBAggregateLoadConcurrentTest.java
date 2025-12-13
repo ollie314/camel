@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,27 +20,28 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.processor.aggregate.AggregationStrategy;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.junit5.params.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class LevelDBAggregateLoadConcurrentTest extends CamelTestSupport {
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
+
+@DisabledOnOs({ OS.AIX, OS.OTHER })
+public class LevelDBAggregateLoadConcurrentTest extends LevelDBTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(LevelDBAggregateLoadConcurrentTest.class);
-    private static final char[] KEYS = new char[]{'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'};
+    private static final char[] KEYS = new char[] { 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J' };
     private static final int SIZE = 500;
 
-    @Before
+    @BeforeEach
     @Override
-    public void setUp() throws Exception {
+    public void doPreSetup() throws Exception {
         deleteDirectory("target/data");
-        super.setUp();
     }
 
     @Test
@@ -51,7 +52,7 @@ public class LevelDBAggregateLoadConcurrentTest extends CamelTestSupport {
 
         ExecutorService executor = Executors.newFixedThreadPool(10);
 
-        LOG.info("Staring to send " + SIZE + " messages.");
+        LOG.info("Starting to send {} messages.", SIZE);
 
         for (int i = 0; i < SIZE; i++) {
             final int value = 1;
@@ -60,7 +61,7 @@ public class LevelDBAggregateLoadConcurrentTest extends CamelTestSupport {
                 public Object call() throws Exception {
                     char id = KEYS[key];
                     LOG.debug("Sending {} with id {}", value, id);
-                    template.sendBodyAndHeader("direct:start", value, "id", "" + id);
+                    template.sendBodyAndHeader("direct:start", value, "id", Character.toString(id));
                     // simulate a little delay
                     Thread.sleep(3);
                     return null;
@@ -68,44 +69,28 @@ public class LevelDBAggregateLoadConcurrentTest extends CamelTestSupport {
             });
         }
 
-        LOG.info("Sending all " + SIZE + " message done. Now waiting for aggregation to complete.");
+        LOG.info("Sending all {} message done. Now waiting for aggregation to complete.", SIZE);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
         executor.shutdownNow();
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 LevelDBAggregationRepository repo = new LevelDBAggregationRepository("repo1", "target/data/leveldb.dat");
 
                 from("direct:start")
-                    .to("log:input?groupSize=500")
-                    .aggregate(header("id"), new MyAggregationStrategy())
+                        .to("log:input?groupSize=500")
+                        .aggregate(header("id"), new IntegerAggregationStrategy())
                         .aggregationRepository(repo)
                         .completionSize(SIZE / 10)
                         .to("log:output?showHeaders=true")
                         .to("mock:result")
-                    .end();
+                        .end();
             }
         };
-    }
-
-    public static class MyAggregationStrategy implements AggregationStrategy {
-
-        public Exchange aggregate(Exchange oldExchange, Exchange newExchange) {
-            if (oldExchange == null) {
-                return newExchange;
-            }
-
-            Integer body1 = oldExchange.getIn().getBody(Integer.class);
-            Integer body2 = newExchange.getIn().getBody(Integer.class);
-            int sum = body1 + body2;
-
-            oldExchange.getIn().setBody(sum);
-            return oldExchange;
-        }
     }
 }

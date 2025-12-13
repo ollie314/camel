@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,29 +18,90 @@ package org.apache.camel.http.common;
 
 import java.io.Serializable;
 
+import org.apache.camel.spi.Metadata;
+
 public class HttpConfiguration implements Serializable {
     private static final long serialVersionUID = 1L;
 
+    @Metadata(label = "producer,security",
+              description = "Authentication methods allowed to use as a comma separated list of values Basic, or NTLM. (NTLM is deprecated)")
     private String authMethod;
+    @Metadata(label = "producer,security", secret = true, description = "Authentication username")
     private String authUsername;
+    @Metadata(label = "producer,security", secret = true, description = "Authentication password")
     private String authPassword;
+    @Metadata(label = "producer,security", secret = true, description = "Authentication bearer token")
+    private String authBearerToken;
+    @Metadata(label = "producer,security", secret = true, description = "OAuth2 client id")
+    private String oauth2ClientId;
+    @Metadata(label = "producer,security", secret = true, description = "OAuth2 client secret")
+    private String oauth2ClientSecret;
+    @Metadata(label = "producer,security", description = "OAuth2 token endpoint")
+    private String oauth2TokenEndpoint;
+    @Metadata(label = "producer,security", description = "OAuth2 scope")
+    private String oauth2Scope;
+    @Metadata(label = "producer,security", description = "OAuth2 Resource Indicator")
+    private String oauth2ResourceIndicator;
+    @Metadata(label = "producer,security",
+              description = "Whether to cache OAuth2 client tokens.")
+    private boolean oauth2CacheTokens;
+    @Metadata(label = "producer,security", defaultValue = "3600",
+              description = "Default expiration time for cached OAuth2 tokens, in seconds. Used if token response does not contain 'expires_in' field.")
+    private long oauth2CachedTokensDefaultExpirySeconds = 3600L;
+    @Metadata(label = "producer,security", defaultValue = "5",
+              description = "Amount of time which is deducted from OAuth2 tokens expiry time to compensate for the time it takes OAuth2 Token Endpoint to send the token over http, in seconds. "
+                            +
+                            "Set this parameter to high value if you OAuth2 Token Endpoint answers slowly or you tokens expire quickly. "
+                            +
+                            "If you set this parameter to too small value, you can get 4xx http errors because camel will think that the received token is still valid, while in reality the token is expired for the Authentication server.")
+    private long oauth2CachedTokensExpirationMarginSeconds = 5;
+    @Metadata(label = "producer,security",
+              description = "Whether to use OAuth2 body authentication.")
+    private boolean oauth2BodyAuthentication;
+    @Metadata(label = "producer,security", description = "Authentication domain to use with NTLM")
+    @Deprecated
     private String authDomain;
+    @Metadata(label = "producer,security", description = "Authentication host to use with NTLM")
+    @Deprecated
     private String authHost;
-
-    private String proxyAuthMethod;
-    private String proxyAuthUsername;
-    private String proxyAuthPassword;
-    private String proxyAuthDomain;
-    private String proxyAuthHost;
-
+    @Metadata(label = "producer,proxy", description = "Proxy hostname to use")
     private String proxyHost;
+    @Metadata(label = "producer,proxy", description = "Proxy port to use")
     private int proxyPort;
-    private String authMethodPriority;
+    @Metadata(label = "producer,proxy", enums = "http,https", description = "Authentication scheme to use")
+    private String proxyAuthScheme;
+    @Metadata(label = "producer,proxy", enums = "Basic,Bearer,NTLM", description = "Proxy authentication method to use")
+    private String proxyAuthMethod;
+    @Metadata(label = "producer,proxy", secret = true, description = "Proxy authentication username")
+    private String proxyAuthUsername;
+    @Metadata(label = "producer,proxy", secret = true, description = "Proxy authentication password")
+    private String proxyAuthPassword;
+    @Metadata(label = "producer,proxy", description = "Proxy authentication host")
+    private String proxyAuthHost;
+    @Metadata(label = "producer,proxy", description = "Proxy authentication port")
+    private int proxyAuthPort;
+    @Metadata(label = "producer,proxy", description = "Proxy authentication domain to use with NTLM")
+    @Deprecated
+    private String proxyAuthDomain;
+
+    public String getAuthMethod() {
+        return authMethod;
+    }
+
+    /**
+     * Authentication methods allowed to use as a comma separated list of values Basic, Bearer, or NTLM (deprecated).
+     */
+    public void setAuthMethod(String authMethod) {
+        this.authMethod = authMethod;
+    }
 
     public String getAuthUsername() {
         return authUsername;
     }
 
+    /**
+     * Authentication username
+     */
     public void setAuthUsername(String authUsername) {
         this.authUsername = authUsername;
     }
@@ -49,14 +110,31 @@ public class HttpConfiguration implements Serializable {
         return authPassword;
     }
 
+    /**
+     * Authentication password
+     */
     public void setAuthPassword(String authPassword) {
         this.authPassword = authPassword;
+    }
+
+    public String getAuthBearerToken() {
+        return authBearerToken;
+    }
+
+    /**
+     * Authentication bearer token
+     */
+    public void setAuthBearerToken(String authBearerToken) {
+        this.authBearerToken = authBearerToken;
     }
 
     public String getAuthDomain() {
         return authDomain;
     }
 
+    /**
+     * Authentication domain to use with NTLM
+     */
     public void setAuthDomain(String authDomain) {
         this.authDomain = authDomain;
     }
@@ -65,14 +143,42 @@ public class HttpConfiguration implements Serializable {
         return authHost;
     }
 
+    /**
+     * Authentication host to use with NTLM
+     */
     public void setAuthHost(String authHost) {
         this.authHost = authHost;
+    }
+
+    public String getProxyAuthScheme() {
+        return proxyAuthScheme;
+    }
+
+    /**
+     * Proxy authentication scheme to use
+     */
+    public void setProxyAuthScheme(String proxyAuthScheme) {
+        this.proxyAuthScheme = proxyAuthScheme;
+    }
+
+    public String getProxyAuthMethod() {
+        return proxyAuthMethod;
+    }
+
+    /**
+     * Proxy authentication method to use
+     */
+    public void setProxyAuthMethod(String proxyAuthMethod) {
+        this.proxyAuthMethod = proxyAuthMethod;
     }
 
     public String getProxyAuthUsername() {
         return proxyAuthUsername;
     }
 
+    /**
+     * Proxy authentication username
+     */
     public void setProxyAuthUsername(String proxyAuthUsername) {
         this.proxyAuthUsername = proxyAuthUsername;
     }
@@ -81,6 +187,9 @@ public class HttpConfiguration implements Serializable {
         return proxyAuthPassword;
     }
 
+    /**
+     * Proxy authentication password
+     */
     public void setProxyAuthPassword(String proxyAuthPassword) {
         this.proxyAuthPassword = proxyAuthPassword;
     }
@@ -89,6 +198,9 @@ public class HttpConfiguration implements Serializable {
         return proxyAuthDomain;
     }
 
+    /**
+     * Proxy authentication domain to use with NTLM
+     */
     public void setProxyAuthDomain(String proxyAuthDomain) {
         this.proxyAuthDomain = proxyAuthDomain;
     }
@@ -97,30 +209,31 @@ public class HttpConfiguration implements Serializable {
         return proxyAuthHost;
     }
 
+    /**
+     * Proxy authentication host
+     */
     public void setProxyAuthHost(String proxyAuthHost) {
         this.proxyAuthHost = proxyAuthHost;
     }
 
-    public String getAuthMethod() {
-        return authMethod;
+    public int getProxyAuthPort() {
+        return proxyAuthPort;
     }
 
-    public void setAuthMethod(String authMethod) {
-        this.authMethod = authMethod;
-    }
-
-    public String getProxyAuthMethod() {
-        return proxyAuthMethod;
-    }
-
-    public void setProxyAuthMethod(String proxyAuthMethod) {
-        this.proxyAuthMethod = proxyAuthMethod;
+    /**
+     * Proxy authentication port
+     */
+    public void setProxyAuthPort(int proxyAuthPort) {
+        this.proxyAuthPort = proxyAuthPort;
     }
 
     public String getProxyHost() {
         return proxyHost;
     }
 
+    /**
+     * Proxy hostname to use
+     */
     public void setProxyHost(String proxyHost) {
         this.proxyHost = proxyHost;
     }
@@ -129,15 +242,121 @@ public class HttpConfiguration implements Serializable {
         return proxyPort;
     }
 
+    /**
+     * Proxy port to use
+     */
     public void setProxyPort(int proxyPort) {
         this.proxyPort = proxyPort;
     }
 
-    public String getAuthMethodPriority() {
-        return authMethodPriority;
+    public String getOauth2ClientId() {
+        return this.oauth2ClientId;
     }
 
-    public void setAuthMethodPriority(String authMethodPriority) {
-        this.authMethodPriority = authMethodPriority;
+    /**
+     * OAuth2 Client id
+     */
+    public void setOauth2ClientId(String oauth2ClientId) {
+        this.oauth2ClientId = oauth2ClientId;
+    }
+
+    public String getOauth2ClientSecret() {
+        return this.oauth2ClientSecret;
+    }
+
+    /**
+     * OAuth2 Client secret
+     */
+    public void setOauth2ClientSecret(String oauth2ClientSecret) {
+        this.oauth2ClientSecret = oauth2ClientSecret;
+    }
+
+    public String getOauth2TokenEndpoint() {
+        return this.oauth2TokenEndpoint;
+    }
+
+    /**
+     * OAuth2 token endpoint
+     */
+    public void setOauth2TokenEndpoint(String oauth2TokenEndpoint) {
+        this.oauth2TokenEndpoint = oauth2TokenEndpoint;
+    }
+
+    public String getOauth2Scope() {
+        return oauth2Scope;
+    }
+
+    /**
+     * OAuth2 scope
+     */
+    public void setOauth2Scope(String oauth2Scope) {
+        this.oauth2Scope = oauth2Scope;
+    }
+
+    public boolean isOauth2CacheTokens() {
+        return oauth2CacheTokens;
+    }
+
+    /**
+     * Whether to cache OAuth2 client tokens.
+     */
+    public void setOauth2CacheTokens(boolean oauth2CacheTokens) {
+        this.oauth2CacheTokens = oauth2CacheTokens;
+    }
+
+    public long getOauth2CachedTokensDefaultExpirySeconds() {
+        return oauth2CachedTokensDefaultExpirySeconds;
+    }
+
+    /**
+     * Default expiration time for cached OAuth2 tokens, in seconds. Used if token response does not contain
+     * 'expires_in' field.
+     */
+    public void setOauth2CachedTokensDefaultExpirySeconds(long oauth2CachedTokensDefaultExpirySeconds) {
+        this.oauth2CachedTokensDefaultExpirySeconds = oauth2CachedTokensDefaultExpirySeconds;
+    }
+
+    public long getOauth2CachedTokensExpirationMarginSeconds() {
+        return oauth2CachedTokensExpirationMarginSeconds;
+    }
+
+    /**
+     * Amount of time which is deducted from OAuth2 tokens expiry time to compensate for the time it takes OAuth2 Token
+     * Endpoint to send the token over http, in seconds. Set this parameter to high value if you OAuth2 Token Endpoint
+     * answers slowly or you tokens expire quickly. If you set this parameter to too small value, you can get 4xx http
+     * errors because camel will think that the received token is still valid, while in reality the token is expired for
+     * the Authentication server.
+     */
+    public void setOauth2CachedTokensExpirationMarginSeconds(long oauth2CachedTokensExpirationMarginSeconds) {
+        this.oauth2CachedTokensExpirationMarginSeconds = oauth2CachedTokensExpirationMarginSeconds;
+    }
+
+    /**
+     * Gets oauth 2 resource indicator.
+     *
+     * @return the oauth 2 resource indicator
+     */
+    public String getOauth2ResourceIndicator() {
+        return oauth2ResourceIndicator;
+    }
+
+    /**
+     * Sets oauth 2 resource indicator.
+     *
+     * @param oauth2ResourceIndicator the oauth 2 resource indicator
+     */
+    public void setOauth2ResourceIndicator(final String oauth2ResourceIndicator) {
+        this.oauth2ResourceIndicator = oauth2ResourceIndicator;
+    }
+
+    public boolean isOauth2BodyAuthentication() {
+        return oauth2BodyAuthentication;
+    }
+
+    /**
+     * Whether to use OAuth2 body authentication.
+     */
+    public void setOauth2BodyAuthentication(boolean oauth2BodyAuthentication) {
+        this.oauth2BodyAuthentication = oauth2BodyAuthentication;
     }
 }

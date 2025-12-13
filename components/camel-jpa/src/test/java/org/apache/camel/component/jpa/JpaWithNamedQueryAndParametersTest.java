@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,7 +21,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import javax.persistence.EntityManager;
+
+import jakarta.persistence.EntityManager;
 
 import org.apache.camel.Consumer;
 import org.apache.camel.Endpoint;
@@ -30,22 +31,25 @@ import org.apache.camel.Processor;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.examples.Customer;
 import org.apache.camel.impl.DefaultCamelContext;
-import org.apache.camel.impl.SimpleRegistry;
-import org.apache.camel.util.ServiceHelper;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.support.SimpleRegistry;
+import org.apache.camel.support.service.ServiceHelper;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
-public class JpaWithNamedQueryAndParametersTest extends Assert {
-    
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+public class JpaWithNamedQueryAndParametersTest {
+
     protected static final Logger LOG = LoggerFactory.getLogger(JpaWithNamedQueryAndParametersTest.class);
-    
+
     protected DefaultCamelContext camelContext;
     protected ProducerTemplate template;
     protected JpaEndpoint endpoint;
@@ -73,10 +77,10 @@ public class JpaWithNamedQueryAndParametersTest extends Assert {
         });
 
         List<?> results = entityManager.createQuery(queryText).getResultList();
-        assertEquals("Should have no results: " + results, 0, results.size());
+        assertEquals(0, results.size(), "Should have no results: " + results);
 
         // lets produce some objects
-        template.send(endpoint, new Processor() {
+        template.send("jpa://" + Customer.class.getName(), new Processor() {
             public void process(Exchange exchange) {
                 Customer customer = new Customer();
                 customer.setName("Willem");
@@ -86,14 +90,14 @@ public class JpaWithNamedQueryAndParametersTest extends Assert {
 
         // now lets assert that there is a result
         results = entityManager.createQuery(queryText).getResultList();
-        assertEquals("Should have results: " + results, 1, results.size());
-        Customer customer = (Customer)results.get(0);
-        assertEquals("name property", "Willem", customer.getName());
+        assertEquals(1, results.size(), "Should have results: " + results);
+        Customer customer = (Customer) results.get(0);
+        assertEquals("Willem", customer.getName(), "name property");
 
         // now lets create a consumer to consume it
         consumer = endpoint.createConsumer(new Processor() {
             public void process(Exchange e) {
-                LOG.info("Received exchange: " + e.getIn());
+                LOG.info("Received exchange: {}", e.getIn());
                 receivedExchange = e;
                 latch.countDown();
             }
@@ -103,7 +107,7 @@ public class JpaWithNamedQueryAndParametersTest extends Assert {
         assertTrue(latch.await(10, TimeUnit.SECONDS));
 
         assertReceivedResult(receivedExchange);
-        
+
         JpaConsumer jpaConsumer = (JpaConsumer) consumer;
         assertURIQueryOption(jpaConsumer);
     }
@@ -111,42 +115,46 @@ public class JpaWithNamedQueryAndParametersTest extends Assert {
     protected void assertReceivedResult(Exchange exchange) {
         assertNotNull(exchange);
         Customer result = exchange.getIn().getBody(Customer.class);
-        assertNotNull("Received a POJO", result);
-        assertEquals("name property", "Willem", result.getName());
+        assertNotNull(result, "Received a POJO");
+        assertEquals("Willem", result.getName(), "name property");
     }
-   
+
     protected void assertURIQueryOption(JpaConsumer jpaConsumer) {
         assertEquals("findAllCustomersWithName", jpaConsumer.getNamedQuery());
     }
 
-    @Before
-    public void setUp() throws Exception {
+    @BeforeEach
+    public void setUp() {
         camelContext = new DefaultCamelContext();
         SimpleRegistry registry = new SimpleRegistry();
-        Map<String, Object> params = new HashMap<String, Object>();
+        Map<String, Object> params = new HashMap<>();
         params.put("custName", "Willem");
         // bind the params
-        registry.put("params", params);
-        camelContext.setRegistry(registry);
-        
+        registry.bind("params", params);
+        camelContext.getCamelContextExtension().setRegistry(registry);
+
+        camelContext.start();
+
         template = camelContext.createProducerTemplate();
-        ServiceHelper.startServices(template, camelContext);
 
         Endpoint value = camelContext.getEndpoint(getEndpointUri());
-        assertNotNull("Could not find endpoint!", value);
-        assertTrue("Should be a JPA endpoint but was: " + value, value instanceof JpaEndpoint);
-        endpoint = (JpaEndpoint)value;
+        assertNotNull(value, "Could not find endpoint!");
+        assertTrue(value instanceof JpaEndpoint, "Should be a JPA endpoint but was: " + value);
+        endpoint = (JpaEndpoint) value;
 
-        transactionTemplate = endpoint.createTransactionTemplate();
-        entityManager = endpoint.createEntityManager();
+        if (endpoint.getTransactionStrategy() instanceof DefaultTransactionStrategy strategy) {
+            transactionTemplate = strategy.getTransactionTemplate();
+        }
+        entityManager = endpoint.getEntityManagerFactory().createEntityManager();
     }
 
     protected String getEndpointUri() {
-        return "jpa://" + Customer.class.getName() + "?consumer.namedQuery=findAllCustomersWithName&consumer.parameters=#params";
+        return "jpa://" + Customer.class.getName() + "?namedQuery=findAllCustomersWithName&parameters=#params";
     }
 
-    @After
-    public void tearDown() throws Exception {
-        ServiceHelper.stopServices(consumer, template, camelContext);
+    @AfterEach
+    public void tearDown() {
+        ServiceHelper.stopService(consumer, template);
+        camelContext.stop();
     }
 }

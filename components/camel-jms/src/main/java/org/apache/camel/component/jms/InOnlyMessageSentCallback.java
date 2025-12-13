@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,18 +16,17 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.Destination;
-import javax.jms.Message;
-import javax.jms.Session;
+import jakarta.jms.Destination;
+import jakarta.jms.Message;
+import jakarta.jms.Session;
 
 import org.apache.camel.Exchange;
 
 import static org.apache.camel.component.jms.JmsMessageHelper.getJMSMessageID;
 
 /**
- * {@link MessageSentCallback} used to enrich the Camel {@link Exchange} with
- * the actual <tt>JMSMessageID</tt> after sending to a JMS Destination using
- * {@link org.apache.camel.ExchangePattern#InOnly} style.
+ * {@link MessageSentCallback} used to enrich the Camel {@link Exchange} with the actual <tt>JMSMessageID</tt> after
+ * sending to a JMS Destination using {@link org.apache.camel.ExchangePattern#InOnly} style.
  */
 public class InOnlyMessageSentCallback implements MessageSentCallback {
 
@@ -42,11 +41,7 @@ public class InOnlyMessageSentCallback implements MessageSentCallback {
         if (exchange != null) {
             String id = getJMSMessageID(message);
             if (id != null) {
-                if (exchange.hasOut()) {
-                    exchange.getOut().setHeader("JMSMessageID", id);
-                } else {
-                    exchange.getIn().setHeader("JMSMessageID", id);
-                }
+                exchange.getMessage().setHeader(JmsConstants.JMS_HEADER_MESSAGE_ID, id);
             }
         }
     }

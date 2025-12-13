@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,33 +21,35 @@ import java.util.Map;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 
 import static org.hamcrest.CoreMatchers.instanceOf;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 public class SqlConsumerOutputTypeStreamListTest extends CamelTestSupport {
 
     private EmbeddedDatabase db;
 
-    @Before
-    public void setUp() throws Exception {
-        db = new EmbeddedDatabaseBuilder()
-                .setType(EmbeddedDatabaseType.DERBY).addScript("sql/createAndPopulateDatabase.sql").build();
+    @Override
 
-        super.setUp();
+    public void doPreSetup() throws Exception {
+        db = new EmbeddedDatabaseBuilder()
+                .setName(getClass().getSimpleName())
+                .setType(EmbeddedDatabaseType.H2)
+                .addScript("sql/createAndPopulateDatabase.sql").build();
+
     }
 
-    @After
-    public void tearDown() throws Exception {
-        super.tearDown();
+    @Override
+    public void doPostTearDown() throws Exception {
 
-        db.shutdown();
+        if (db != null) {
+            db.shutdown();
+        }
     }
 
     @Test
@@ -55,7 +57,7 @@ public class SqlConsumerOutputTypeStreamListTest extends CamelTestSupport {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMinimumMessageCount(1);
 
-        context.startRoute("route1");
+        context.getRouteController().startRoute("route1");
 
         mock.assertIsSatisfied();
         assertThat(resultBodyAt(mock, 0), instanceOf(Iterator.class));
@@ -66,7 +68,7 @@ public class SqlConsumerOutputTypeStreamListTest extends CamelTestSupport {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMinimumMessageCount(3);
 
-        context.startRoute("route2");
+        context.getRouteController().startRoute("route2");
 
         mock.assertIsSatisfied();
         assertThat(resultBodyAt(mock, 0), instanceOf(Map.class));
@@ -79,7 +81,7 @@ public class SqlConsumerOutputTypeStreamListTest extends CamelTestSupport {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMinimumMessageCount(3);
 
-        context.startRoute("route3");
+        context.getRouteController().startRoute("route3");
 
         mock.assertIsSatisfied();
         assertThat(resultBodyAt(mock, 0), instanceOf(ProjectModel.class));
@@ -92,27 +94,30 @@ public class SqlConsumerOutputTypeStreamListTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
                 getContext().getComponent("sql", SqlComponent.class).setDataSource(db);
 
-                from("sql:select * from projects order by id?outputType=StreamList").routeId("route1").noAutoStartup()
+                from("sql:select * from projects order by id?outputType=StreamList&initialDelay=0&delay=50").routeId("route1")
+                        .autoStartup(false)
                         .to("log:stream")
                         .to("mock:result");
 
-                from("sql:select * from projects order by id?outputType=StreamList").routeId("route2").noAutoStartup()
+                from("sql:select * from projects order by id?outputType=StreamList&initialDelay=0&delay=50").routeId("route2")
+                        .autoStartup(false)
                         .to("log:stream")
                         .split(body()).streaming()
-                            .to("log:row")
-                            .to("mock:result")
+                        .to("log:row")
+                        .to("mock:result")
                         .end();
 
-                from("sql:select * from projects order by id?outputType=StreamList&outputClass=org.apache.camel.component.sql.ProjectModel").routeId("route3").noAutoStartup()
+                from("sql:select * from projects order by id?outputType=StreamList&outputClass=org.apache.camel.component.sql.ProjectModel&initialDelay=0&delay=50")
+                        .routeId("route3").autoStartup(false)
                         .to("log:stream")
                         .split(body()).streaming()
-                            .to("log:row")
-                            .to("mock:result")
+                        .to("log:row")
+                        .to("mock:result")
                         .end();
             }
         };

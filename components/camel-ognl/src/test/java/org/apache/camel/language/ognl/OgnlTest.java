@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,16 +16,17 @@
  */
 package org.apache.camel.language.ognl;
 
-import org.apache.camel.test.junit4.LanguageTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.LanguageTestSupport;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 public class OgnlTest extends LanguageTestSupport {
 
     @Test
-    public void testOgnlExpressions() throws Exception {
+    public void testOgnlExpressions() {
         assertExpression("exchange", exchange);
         assertExpression("exchange.getIn().body", "<hello id='m123'>world!</hello>");
         assertExpression("getRequest().body", "<hello id='m123'>world!</hello>");
@@ -36,29 +37,31 @@ public class OgnlTest extends LanguageTestSupport {
     }
 
     @Test
-    public void testClassMethodExpression() throws Exception {
+    public void testClassMethodExpression() {
         try {
             assertExpression("@org.apache.camel.language.ognl.Animal1@getClassName()", "Animal");
             fail("Expect exception here.");
         } catch (Exception ex) {
-            assertTrue("We should get the ClassNotFoundException", ex.getMessage().indexOf("ClassNotFoundException") > 0);
+            assertTrue(ex.getMessage().contains("ClassNotFoundException"), "We should get the ClassNotFoundException");
         }
         // setup the class resolver to load the right class for us
         exchange.getContext().setClassResolver(new MyClassResolver(context));
         assertExpression("@org.apache.camel.language.ognl.Animal1@getClassName()", "Animal");
     }
+
     @Test
-    public void testGetOutFalseKeepsNullOutMessage() throws Exception {
+    public void testGetOutFalseKeepsNullOutMessage() {
         assertExpression("exchange.hasOut()", false);
         assertFalse(exchange.hasOut());
     }
 
     @Test
-    public void testResponseCreatesOutMessage() throws Exception {
+    public void testResponseCreatesOutMessage() {
         assertExpression("response.body", null);
         assertTrue(exchange.hasOut());
     }
 
+    @Override
     protected String getLanguageName() {
         return "ognl";
     }

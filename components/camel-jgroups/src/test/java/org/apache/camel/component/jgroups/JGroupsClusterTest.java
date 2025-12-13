@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,21 +16,19 @@
  */
 package org.apache.camel.component.jgroups;
 
-import static java.lang.String.format;
-import static java.util.UUID.randomUUID;
-
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.impl.DefaultCamelContext;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
+import static java.lang.String.format;
+import static java.util.UUID.randomUUID;
 import static org.apache.camel.component.jgroups.JGroupsFilters.dropNonCoordinatorViews;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-
-public class JGroupsClusterTest extends Assert {
+public class JGroupsClusterTest {
 
     // Tested state
 
@@ -49,37 +47,35 @@ public class JGroupsClusterTest extends Assert {
     class Builder extends RouteBuilder {
 
         @Override
-        public void configure() throws Exception {
-            from(jgroupsEndpoint).
-                    filter(dropNonCoordinatorViews()).
-                    process(new Processor() {
-                        @Override
-                        public void process(Exchange exchange) throws Exception {
-                            String camelContextName = exchange.getContext().getName();
-                            if (!camelContextName.equals(master)) {
-                                master = camelContextName;
-                                nominationCount++;
-                            }
-                        }
-                    });
+        public void configure() {
+            from(jgroupsEndpoint).filter(dropNonCoordinatorViews()).process(new Processor() {
+                @Override
+                public void process(Exchange exchange) {
+                    String camelContextName = exchange.getContext().getName();
+                    if (!camelContextName.equals(master)) {
+                        master = camelContextName;
+                        nominationCount++;
+                    }
+                }
+            });
         }
     }
 
-    @Before
+    @BeforeEach
     public void setUp() throws Exception {
         firstCamelContext = new DefaultCamelContext();
-        firstCamelContext.setName("firstNode");
+        firstCamelContext.getCamelContextExtension().setName("firstNode");
         firstCamelContext.addRoutes(new Builder());
 
         secondCamelContext = new DefaultCamelContext();
-        secondCamelContext.setName("secondNode");
+        secondCamelContext.getCamelContextExtension().setName("secondNode");
         secondCamelContext.addRoutes(new Builder());
     }
 
     // Tests
 
     @Test
-    public void shouldElectSecondNode() throws Exception {
+    public void shouldElectSecondNode() {
         // When
         firstCamelContext.start();
         String firstMaster = master;
@@ -95,7 +91,7 @@ public class JGroupsClusterTest extends Assert {
     }
 
     @Test
-    public void shouldKeepMaster() throws Exception {
+    public void shouldKeepMaster() {
         // When
         firstCamelContext.start();
         String firstMaster = master;
@@ -111,7 +107,7 @@ public class JGroupsClusterTest extends Assert {
     }
 
     @Test
-    public void shouldElectSecondNodeAndReturnToFirst() throws Exception {
+    public void shouldElectSecondNodeAndReturnToFirst() {
         // When
         firstCamelContext.start();
         String firstMaster = master;

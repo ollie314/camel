@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,7 +20,11 @@ import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.component.undertow.BaseUndertowTest;
 import org.apache.camel.model.rest.RestBindingMode;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class RestUndertowHttpBindingModeXmlTest extends BaseUndertowTest {
 
@@ -33,7 +37,7 @@ public class RestUndertowHttpBindingModeXmlTest extends BaseUndertowTest {
         String body = "<user name=\"Donald Duck\" id=\"123\"></user>";
         template.sendBody("undertow:http://localhost:{{port}}/users/new", body);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         UserJaxbPojo user = mock.getReceivedExchanges().get(0).getIn().getBody(UserJaxbPojo.class);
         assertNotNull(user);
@@ -55,20 +59,19 @@ public class RestUndertowHttpBindingModeXmlTest extends BaseUndertowTest {
             // expected
         }
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
-
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 restConfiguration().component("undertow").host("localhost").port(getPort()).bindingMode(RestBindingMode.xml);
 
                 // use the rest DSL to define the rest services
                 rest("/users/")
-                    .post("new").type(UserJaxbPojo.class)
+                        .post("new").type(UserJaxbPojo.class)
                         .to("mock:input");
             }
         };

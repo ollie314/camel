@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,29 +18,33 @@ package org.apache.camel.component.mybatis;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.apache.camel.util.StopWatch;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class MyBatisPollingDelayRouteTest extends MyBatisTestSupport {
 
     @Test
     public void testSendAccountBean() throws Exception {
-        long start = System.currentTimeMillis();
+        StopWatch stopWatch = new StopWatch();
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMinimumMessageCount(2);
 
-        assertMockEndpointsSatisfied();
-        long delta = System.currentTimeMillis() - start;
+        MockEndpoint.assertIsSatisfied(context);
+        long delta = stopWatch.taken();
 
-        assertTrue("Should not take that long: " + delta, delta < 7000);
+        assertTrue(delta < 7000, "Should not take that long: " + delta);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: e1
                 // run this timer every 2nd second, that will select data from the database and send it to the mock endpoint
-                from("timer://pollTheDatabase?delay=2000").to("mybatis:selectAllAccounts?statementType=SelectList").to("mock:result");
+                from("timer://pollTheDatabase?delay=2000").to("mybatis:selectAllAccounts?statementType=SelectList")
+                        .to("mock:result");
                 // END SNIPPET: e1
             }
         };

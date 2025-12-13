@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -30,6 +30,10 @@ public class StringMultiSelectPicklistSerializer extends StdSerializer<Object> {
 
     private static final long serialVersionUID = 1406195556960561677L;
 
+    public StringMultiSelectPicklistSerializer() {
+        super(Object.class);
+    }
+
     protected StringMultiSelectPicklistSerializer(Class<Object> t) {
         super(t);
     }
@@ -44,7 +48,7 @@ public class StringMultiSelectPicklistSerializer extends StdSerializer<Object> {
             // construct a string of form value1;value2;...
             final StringBuilder buffer = new StringBuilder();
             for (int i = 0; i < length; i++) {
-                buffer.append((String) a[i].trim());
+                buffer.append(a[i].trim());
                 if (i < (length - 1)) {
                     buffer.append(';');
                 }
@@ -54,8 +58,9 @@ public class StringMultiSelectPicklistSerializer extends StdSerializer<Object> {
 
         } catch (Exception e) {
             throw new JsonGenerationException(
-                    String.format("Exception writing pick list value %s of type %s: %s",
-                            value, value.getClass().getName(), e.getMessage()), jgen);
+                    String.format("Exception writing pick list value %s of type %s: %s", value, value.getClass().getName(),
+                            e.getMessage()),
+                    jgen);
         }
     }
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,26 +16,34 @@
  */
 package org.apache.camel.component.jms.discovery;
 
-import java.util.HashMap;
-import java.util.Map;
-import javax.jms.ConnectionFactory;
-import javax.naming.Context;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.ShutdownRoute;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.jms.CamelJmsTestHelper;
+import org.apache.camel.component.jms.AbstractJMSTest;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.apache.camel.test.infra.core.annotations.ContextFixture;
+import org.awaitility.Awaitility;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * @version 
- */
-public class JmsDiscoveryTest extends CamelTestSupport {
-    protected MyRegistry registry = new MyRegistry();
+public class JmsDiscoveryTest extends AbstractJMSTest {
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected final MyRegistry myRegistry = new MyRegistry();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
     public void testDiscovery() throws Exception {
@@ -45,46 +53,51 @@ public class JmsDiscoveryTest extends CamelTestSupport {
         // force shutdown after 5 seconds as otherwise the bean will keep generating a new input
         context.getShutdownStrategy().setTimeout(5);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // sleep a little
-        Thread.sleep(1000);
-
-        Map<String, Map<?, ?>> map = new HashMap<String, Map<?, ?>>(registry.getServices());
-        assertTrue("There should be 1 or more, was: " + map.size(), map.size() >= 1);
-    }
-
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-
-        return camelContext;
+        Awaitility.await().atMost(1, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertThat(myRegistry.getServices()).hasSizeGreaterThanOrEqualTo(1));
     }
 
     @Override
-    protected Context createJndiContext() throws Exception {
-        Context context = super.createJndiContext();
-        context.bind("service1", new MyService("service1"));
-        context.bind("registry", registry);
-        return context;
+    protected String getComponentName() {
+        return "activemq";
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @ContextFixture
+    public void configureComponent(CamelContext context) {
+        context.getRegistry().bind("service1", new MyService("service1"));
+        context.getRegistry().bind("registry", myRegistry);
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // lets setup the heartbeats
                 from("timer:heartbeats?delay=100")
-                    .to("bean:service1?method=status")
-                    .to("activemq:topic:registry.heartbeats");
+                        .to("bean:service1?method=status")
+                        .to("activemq:topic:registry.heartbeats");
 
                 // defer shutting this route down as the first route depends upon it to
                 // be running so it can complete its current exchanges
                 from("activemq:topic:registry.heartbeats")
-                    .shutdownRoute(ShutdownRoute.Defer)
-                    .to("bean:registry?method=onEvent", "mock:result");
+                        .shutdownRoute(ShutdownRoute.Defer)
+                        .to("bean:registry?method=onEvent", "mock:result");
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
     }
 }

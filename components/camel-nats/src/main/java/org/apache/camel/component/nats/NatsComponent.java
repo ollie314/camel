@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,17 +19,72 @@ package org.apache.camel.component.nats;
 import java.util.Map;
 
 import org.apache.camel.Endpoint;
-import org.apache.camel.impl.DefaultComponent;
+import org.apache.camel.SSLContextParametersAware;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.spi.annotations.Component;
+import org.apache.camel.support.HeaderFilterStrategyComponent;
 
-public class NatsComponent extends DefaultComponent {
+@Component("nats")
+public class NatsComponent extends HeaderFilterStrategyComponent implements SSLContextParametersAware {
+
+    @Metadata
+    private String servers;
+    @Metadata(label = "security", defaultValue = "false")
+    private boolean useGlobalSslContextParameters;
+    @Metadata
+    private boolean verbose;
 
     @Override
     protected Endpoint createEndpoint(String uri, String remaining, Map<String, Object> parameters) throws Exception {
         NatsConfiguration config = new NatsConfiguration();
-        setProperties(config, parameters);
-        config.setServers(remaining);
-        NatsEndpoint endpoint = new NatsEndpoint(uri, this, config);
-        return endpoint;
+        if (getHeaderFilterStrategy() != null) {
+            config.setHeaderFilterStrategy(getHeaderFilterStrategy());
+        }
+        config.setTopic(remaining);
+        config.setServers(servers);
+        config.setVerbose(verbose);
+
+        if (config.getSslContextParameters() == null) {
+            config.setSslContextParameters(retrieveGlobalSslContextParameters());
+        }
+
+        NatsEndpoint answer = new NatsEndpoint(uri, this, config);
+        setProperties(answer, parameters);
+        return answer;
     }
 
+    /**
+     * URLs to one or more NAT servers. Use comma to separate URLs when specifying multiple servers.
+     */
+    public String getServers() {
+        return servers;
+    }
+
+    public void setServers(String servers) {
+        this.servers = servers;
+    }
+
+    @Override
+    public boolean isUseGlobalSslContextParameters() {
+        return this.useGlobalSslContextParameters;
+    }
+
+    /**
+     * Enable usage of global SSL context parameters.
+     */
+    @Override
+    public void setUseGlobalSslContextParameters(boolean useGlobalSslContextParameters) {
+        this.useGlobalSslContextParameters = useGlobalSslContextParameters;
+    }
+
+    public boolean isVerbose() {
+        return verbose;
+    }
+
+    /**
+     * Whether or not running in verbose mode
+     */
+    public void setVerbose(boolean verbose) {
+        this.verbose = verbose;
+    }
 }

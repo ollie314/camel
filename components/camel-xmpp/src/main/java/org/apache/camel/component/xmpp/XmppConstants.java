@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,6 +16,8 @@
  */
 package org.apache.camel.component.xmpp;
 
+import org.apache.camel.spi.Metadata;
+
 /**
  * Constants used in Camel XMPP module
  */
@@ -24,7 +26,15 @@ public interface XmppConstants {
     String SUBJECT = "CamelXmppSubject";
     String THREAD_ID = "CamelXmppThreadID";
     String FROM = "CamelXmppFrom";
+
+    /**
+     * @deprecated use {@link #STANZA_ID} instead.
+     */
+    @Deprecated
     String PACKET_ID = "CamelXmppPacketID";
+
+    String STANZA_ID = "CamelXmppStanzaID";
     String TO = "CamelXmppTo";
+    @Metadata(label = "consumer", description = "The XMPP message", javaType = "org.jivesoftware.smack.packet.Message")
     String DOC_HEADER = "CamelXmppDoc";
 }

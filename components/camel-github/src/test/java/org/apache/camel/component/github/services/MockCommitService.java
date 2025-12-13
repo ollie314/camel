@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,13 +16,13 @@
  */
 package org.apache.camel.component.github.services;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.eclipse.egit.github.core.Commit;
 import org.eclipse.egit.github.core.CommitStatus;
 import org.eclipse.egit.github.core.IRepositoryIdProvider;
 import org.eclipse.egit.github.core.RepositoryCommit;
@@ -34,11 +34,11 @@ import org.slf4j.LoggerFactory;
 public class MockCommitService extends CommitService {
     protected static final Logger LOG = LoggerFactory.getLogger(MockCommitService.class);
 
-    private List<RepositoryCommit> commitsList = new ArrayList<RepositoryCommit>();
+    private List<RepositoryCommit> commitsList = new ArrayList<>();
     private AtomicLong fakeSha = new AtomicLong(System.currentTimeMillis());
-    private Map<String, CommitStatus> commitStatus = new HashMap<String, CommitStatus>();
+    private Map<String, CommitStatus> commitStatus = new HashMap<>();
 
-    public synchronized RepositoryCommit addRepositoryCommit() {
+    public synchronized RepositoryCommit addRepositoryCommit(String message) {
         User author = new User();
         author.setEmail("someguy@gmail.com");       // TODO change
         author.setHtmlUrl("http://github/someguy");
@@ -47,21 +47,39 @@ public class MockCommitService extends CommitService {
         RepositoryCommit rc = new RepositoryCommit();
         rc.setAuthor(author);
         rc.setSha(fakeSha.incrementAndGet() + "");
-        LOG.debug("In MockCommitService added commit with sha " + rc.getSha());
-        commitsList.add(rc);
+        rc.setCommitter(author);
+        Commit commit = new Commit();
+        if (message == null) {
+            commit.setMessage("Test");
+        } else {
+            commit.setMessage(message);
+        }
+        rc.setCommit(commit);
+        LOG.debug("In MockCommitService added commit with sha {}", rc.getSha());
+        commitsList.add(0, rc);
 
         return rc;
     }
 
     @Override
-    public synchronized List<RepositoryCommit> getCommits(IRepositoryIdProvider repository, String sha, String path) throws IOException {
-        LOG.debug("Returning list of size " + commitsList.size());
+    public synchronized List<RepositoryCommit> getCommits(IRepositoryIdProvider repository, String sha, String path) {
+        LOG.debug("Returning list of size {}", commitsList.size());
+
+        if (sha != null) {
+            for (int i = 0; i < commitsList.size(); i++) {
+                RepositoryCommit commit = commitsList.get(i);
+                if (commit.getSha().equals(sha)) {
+                    return commitsList.subList(i, commitsList.size());
+                }
+            }
+        }
         return commitsList;
     }
 
     @Override
-    public CommitStatus createStatus(IRepositoryIdProvider repository,
-            String sha, CommitStatus status) throws IOException {
+    public CommitStatus createStatus(
+            IRepositoryIdProvider repository,
+            String sha, CommitStatus status) {
         commitStatus.put(sha, status);
 
         return status;

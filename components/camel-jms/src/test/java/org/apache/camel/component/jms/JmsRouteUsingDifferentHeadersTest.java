@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,31 +18,38 @@ package org.apache.camel.component.jms;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import javax.jms.ConnectionFactory;
 
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+public class JmsRouteUsingDifferentHeadersTest extends AbstractJMSTest {
 
-/**
- * @version 
- */
-public class JmsRouteUsingDifferentHeadersTest extends CamelTestSupport {
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
     public void testUsingDifferentHeaderTypes() throws Exception {
-        Map<String, Object> headers = new LinkedHashMap<String, Object>();
-        headers.put("a", new Byte("65"));
+        Map<String, Object> headers = new LinkedHashMap<>();
+        headers.put("a", Byte.valueOf("65"));
         headers.put("b", Boolean.TRUE);
-        headers.put("c", new Double("44444"));
-        headers.put("d", new Float("55555"));
-        headers.put("e", new Integer("222"));
-        headers.put("f", new Long("7777777"));
-        headers.put("g", new Short("333"));
+        headers.put("c", Double.valueOf("44444"));
+        headers.put("d", Float.valueOf("55555"));
+        headers.put("e", Integer.valueOf("222"));
+        headers.put("f", Long.valueOf("7777777"));
+        headers.put("g", Short.valueOf("333"));
         headers.put("h", "Hello");
 
         MockEndpoint mock = getMockEndpoint("mock:result");
@@ -56,27 +63,35 @@ public class JmsRouteUsingDifferentHeadersTest extends CamelTestSupport {
         mock.message(0).header("g").isInstanceOf(Short.class);
         mock.message(0).header("h").isInstanceOf(String.class);
 
-        template.sendBodyAndHeaders("activemq:queue:foo", "Hello World", headers);
+        template.sendBodyAndHeaders("activemq:queue:JmsRouteUsingDifferentHeadersTest", "Hello World", headers);
 
-        assertMockEndpointsSatisfied();
-    }
-
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-
-        return camelContext;
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected String getComponentName() {
+        return "activemq";
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("activemq:queue:foo").to("mock:result");
+            public void configure() {
+                from("activemq:queue:JmsRouteUsingDifferentHeadersTest").to("mock:result");
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
     }
 }

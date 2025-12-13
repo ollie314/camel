@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,10 +22,11 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import com.splunk.Args;
 import com.splunk.Service;
-
 import org.apache.camel.component.splunk.SplunkEndpoint;
 import org.apache.camel.component.splunk.event.SplunkEvent;
 import org.slf4j.Logger;
@@ -38,6 +39,7 @@ public abstract class SplunkDataWriter implements DataWriter {
     protected Args args;
     private boolean connected;
     private Socket socket;
+    protected final Lock lock = new ReentrantLock();
 
     public SplunkDataWriter(SplunkEndpoint endpoint, Args args) {
         this.endpoint = endpoint;
@@ -46,35 +48,46 @@ public abstract class SplunkDataWriter implements DataWriter {
 
     protected abstract Socket createSocket(Service service) throws IOException;
 
+    @Override
     public void write(SplunkEvent event) throws Exception {
         doWrite(event.toString());
     }
 
+    @Override
     public void write(String event) throws Exception {
         doWrite(event + SplunkEvent.LINEBREAK);
     }
 
-    protected synchronized void doWrite(String event) throws IOException {
-        LOG.debug("writing event to splunk:" + event);
-        OutputStream ostream = socket.getOutputStream();
-        Writer writer = new OutputStreamWriter(ostream, StandardCharsets.UTF_8);
-        writer.write(event);
-        writer.flush();
+    protected void doWrite(String event) throws IOException {
+        lock.lock();
+        try {
+            LOG.debug("writing event to splunk:{}", event);
+            OutputStream ostream = socket.getOutputStream();
+            Writer writer = new OutputStreamWriter(ostream, StandardCharsets.UTF_8);
+            writer.write(event);
+            writer.flush();
+        } finally {
+            lock.unlock();
+        }
     }
 
     @Override
-    public synchronized void start() {
+    public void start() {
+        lock.lock();
         try {
             socket = createSocket(endpoint.getService());
             connected = true;
         } catch (Exception e) {
             connected = false;
             throw new RuntimeException(e);
+        } finally {
+            lock.unlock();
         }
     }
 
     @Override
-    public synchronized void stop() {
+    public void stop() {
+        lock.lock();
         try {
             if (socket != null) {
                 socket.close();
@@ -82,9 +95,12 @@ public abstract class SplunkDataWriter implements DataWriter {
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
+        } finally {
+            lock.unlock();
         }
     }
 
+    @Override
     public boolean isConnected() {
         return connected;
     }

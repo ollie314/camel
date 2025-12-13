@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,11 +18,16 @@ package org.apache.camel.component.quartz;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.quartz.CronTrigger;
 import org.quartz.JobDetail;
+import org.quartz.Trigger;
+
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * @version 
+ * This test the CronTrigger as a timer endpoint in a route.
  */
 public class QuartzCronRouteTest extends BaseQuartzTest {
 
@@ -31,24 +36,24 @@ public class QuartzCronRouteTest extends BaseQuartzTest {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMinimumMessageCount(3);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
-        JobDetail job = mock.getReceivedExchanges().get(0).getIn().getHeader("jobDetail", JobDetail.class);
-        assertNotNull(job);
+        Trigger trigger = mock.getReceivedExchanges().get(0).getIn().getHeader("trigger", Trigger.class);
+        assertIsInstanceOf(CronTrigger.class, trigger);
 
-        assertEquals("cron", job.getJobDataMap().get(QuartzConstants.QUARTZ_TRIGGER_TYPE));
-        assertEquals("0/2 * * * * ?", job.getJobDataMap().get(QuartzConstants.QUARTZ_TRIGGER_CRON_EXPRESSION));
+        JobDetail detail = mock.getReceivedExchanges().get(0).getIn().getHeader("jobDetail", JobDetail.class);
+        assertEquals(CamelJob.class, detail.getJobClass());
+
+        assertEquals("cron", detail.getJobDataMap().get(QuartzConstants.QUARTZ_TRIGGER_TYPE));
+        assertEquals("0/1 * * * * ?", detail.getJobDataMap().get(QuartzConstants.QUARTZ_TRIGGER_CRON_EXPRESSION));
     }
 
     @Override
     protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
-                // START SNIPPET: e1
-                // triggers every 2th second at precise 00,02,04,06..58
-                // notice we must use + as space when configured using URI parameter
-                from("quartz://myGroup/myTimerName?cron=0/2+*+*+*+*+?").to("mock:result");
-                // END SNIPPET: e1
+                // triggers every 1th second at precise 00,01,02,03..59
+                from("quartz://myGroup/myTimerName?cron=0/1 * * * * ?").to("mock:result");
             }
         };
     }

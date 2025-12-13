@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -25,9 +25,12 @@ import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.apache.camel.component.stream.StreamGroupLinesTest.LS;
+import static org.apache.camel.test.junit5.TestSupport.createDirectory;
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
 
 /**
  * Unit test for stream file
@@ -42,8 +45,7 @@ public class StreamFileTest extends CamelTestSupport {
     }
 
     @Override
-    @Before
-    public void setUp() throws Exception {
+    public void doPreSetup() throws Exception {
         deleteDirectory("target/stream");
         createDirectory("target/stream");
 
@@ -52,8 +54,6 @@ public class StreamFileTest extends CamelTestSupport {
 
         fos = new FileOutputStream(file);
         fos.write("Hello\n".getBytes());
-
-        super.setUp();
     }
 
     @Test
@@ -67,13 +67,13 @@ public class StreamFileTest extends CamelTestSupport {
             // can not use route builder as we need to have the file created in the setup before route builder starts
             Endpoint endpoint = context.getEndpoint("stream:file?fileName=target/stream/streamfile.txt&delay=100");
             Consumer consumer = endpoint.createConsumer(new Processor() {
-                public void process(Exchange exchange) throws Exception {
+                public void process(Exchange exchange) {
                     template.send("mock:result", exchange);
                 }
             });
             consumer.start();
 
-            assertMockEndpointsSatisfied();
+            MockEndpoint.assertIsSatisfied(context);
 
             consumer.stop();
         } finally {
@@ -85,14 +85,14 @@ public class StreamFileTest extends CamelTestSupport {
     public void testFileProducer() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMessageCount(3);
-        
+
         context.addRoutes(new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start").routeId("produce")
-                    .to("stream:file?fileName=target/stream/StreamFileTest.txt&autoCloseCount=2");
+                        .to("stream:file?fileName=target/stream/StreamFileTest.txt&autoCloseCount=2");
                 from("file://target/stream?fileName=StreamFileTest.txt&noop=true").routeId("consume").autoStartup(false)
-                    .split().tokenize(System.lineSeparator()).to("mock:result");
+                        .split().tokenize(LS).to("mock:result");
             }
         });
         context.start();
@@ -100,9 +100,9 @@ public class StreamFileTest extends CamelTestSupport {
         template.sendBody("direct:start", "Hadrian");
         template.sendBody("direct:start", "Apache");
         template.sendBody("direct:start", "Camel");
-        
-        context.startRoute("consume");
-        assertMockEndpointsSatisfied();
+
+        context.getRouteController().startRoute("consume");
+        MockEndpoint.assertIsSatisfied(context);
         context.stop();
     }
 }

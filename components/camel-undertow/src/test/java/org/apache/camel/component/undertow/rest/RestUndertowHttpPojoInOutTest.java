@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,21 +19,24 @@ package org.apache.camel.component.undertow.rest;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.undertow.BaseUndertowTest;
 import org.apache.camel.model.rest.RestBindingMode;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class RestUndertowHttpPojoInOutTest extends BaseUndertowTest {
 
     @Test
-    public void testUndertowPojoInOut() throws Exception {
+    public void testUndertowPojoInOut() {
         String body = "{\"id\": 123, \"name\": \"Donald Duck\"}";
         String out = template.requestBody("undertow:http://localhost:{{port}}/users/lives", body, String.class);
 
         assertNotNull(out);
         assertEquals("{\"iso\":\"EN\",\"country\":\"England\"}", out);
     }
-    
+
     @Test
-    public void testUndertowGetRequest() throws Exception {
+    public void testUndertowGetRequest() {
         String out = template.requestBody("undertow:http://localhost:{{port}}/users/lives", null, String.class);
 
         assertNotNull(out);
@@ -41,28 +44,30 @@ public class RestUndertowHttpPojoInOutTest extends BaseUndertowTest {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // configure to use undertow on localhost with the given port
                 // and enable auto binding mode
                 restConfiguration().component("undertow").host("localhost").port(getPort()).bindingMode(RestBindingMode.auto);
 
                 // use the rest DSL to define the rest services
                 rest("/users/")
-                    // just return the default country here
-                    .get("lives").to("direct:start")
-                    .post("lives").type(UserPojo.class).outType(CountryPojo.class)
-                        .route()
+                        // just return the default country here
+                        .get("lives").to("direct:start")
+                        .post("lives").type(UserPojo.class).outType(CountryPojo.class)
+                        .to("direct:lives");
+
+                from("direct:lives")
                         .bean(new UserService(), "livesWhere");
-            
+
                 CountryPojo country = new CountryPojo();
                 country.setIso("EN");
                 country.setCountry("England");
-                
+
                 from("direct:start").transform().constant(country);
-                
+
             }
         };
     }

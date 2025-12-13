@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,33 +16,48 @@
  */
 package org.apache.camel.component.dropbox.integration.consumer;
 
+import com.dropbox.core.v2.files.Metadata;
+import com.dropbox.core.v2.files.SearchMatchV2;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.component.dropbox.DropboxConfiguration;
 import org.apache.camel.component.dropbox.DropboxEndpoint;
 import org.apache.camel.component.dropbox.core.DropboxAPIFacade;
-import org.apache.camel.component.dropbox.dto.DropboxResult;
+import org.apache.camel.component.dropbox.dto.DropboxSearchResult;
+import org.apache.camel.component.dropbox.util.DropboxConstants;
 
 public class DropboxScheduledPollSearchConsumer extends DropboxScheduledPollConsumer {
 
-    public DropboxScheduledPollSearchConsumer(DropboxEndpoint endpoint, Processor processor, DropboxConfiguration configuration) {
+    public DropboxScheduledPollSearchConsumer(DropboxEndpoint endpoint, Processor processor,
+                                              DropboxConfiguration configuration) {
         super(endpoint, processor, configuration);
     }
 
     /**
      * Poll from a dropbox remote path and put the result in the message exchange
+     *
      * @return number of messages polled
-     * @throws Exception
      */
     @Override
     protected int poll() throws Exception {
-        Exchange exchange = endpoint.createExchange();
-        DropboxResult result = DropboxAPIFacade.getInstance(configuration.getClient())
-                .search(configuration.getRemotePath(), configuration.getQuery());
-        result.populateExchange(exchange);
-        LOG.info("consumer --> downloaded: " + result.toString());
-
+        Exchange exchange = createExchange(false);
         try {
+            DropboxSearchResult result = new DropboxAPIFacade(configuration.getClient(), exchange)
+                    .search(configuration.getRemotePath(), configuration.getQuery());
+
+            StringBuilder fileExtracted = new StringBuilder();
+            for (SearchMatchV2 entry : result.getFound()) {
+                Metadata metadata = entry.getMetadata().getMetadataValue();
+                fileExtracted.append(metadata.getName()).append('-').append(metadata.getPathDisplay())
+                        .append('\n');
+            }
+
+            exchange.getIn().setHeader(DropboxConstants.FOUND_FILES, fileExtracted.toString());
+            exchange.getIn().setBody(result.getFound());
+
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Downloaded: {}", result);
+            }
             // send message to next processor in the route
             getProcessor().process(exchange);
             return 1; // number of messages polled
@@ -51,6 +66,7 @@ public class DropboxScheduledPollSearchConsumer extends DropboxScheduledPollCons
             if (exchange.getException() != null) {
                 getExceptionHandler().handleException("Error processing exchange", exchange, exchange.getException());
             }
+            releaseExchange(exchange, false);
         }
     }
 }

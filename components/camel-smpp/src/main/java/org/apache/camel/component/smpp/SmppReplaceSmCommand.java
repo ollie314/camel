@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,6 +20,7 @@ import java.util.Date;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
+import org.apache.camel.support.ExchangeHelper;
 import org.jsmpp.bean.NumberingPlanIndicator;
 import org.jsmpp.bean.RegisteredDelivery;
 import org.jsmpp.bean.ReplaceSm;
@@ -63,8 +64,8 @@ public class SmppReplaceSmCommand extends SmppSmCommand {
             log.debug("Sent replacement command for a short message for exchange id '{}' and message id '{}'",
                     exchange.getExchangeId(), replaceSm.getMessageId());
         }
-        
-        Message rspMsg = getResponseMessage(exchange);
+
+        Message rspMsg = ExchangeHelper.getResultMessage(exchange);
         rspMsg.setHeader(SmppConstants.ID, replaceSm.getMessageId());
     }
 
@@ -101,7 +102,8 @@ public class SmppReplaceSmCommand extends SmppSmCommand {
         }
 
         if (in.getHeaders().containsKey(SmppConstants.SCHEDULE_DELIVERY_TIME)) {
-            replaceSm.setScheduleDeliveryTime(SmppUtils.formatTime(in.getHeader(SmppConstants.SCHEDULE_DELIVERY_TIME, Date.class)));
+            replaceSm.setScheduleDeliveryTime(
+                    SmppUtils.formatTime(in.getHeader(SmppConstants.SCHEDULE_DELIVERY_TIME, Date.class)));
         }
 
         if (in.getHeaders().containsKey(SmppConstants.VALIDITY_PERIOD)) {

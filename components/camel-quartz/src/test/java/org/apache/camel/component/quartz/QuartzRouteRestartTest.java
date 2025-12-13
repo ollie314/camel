@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,13 +16,13 @@
  */
 package org.apache.camel.component.quartz;
 
+import java.util.concurrent.TimeUnit;
+
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.awaitility.Awaitility;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
 public class QuartzRouteRestartTest extends BaseQuartzTest {
 
     @Test
@@ -30,25 +30,24 @@ public class QuartzRouteRestartTest extends BaseQuartzTest {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMinimumMessageCount(2);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // restart route
-        context().stopRoute("trigger");
+        context().getRouteController().stopRoute("trigger");
         mock.reset();
         mock.expectedMessageCount(0);
-        
+
         // wait a bit
-        Thread.sleep(2000);
-        
-        assertMockEndpointsSatisfied();
-        
+        Awaitility.await().atMost(2, TimeUnit.SECONDS)
+                .untilAsserted(() -> MockEndpoint.assertIsSatisfied(context));
+
         // start route, and we got messages again
         mock.reset();
         mock.expectedMinimumMessageCount(1);
 
-        context().startRoute("trigger");
+        context().getRouteController().startRoute("trigger");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
@@ -56,9 +55,9 @@ public class QuartzRouteRestartTest extends BaseQuartzTest {
         return new RouteBuilder() {
             public void configure() {
                 from("quartz://groupName/timerName?cron=0/1+*+*+*+*+?").routeId("trigger")
-                    .to("mock:result");
+                        .to("mock:result");
             }
         };
     }
-   
+
 }

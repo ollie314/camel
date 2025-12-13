@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,25 +20,34 @@ import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriParams;
 import org.apache.camel.spi.UriPath;
+import org.optaplanner.core.api.solver.SolverManager;
 
 @UriParams
 public class OptaPlannerConfiguration {
 
-    @UriPath @Metadata(required = "true")
-    private String configFile;
+    @UriPath
+    @Metadata(required = true)
+    private String problemName;
     @UriParam(label = "common", defaultValue = "DEFAULT_SOLVER")
     private String solverId = OptaPlannerConstants.DEFAULT_SOLVER_ID;
     @UriParam(label = "producer", defaultValue = "10")
     private int threadPoolSize = 10;
     @UriParam(label = "producer")
     private boolean async;
+    @UriParam(label = "common", defaultValue = "1")
+    private long problemId = 1;
+    @UriParam(label = "common")
+    private String configFile;
+    @UriParam(label = "advanced")
+    private SolverManager solverManager;
 
     public String getConfigFile() {
         return configFile;
     }
 
     /**
-     * Specifies the location to the solver file
+     * If SolverManager is absent from the header OptaPlannerConstants.SOLVER_MANAGER then a SolverManager will be
+     * created using this Optaplanner config file.
      */
     public void setConfigFile(String configFile) {
         this.configFile = configFile;
@@ -46,6 +55,17 @@ public class OptaPlannerConfiguration {
 
     public String getSolverId() {
         return solverId;
+    }
+
+    /**
+     * Problem name
+     */
+    public String getProblemName() {
+        return problemName;
+    }
+
+    public void setProblemName(String problemName) {
+        this.problemName = problemName;
     }
 
     /**
@@ -75,5 +95,27 @@ public class OptaPlannerConfiguration {
      */
     public void setAsync(boolean async) {
         this.async = async;
+    }
+
+    public long getProblemId() {
+        return problemId;
+    }
+
+    /**
+     * In case of using SolverManager : the problem id
+     */
+    public void setProblemId(long problemId) {
+        this.problemId = problemId;
+    }
+
+    public SolverManager getSolverManager() {
+        return solverManager;
+    }
+
+    /**
+     * SolverManager
+     */
+    public void setSolverManager(SolverManager solverManager) {
+        this.solverManager = solverManager;
     }
 }

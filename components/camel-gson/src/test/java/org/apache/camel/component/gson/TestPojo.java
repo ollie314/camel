@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,9 +16,12 @@
  */
 package org.apache.camel.component.gson;
 
+import java.util.Date;
+
 public class TestPojo {
 
     private String name;
+    private Date dob;
 
     public String getName() {
         return this.name;
@@ -26,6 +29,14 @@ public class TestPojo {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public Date getDob() {
+        return this.dob;
+    }
+
+    public void setDob(Date dob) {
+        this.dob = dob;
     }
 
     @Override

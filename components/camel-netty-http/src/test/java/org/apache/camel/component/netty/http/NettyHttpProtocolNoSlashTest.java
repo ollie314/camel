@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,10 @@ package org.apache.camel.component.netty.http;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class NettyHttpProtocolNoSlashTest extends BaseNettyTest {
 
@@ -36,17 +39,17 @@ public class NettyHttpProtocolNoSlashTest extends BaseNettyTest {
         String out = template.requestBody("netty-http:http:localhost:{{port}}/foo?beer=yes", "Hello World", String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("netty-http:http:0.0.0.0:{{port}}/foo")
-                    .to("mock:input")
-                    .transform().constant("Bye World");
+            public void configure() {
+                from("netty-http:http:localhost:{{port}}/foo")
+                        .to("mock:input")
+                        .transform().constant("Bye World");
             }
         };
     }

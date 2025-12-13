@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,15 +18,15 @@ package org.apache.camel.component.metrics;
 
 import java.util.EnumSet;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThat;
 
 public class MetricsTypeTest {
 
     @Test
-    public void testGetByName() throws Exception {
+    public void testGetByName() {
         for (MetricsType type : EnumSet.allOf(MetricsType.class)) {
             MetricsType t = MetricsType.getByName(type.toString());
             assertThat(t, is(type));

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,36 +19,35 @@ package org.apache.camel.component.netty.http;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class NettyHttpCharacterEncodingTest extends BaseNettyTest {
 
     @Test
-    public void testSendToNetty() throws Exception {
-        Exchange exchange = template.request("netty-http:http://localhost:{{port}}/myapp/myservice", new Processor() {
-
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setBody("Hello World Thai Elephant \u0E08");
-                exchange.getIn().setHeader("Content-Type", "text/html; charset=utf-8");
-            }
-
+    public void testSendToNetty() {
+        Exchange exchange = template.request("netty-http:http://localhost:{{port}}/myapp/myservice", exchange1 -> {
+            exchange1.getIn().setBody("Hello World Thai Elephant \u0E08");
+            exchange1.getIn().setHeader("Content-Type", "text/html; charset=utf-8");
         });
         // convert the response to a String
-        String body = exchange.getOut().getBody(String.class);
+        String body = exchange.getMessage().getBody(String.class);
         assertEquals("Response message is Thai Elephant \u0E08", body);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 from("netty-http:http://localhost:{{port}}/myapp/myservice").process(new MyBookService());
             }
         };
     }
 
-    public class MyBookService implements Processor {
-        public void process(Exchange exchange) throws Exception {
+    public static class MyBookService implements Processor {
+        @Override
+        public void process(Exchange exchange) {
             // just get the body as a string
             String body = exchange.getIn().getBody(String.class);
 
@@ -56,8 +55,8 @@ public class NettyHttpCharacterEncodingTest extends BaseNettyTest {
             assertEquals("Hello World Thai Elephant \u0E08", body);
 
             // send a html response
-            exchange.getOut().setHeader("Content-Type", "text/html; charset=utf-8");
-            exchange.getOut().setBody("Response message is Thai Elephant \u0E08");
+            exchange.getMessage().setHeader("Content-Type", "text/html; charset=utf-8");
+            exchange.getMessage().setBody("Response message is Thai Elephant \u0E08");
         }
     }
 }

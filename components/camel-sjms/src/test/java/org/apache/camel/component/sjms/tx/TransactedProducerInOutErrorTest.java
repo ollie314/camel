@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,18 +17,17 @@
 package org.apache.camel.component.sjms.tx;
 
 import org.apache.camel.CamelContext;
-import org.apache.camel.FailedToCreateProducerException;
-import org.apache.camel.FailedToCreateRouteException;
+import org.apache.camel.FailedToStartRouteException;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.component.sjms.CamelJmsTestHelper;
 import org.apache.camel.component.sjms.SjmsComponent;
-import org.apache.camel.component.sjms.support.JmsTestSupport;
 import org.apache.camel.impl.DefaultCamelContext;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * A unit test to ensure the error is raised against incompatible configuration, InOut + transacted.
@@ -37,32 +36,30 @@ public class TransactedProducerInOutErrorTest {
 
     private static final Logger LOG = LoggerFactory.getLogger(TransactedProducerInOutErrorTest.class);
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void test() throws Exception {
-        CamelContext context = new DefaultCamelContext();
-        context.addRoutes(createRouteBuilder());
-        SjmsComponent component = context.getComponent("sjms", SjmsComponent.class);
-        component.setConnectionFactory(CamelJmsTestHelper.createConnectionFactory());
-        try {
-            context.start();
-        } catch (Throwable t) {
+        try (CamelContext context = new DefaultCamelContext()) {
+            context.addRoutes(createRouteBuilder());
+            SjmsComponent component = context.getComponent("sjms", SjmsComponent.class);
+            component.setConnectionFactory(CamelJmsTestHelper.createConnectionFactory());
+            FailedToStartRouteException t = assertThrows(FailedToStartRouteException.class, context::start);
+            assertEquals(IllegalArgumentException.class, t.getCause().getCause().getClass());
             LOG.info("Exception was thrown as expected", t);
-            throw t;
         }
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
 
                 from("direct:start")
-                    .to("sjms:queue:test-in?namedReplyTo=test-out&exchangePattern=InOut&transacted=true")
-                    .to("mock:result");
+                        .to("sjms:queue:test-in.TransactedProducerInOutErrorTest?replyTo=test-out&exchangePattern=InOut&transacted=true")
+                        .to("mock:result");
 
-                from("sjms:queue:test-in?exchangePattern=InOut")
-                    .log("Using ${threadName} to process ${body}")
-                    .transform(body().prepend("Bye "));
+                from("sjms:queue:test-in.TransactedProducerInOutErrorTest?exchangePattern=InOut")
+                        .log("Using ${threadName} to process ${body}")
+                        .transform(body().prepend("Bye "));
             }
         };
     }

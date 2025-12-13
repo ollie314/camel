@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,15 +17,19 @@
 package org.apache.camel.maven;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.StringJoiner;
+import java.util.function.Predicate;
+
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerException;
 import javax.xml.transform.dom.DOMSource;
@@ -37,20 +41,22 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.camel.tooling.util.PackageHelper;
+import org.apache.camel.util.FileUtil;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
-import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
+import org.apache.maven.project.MavenProject;
 
 /**
  * Injects EIP documentation to camel schema.
  */
 @Mojo(name = "eip-documentation-enricher", requiresDependencyResolution = ResolutionScope.COMPILE_PLUS_RUNTIME,
-        defaultPhase = LifecyclePhase.PREPARE_PACKAGE)
+      defaultPhase = LifecyclePhase.PREPARE_PACKAGE)
 public class EipDocumentationEnricherMojo extends AbstractMojo {
 
     /**
@@ -66,58 +72,84 @@ public class EipDocumentationEnricherMojo extends AbstractMojo {
     public File outputCamelSchemaFile;
 
     /**
-     * Path to camel core project root directory.
+     * Path to camel core-model project root directory.
      */
-    @Parameter(defaultValue = "${project.build.directory}/../../../camel-core")
-    public File camelCoreDir;
+    @Parameter(defaultValue = "${project.build.directory}/sources/camel-core-model")
+    public File camelCoreModelDir;
 
     /**
      * Path to camel core xml project root directory.
      */
-    @Parameter(defaultValue = "${project.build.directory}/../../../components/camel-core-xml")
+    @Parameter(defaultValue = "${project.build.directory}/sources/camel-core-xml")
     public File camelCoreXmlDir;
 
     /**
      * Path to camel spring project root directory.
      */
-    @Parameter(defaultValue = "${project.build.directory}/../../../components/camel-spring")
+    @Parameter(defaultValue = "${project.build.directory}/sources/camel-spring")
     public File camelSpringDir;
+
+    /**
+     * Sub path to itself
+     */
+    @Parameter(defaultValue = "${project.build.directory}/classes")
+    public String targetDir;
 
     /**
      * Sub path from camel core directory to model directory with generated json files for components.
      */
-    @Parameter(defaultValue = "target/classes/org/apache/camel/model")
+    @Parameter(defaultValue = "META-INF/org/apache/camel/model")
     public String pathToModelDir;
 
     /**
      * Sub path from camel core xml directory to model directory with generated json files for components.
      */
-    @Parameter(defaultValue = "target/classes/org/apache/camel/core/xml")
+    @Parameter(defaultValue = "META-INF/org/apache/camel/core/xml")
     public String pathToCoreXmlModelDir;
 
     /**
      * Sub path from camel spring directory to model directory with generated json files for components.
      */
-    @Parameter(defaultValue = "target/classes/org/apache/camel/spring")
+    @Parameter(defaultValue = "META-INF/org/apache/camel/spring")
     public String pathToSpringModelDir;
 
+    /**
+     * Optional file pattern to delete files after the documentation enrichment is complete.
+     */
+    @Parameter
+    public String deleteFilesAfterRun;
+
+    /**
+     * The maven project.
+     */
+    @Parameter(property = "project", required = true, readonly = true)
+    protected MavenProject project;
+
     @Override
-    public void execute() throws MojoExecutionException, MojoFailureException {
+    public void execute() throws MojoExecutionException {
         if (pathToModelDir == null) {
             throw new MojoExecutionException("pathToModelDir parameter must not be null");
         }
+
+        // skip if input file does not exist
+        if (inputCamelSchemaFile == null || !inputCamelSchemaFile.exists()) {
+            getLog().info("Input Camel schema file: " + inputCamelSchemaFile + " does not exist. Skip EIP document enrichment");
+            return;
+        }
+
         validateExists(inputCamelSchemaFile, "inputCamelSchemaFile");
         validateIsFile(inputCamelSchemaFile, "inputCamelSchemaFile");
-        validateExists(camelCoreDir, "camelCoreDir");
         validateExists(camelCoreXmlDir, "camelCoreXmlDir");
-        validateExists(camelSpringDir, "camelSpringDir");
-        validateIsDirectory(camelCoreDir, "camelCoreDir");
+        validateIsDirectory(camelCoreModelDir, "camelCoreModelDir");
         validateIsDirectory(camelCoreXmlDir, "camelCoreXmlDir");
-        validateIsDirectory(camelSpringDir, "camelSpringDir");
+
         try {
             runPlugin();
         } catch (Exception e) {
             throw new MojoExecutionException("Error during plugin execution", e);
+        }
+        if (deleteFilesAfterRun != null) {
+            deleteFilesAfterDone(deleteFilesAfterRun);
         }
     }
 
@@ -127,50 +159,103 @@ public class EipDocumentationEnricherMojo extends AbstractMojo {
         DomFinder domFinder = new DomFinder(document, xPath);
         DocumentationEnricher documentationEnricher = new DocumentationEnricher(document);
 
-        // include schema files from camel-core, camel-corem-xml and from camel-spring
-        File rootDir = new File(camelCoreDir, pathToModelDir);
-        Map<String, File> jsonFiles = PackageHelper.findJsonFiles(rootDir);
-        File rootDir2 = new File(camelCoreXmlDir, pathToCoreXmlModelDir);
-        Map<String, File> jsonFiles2 = PackageHelper.findJsonFiles(rootDir2);
-        File rootDir3 = new File(camelSpringDir, pathToSpringModelDir);
-        Map<String, File> jsonFiles3 = PackageHelper.findJsonFiles(rootDir3);
-        // merge the json files together
-        jsonFiles.putAll(jsonFiles2);
-        jsonFiles.putAll(jsonFiles3);
+        // include schema files from camel-core-model, camel-core-xml and from camel-spring
+        Set<File> files = new HashSet<>();
+
+        // Do not include the model/app/bean.json file for enhancement (there are two bean.json)
+        Predicate<File> beanFilter = f -> !(f.getName().equals("bean.json") && f.getParentFile().getName().equals("app"));
+        PackageHelper.findJsonFiles(new File(camelCoreModelDir, pathToModelDir), files, beanFilter);
+        PackageHelper.findJsonFiles(new File(camelCoreXmlDir, pathToCoreXmlModelDir), files, beanFilter);
+
+        // spring should not include SpringErrorHandlerDefinition (duplicates a file from camel-core-model)
+        Predicate<File> filter = f -> !f.getName().equals("errorHandler.json");
+
+        PackageHelper.findJsonFiles(new File(targetDir, pathToSpringModelDir), files, filter);
+
+        Map<String, File> jsonFiles = new HashMap<>();
+        files.forEach(f -> jsonFiles.put(PackageHelper.asName(f.toPath()), f));
 
         NodeList elementsAndTypes = domFinder.findElementsAndTypes();
         documentationEnricher.enrichTopLevelElementsDocumentation(elementsAndTypes, jsonFiles);
         Map<String, String> typeToNameMap = buildTypeToNameMap(elementsAndTypes);
-        Set<String> injectedTypes = new LinkedHashSet<String>();
+        Set<String> injectedTypes = new LinkedHashSet<>();
 
-        getLog().info("Found " + typeToNameMap.size() + " models to use when enriching the XSD schema");
+        getLog().debug("Found " + typeToNameMap.size() + " models to use when enriching the XSD schema");
+        int enriched = 0;
 
         for (Map.Entry<String, String> entry : typeToNameMap.entrySet()) {
             String elementType = entry.getKey();
             String elementName = entry.getValue();
             if (jsonFileExistsForElement(jsonFiles, elementName)) {
+                enriched++;
                 getLog().debug("Enriching " + elementName);
                 File file = jsonFiles.get(elementName);
-                injectAttributesDocumentation(domFinder, documentationEnricher, file, elementType, injectedTypes);
+                injectChildElementsDocumentation(domFinder, documentationEnricher, file, elementType, injectedTypes);
+            } else {
+                boolean ignore = "ExpressionDefinition".equalsIgnoreCase(elementName);
+                if (!ignore) {
+                    getLog().warn("Cannot find json metadata to use for enriching element " + elementName);
+                }
             }
         }
+        getLog().info("Enriched " + enriched + " models out of " + typeToNameMap.size() + " models");
 
-        saveToFile(document, outputCamelSchemaFile, XmlHelper.buildTransformer());
+        String xml = transformToXml(document, XmlHelper.buildTransformer());
+        xml = fixXmlOutput(xml);
+        xml = removeEmptyLines(xml);
+
+        saveToFile(document, outputCamelSchemaFile, xml);
     }
 
-    private boolean jsonFileExistsForElement(Map<String, File> jsonFiles,
-                                             String elementName) {
+    public static String fixXmlOutput(String xml) {
+        xml = xml.replaceAll("><!\\[CDATA\\[", ">\n<![CDATA[");
+        xml = xml.replaceAll("\\h+<!\\[CDATA\\[", "<![CDATA[");
+        xml = xml.replaceAll("(\\h*)]]><", "]]>\n$1<");
+        return removeEmptyLines(xml);
+    }
+
+    public static String removeEmptyLines(String xml) {
+        StringJoiner sj = new StringJoiner("\n");
+        for (String l : xml.split("\n")) {
+            if (!l.isBlank()) {
+                sj.add(l);
+            }
+        }
+        return sj.toString();
+    }
+
+    private String transformToXml(Document document, Transformer transformer) throws TransformerException {
+        StringWriter sw = new StringWriter();
+        StreamResult result = new StreamResult(sw);
+        DOMSource source = new DOMSource(document);
+        transformer.transform(source, result);
+        return sw.toString();
+    }
+
+    private boolean jsonFileExistsForElement(
+            Map<String, File> jsonFiles,
+            String elementName) {
         return jsonFiles.containsKey(elementName);
     }
 
+    private void deleteFilesAfterDone(String deleteFiles) {
+        String[] names = deleteFiles.split(",");
+        for (String name : names) {
+            File file = new File(name);
+            FileUtil.deleteFile(file);
+        }
+    }
+
     /**
-     * Recursively injects documentation to complex type attributes and it's parents.
+     * Recursively injects documentation to complex type attributes and elements and it's parents.
      */
-    private void injectAttributesDocumentation(DomFinder domFinder,
-                                               DocumentationEnricher documentationEnricher,
-                                               File jsonFile,
-                                               String type,
-                                               Set<String> injectedTypes) throws XPathExpressionException, IOException {
+    private void injectChildElementsDocumentation(
+            DomFinder domFinder,
+            DocumentationEnricher documentationEnricher,
+            File jsonFile,
+            String type,
+            Set<String> injectedTypes)
+            throws XPathExpressionException {
         if (injectedTypes.contains(type)) {
             return;
         }
@@ -178,18 +263,22 @@ public class EipDocumentationEnricherMojo extends AbstractMojo {
         injectedTypes.add(type);
         NodeList attributeElements = domFinder.findAttributesElements(type);
         if (attributeElements.getLength() > 0) {
-            documentationEnricher.enrichTypeAttributesDocumentation(getLog(), attributeElements, jsonFile);
+            documentationEnricher.enrichElementDocumentation(getLog(), attributeElements, jsonFile);
+        }
+        NodeList elementElements = domFinder.findElementsElements(type);
+        if (elementElements.getLength() > 0) {
+            documentationEnricher.enrichElementDocumentation(getLog(), elementElements, jsonFile);
         }
 
         String baseType = domFinder.findBaseType(type);
         if (baseType != null && !StringUtils.isEmpty(baseType)) {
             baseType = truncateTypeNamespace(baseType);
-            injectAttributesDocumentation(domFinder, documentationEnricher, jsonFile, baseType, injectedTypes);
+            injectChildElementsDocumentation(domFinder, documentationEnricher, jsonFile, baseType, injectedTypes);
         }
     }
 
     private Map<String, String> buildTypeToNameMap(NodeList elementsAndTypes) {
-        Map<String, String> typeToNameMap = new LinkedHashMap<String, String>();
+        Map<String, String> typeToNameMap = new LinkedHashMap<>();
         for (int i = 0; i < elementsAndTypes.getLength(); i++) {
             Element item = (Element) elementsAndTypes.item(i);
             String name = item.getAttribute(Constants.NAME_ATTRIBUTE_NAME);
@@ -206,13 +295,13 @@ public class EipDocumentationEnricherMojo extends AbstractMojo {
     }
 
     private String truncateTypeNamespace(String baseType) {
-        return baseType.replaceAll("tns:", "");
+        return baseType.replace("tns:", "");
     }
 
-    private void saveToFile(Document document, File outputFile, Transformer transformer) throws FileNotFoundException, TransformerException {
-        StreamResult result = new StreamResult(new FileOutputStream(outputFile));
-        DOMSource source = new DOMSource(document);
-        transformer.transform(source, result);
+    private void saveToFile(Document document, File outputFile, String xml) throws IOException {
+        try (FileOutputStream os = new FileOutputStream(outputFile)) {
+            os.write(xml.getBytes(StandardCharsets.UTF_8));
+        }
     }
 
     private void validateIsFile(File file, String name) throws MojoExecutionException {

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,12 +21,9 @@ import java.util.Map;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
 public class GroovySetHeaderTest extends CamelTestSupport {
 
     @Test
@@ -40,26 +37,26 @@ public class GroovySetHeaderTest extends CamelTestSupport {
         mock.expectedHeaderReceived("drink", "Carlsberg");
         mock.expectedHeaderReceived("camelId", context.getName());
 
-        Map<String, Object> headers = new HashMap<String, Object>();
+        Map<String, Object> headers = new HashMap<>();
         headers.put("one", "einz");
         headers.put("two", "twei");
         headers.put("beer", "Carlsberg");
 
         template.sendBodyAndHeaders("direct:start", "Hello World", headers);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .setHeader("drink").groovy("request.headers.beer")
-                    // shows how to access the camelContext value
-                    .setHeader("camelId").groovy("camelContext.name")
-                    .to("mock:result");
+                        .setHeader("drink").groovy("header.beer")
+                        // shows how to access the camelContext value
+                        .setHeader("camelId").groovy("camelContext.name")
+                        .to("mock:result");
             }
         };
     }

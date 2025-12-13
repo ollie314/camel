@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,8 +22,16 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
+/**
+ * Annotation for marking methods as DataSet callbacks.
+ *
+ * @deprecated The DataSet API is deprecated since Flink 1.12. Use the DataStream API with bounded streams instead. See
+ *             the Flink migration guide for details on migrating from DataSet to DataStream API. This annotation will
+ *             be maintained for backward compatibility but may be removed in future versions.
+ */
+@Deprecated(since = "4.16.0")
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.METHOD, ElementType.PARAMETER})
+@Target({ ElementType.METHOD, ElementType.PARAMETER })
 @Inherited
 public @interface DataSetCallback {
 

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,12 +19,11 @@ package org.apache.camel.component.quartz;
 import java.io.InputStream;
 import java.util.Properties;
 
-import org.junit.Test;
-import org.quartz.SchedulerException;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 public class QuartzPropertiesTest extends BaseQuartzTest {
 
     private QuartzComponent quartz;
@@ -35,9 +34,8 @@ public class QuartzPropertiesTest extends BaseQuartzTest {
     }
 
     @Override
-    public void tearDown() throws Exception {
+    public void doPostTearDown() {
         quartz.stop();
-        super.tearDown();
     }
 
     @Test
@@ -53,17 +51,15 @@ public class QuartzPropertiesTest extends BaseQuartzTest {
     }
 
     @Test
-    public void testQuartzPropertiesFileNotFound() throws Exception {
+    public void testQuartzPropertiesFileNotFound() {
         quartz = context.getComponent("quartz", QuartzComponent.class);
 
         quartz.setPropertiesFile("doesnotexist.properties");
 
-        try {
-            quartz.start();
-            fail("Should have thrown exception");
-        } catch (SchedulerException e) {
-            assertEquals("Error loading Quartz properties file: doesnotexist.properties", e.getMessage());
-        }
+        Exception thrown = assertThrows(Exception.class,
+                () -> quartz.start(),
+                "Should have thrown exception");
+        assertEquals("Error loading Quartz properties file: doesnotexist.properties", thrown.getCause().getMessage());
     }
 
     @Test
@@ -71,7 +67,8 @@ public class QuartzPropertiesTest extends BaseQuartzTest {
         quartz = context.getComponent("quartz", QuartzComponent.class);
 
         Properties prop = new Properties();
-        InputStream is = context.getClassResolver().loadResourceAsStream("org/apache/camel/component/quartz/myquartz.properties");
+        InputStream is
+                = context.getClassResolver().loadResourceAsStream("org/apache/camel/component/quartz/myquartz.properties");
         prop.load(is);
         quartz.setProperties(prop);
 

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,10 +20,12 @@ import org.apache.camel.builder.RouteBuilder;
 
 public class FreemarkerEncodingTest extends FreemarkerLetterTest {
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("direct:a").to("freemarker:org/apache/camel/component/freemarker/letter-utf16.ftl?encoding=UTF-16").to("mock:result");
+            public void configure() {
+                from("direct:a").to("freemarker:org/apache/camel/component/freemarker/letter-utf16.ftl?encoding=UTF-16")
+                        .to("mock:result");
             }
         };
     }

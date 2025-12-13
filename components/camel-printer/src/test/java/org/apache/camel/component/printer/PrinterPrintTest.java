@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,6 +18,7 @@ package org.apache.camel.component.printer;
 
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.lang.reflect.Method;
 import java.util.Map;
 
 import javax.print.Doc;
@@ -38,23 +39,38 @@ import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.junit5.CamelTestSupport;
 import org.apache.camel.util.IOHelper;
-import org.junit.Before;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
-import static org.mockito.Matchers.any;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+@DisabledOnOs(OS.AIX)
 public class PrinterPrintTest extends CamelTestSupport {
+    Class<?> printServiceLookupServicesClass = PrintServiceLookup.class.getDeclaredClasses()[0];
+    Object printServiceLookup;
 
-    @Before
-    public void setup() {
+    @BeforeEach
+    public void setup() throws Exception {
         setupJavaPrint();
+    }
+
+    @Override
+    public void doPostTearDown() throws Exception {
+        restoreJavaPrint();
     }
 
     @Override
@@ -67,7 +83,7 @@ public class PrinterPrintTest extends CamelTestSupport {
         return Boolean.getBoolean("java.awt.headless");
     }
 
-    private void sendFile() throws Exception {
+    private void sendFile() {
         template.send("direct:start", new Processor() {
             public void process(Exchange exchange) throws Exception {
                 // Read from an input stream
@@ -88,7 +104,7 @@ public class PrinterPrintTest extends CamelTestSupport {
         });
     }
 
-    private void sendGIF() throws Exception {
+    private void sendGIF() {
         template.send("direct:start", new Processor() {
             public void process(Exchange exchange) throws Exception {
                 // Read from an input stream
@@ -109,11 +125,11 @@ public class PrinterPrintTest extends CamelTestSupport {
         });
     }
 
-    private void sendJPEG() throws Exception {
+    private void sendJPEG() {
         template.send("direct:start", new Processor() {
             public void process(Exchange exchange) throws Exception {
                 // Read from an input stream
-                InputStream is = IOHelper.buffered(new FileInputStream("src/test/resources/asf-logo.JPG"));
+                InputStream is = IOHelper.buffered(new FileInputStream("src/test/resources/asf-logo.jpg"));
 
                 byte buffer[] = new byte[is.available()];
                 int n = is.available();
@@ -132,15 +148,14 @@ public class PrinterPrintTest extends CamelTestSupport {
     }
 
     @Test
-    @Ignore
+    @Disabled
     public void testSendingFileToPrinter() throws Exception {
-        if (isAwtHeadless()) {
-            return;
-        }
+        assumeTrue(isAwtHeadless());
+
         context.addRoutes(new RouteBuilder() {
             public void configure() {
-                from("direct:start").
-                        to("lpr://localhost/default?copies=1&flavor=DocFlavor.BYTE_ARRAY&mimeType=AUTOSENSE&mediaSize=na-letter&sides=one-sided&sendToPrinter=false");
+                from("direct:start").to(
+                        "lpr://localhost/default?copies=1&flavor=DocFlavor.BYTE_ARRAY&mimeType=AUTOSENSE&mediaSize=na-letter&sides=one-sided&sendToPrinter=false");
             }
         });
         context.start();
@@ -149,15 +164,14 @@ public class PrinterPrintTest extends CamelTestSupport {
     }
 
     @Test
-    @Ignore
+    @Disabled
     public void testSendingGIFToPrinter() throws Exception {
-        if (isAwtHeadless()) {
-            return;
-        }
+        assumeTrue(isAwtHeadless());
+
         context.addRoutes(new RouteBuilder() {
             public void configure() {
-                from("direct:start").
-                        to("lpr://localhost/default?flavor=DocFlavor.INPUT_STREAM&mimeType=GIF&mediaSize=na-letter&sides=one-sided&sendToPrinter=false");
+                from("direct:start").to(
+                        "lpr://localhost/default?flavor=DocFlavor.INPUT_STREAM&mimeType=GIF&mediaSize=na-letter&sides=one-sided&sendToPrinter=false");
             }
         });
         context.start();
@@ -166,15 +180,14 @@ public class PrinterPrintTest extends CamelTestSupport {
     }
 
     @Test
-    @Ignore
+    @Disabled
     public void testSendingJPEGToPrinter() throws Exception {
-        if (isAwtHeadless()) {
-            return;
-        }
+        assumeTrue(isAwtHeadless());
+
         context.addRoutes(new RouteBuilder() {
             public void configure() {
                 from("direct:start").to("lpr://localhost/default?copies=2&flavor=DocFlavor.INPUT_STREAM"
-                        + "&mimeType=JPEG&mediaSize=na-letter&sides=one-sided&sendToPrinter=false");
+                                        + "&mimeType=JPEG&mediaSize=na-letter&sides=one-sided&sendToPrinter=false");
             }
         });
         context.start();
@@ -183,15 +196,14 @@ public class PrinterPrintTest extends CamelTestSupport {
     }
 
     @Test
-    @Ignore
+    @Disabled
     public void testSendingJPEGToPrinterWithLandscapePageOrientation() throws Exception {
-        if (isAwtHeadless()) {
-            return;
-        }
+        assumeTrue(isAwtHeadless());
+
         context.addRoutes(new RouteBuilder() {
             public void configure() {
                 from("direct:start").to("lpr://localhost/default?flavor=DocFlavor.INPUT_STREAM"
-                        + "&mimeType=JPEG&sendToPrinter=false&orientation=landscape");
+                                        + "&mimeType=JPEG&sendToPrinter=false&orientation=landscape");
             }
         });
         context.start();
@@ -200,16 +212,14 @@ public class PrinterPrintTest extends CamelTestSupport {
     }
 
     /**
-     * Test for resolution of bug CAMEL-3446.
-     * Not specifying mediaSize nor sides attributes make it use
-     * default values when starting the route.
+     * Test for resolution of bug CAMEL-3446. Not specifying mediaSize nor sides attributes make it use default values
+     * when starting the route.
      */
     @Test
-    @Ignore
+    @Disabled
     public void testDefaultPrinterConfiguration() throws Exception {
-        if (isAwtHeadless()) {
-            return;
-        }
+        assumeTrue(isAwtHeadless());
+
         context.addRoutes(new RouteBuilder() {
             public void configure() {
                 from("direct:start").to("lpr://localhost/default?sendToPrinter=false");
@@ -220,25 +230,22 @@ public class PrinterPrintTest extends CamelTestSupport {
 
     @Test
     public void moreThanOneLprEndpoint() throws Exception {
-
-        if (isAwtHeadless()) {
-            return;
-        }
+        assumeTrue(isAwtHeadless());
 
         int numberOfPrintservicesBefore = PrintServiceLookup.lookupPrintServices(null, null).length;
 
-        // setup javax.print 
+        // setup javax.print
         PrintService ps1 = mock(PrintService.class);
         when(ps1.getName()).thenReturn("printer1");
         when(ps1.isDocFlavorSupported(any(DocFlavor.class))).thenReturn(Boolean.TRUE);
         PrintService ps2 = mock(PrintService.class);
         when(ps2.getName()).thenReturn("printer2");
         boolean res1 = PrintServiceLookup.registerService(ps1);
-        assertTrue("PrintService #1 should be registered.", res1);
+        assertTrue(res1, "PrintService #1 should be registered.");
         boolean res2 = PrintServiceLookup.registerService(ps2);
-        assertTrue("PrintService #2 should be registered.", res2);
+        assertTrue(res2, "PrintService #2 should be registered.");
         PrintService[] pss = PrintServiceLookup.lookupPrintServices(null, null);
-        assertEquals("lookup should report two PrintServices.", numberOfPrintservicesBefore + 2, pss.length);
+        assertEquals(numberOfPrintservicesBefore + 2, pss.length, "lookup should report two PrintServices.");
 
         DocPrintJob job1 = mock(DocPrintJob.class);
         when(ps1.createPrintJob()).thenReturn(job1);
@@ -253,8 +260,8 @@ public class PrinterPrintTest extends CamelTestSupport {
         context.start();
 
         // Are there two different PrintConfigurations?
-        Map<String, Endpoint> epm = context().getEndpointMap();
-        assertEquals("Four endpoints", 4, epm.size());
+        Map<String, Endpoint> epm = context().getEndpointRegistry().getReadOnlyMap();
+        assertEquals(4, epm.size(), "Four endpoints");
         Endpoint lp1 = null;
         Endpoint lp2 = null;
         for (Map.Entry<String, Endpoint> ep : epm.entrySet()) {
@@ -279,15 +286,44 @@ public class PrinterPrintTest extends CamelTestSupport {
 
     @Test
     public void printerNameTest() throws Exception {
-        if (isAwtHeadless()) {
-            return;
-        }
-        // setup javax.print 
+        assumeTrue(isAwtHeadless());
+
+        // setup javax.print
         PrintService ps1 = mock(PrintService.class);
         when(ps1.getName()).thenReturn("MyPrinter\\\\remote\\printer1");
         when(ps1.isDocFlavorSupported(any(DocFlavor.class))).thenReturn(Boolean.TRUE);
         boolean res1 = PrintServiceLookup.registerService(ps1);
-        assertTrue("The Remote PrintService #1 should be registered.", res1);
+        assertTrue(res1, "The Remote PrintService #1 should be registered.");
+        DocPrintJob job1 = mock(DocPrintJob.class);
+        when(ps1.createPrintJob()).thenReturn(job1);
+
+        context.addRoutes(new RouteBuilder() {
+
+            public void configure() {
+                from("direct:start1").to("lpr://remote/printer1?sendToPrinter=true");
+            }
+        });
+        context.start();
+
+        template.sendBody("direct:start1", "Hello Printer 1");
+
+        context.stop();
+
+        verify(job1, times(1)).print(any(Doc.class), any(PrintRequestAttributeSet.class));
+    }
+
+    /*
+     * Test for CAMEL-12890
+     * Unable to send to remote printer
+     * */
+    @Test
+    public void testSendingFileToRemotePrinter() throws Exception {
+        // setup javax.print
+        PrintService ps1 = mock(PrintService.class);
+        when(ps1.getName()).thenReturn("printer1");
+        when(ps1.isDocFlavorSupported(any(DocFlavor.class))).thenReturn(Boolean.TRUE);
+        boolean res1 = PrintServiceLookup.registerService(ps1);
+        assertTrue(res1, "The Remote PrintService #1 should be registered.");
         DocPrintJob job1 = mock(DocPrintJob.class);
         when(ps1.createPrintJob()).thenReturn(job1);
 
@@ -308,9 +344,7 @@ public class PrinterPrintTest extends CamelTestSupport {
 
     @Test
     public void setJobName() throws Exception {
-        if (isAwtHeadless()) {
-            return;
-        }
+        assumeTrue(isAwtHeadless());
 
         getMockEndpoint("mock:output").setExpectedMessageCount(1);
         context.addRoutes(new RouteBuilder() {
@@ -321,11 +355,11 @@ public class PrinterPrintTest extends CamelTestSupport {
         context.start();
         template.sendBodyAndHeader("direct:start", "Hello Printer", PrinterEndpoint.JOB_NAME, "Test-Job-Name");
         context.stop();
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
-    public void printToMiddleTray() throws Exception {
+    public void printToMiddleTray() {
         PrinterEndpoint endpoint = new PrinterEndpoint();
         PrinterConfiguration configuration = new PrinterConfiguration();
         configuration.setHostname("localhost");
@@ -349,7 +383,7 @@ public class PrinterPrintTest extends CamelTestSupport {
     }
 
     @Test
-    public void printsWithLandscapeOrientation() throws Exception {
+    public void printsWithLandscapeOrientation() {
         PrinterEndpoint endpoint = new PrinterEndpoint();
         PrinterConfiguration configuration = new PrinterConfiguration();
         configuration.setHostname("localhost");
@@ -371,23 +405,44 @@ public class PrinterPrintTest extends CamelTestSupport {
         assertEquals("reverse-landscape", attribute.toString());
     }
 
-    protected void setupJavaPrint() {
+    protected void setupJavaPrint() throws Exception {
+        // save the current print services
+        Class<?> clazz = context.getClassResolver().resolveClass("sun.awt.AppContext");
+        Object ac = clazz.getMethod("getAppContext").invoke(null);
+        printServiceLookup = clazz.getMethod("get", Object.class).invoke(ac, printServiceLookupServicesClass);
+
+        // setup a new empty list of printer services
+        clazz.getMethod("put", Object.class, Object.class).invoke(ac, printServiceLookupServicesClass, null);
+
+        Method method = PrintServiceLookup.class.getDeclaredMethod("initListOfLookupServices");
+        method.setAccessible(true);
+        method.invoke(null);
+
         // "install" another default printer
         PrintService psDefault = mock(PrintService.class);
         when(psDefault.getName()).thenReturn("DefaultPrinter");
         when(psDefault.isDocFlavorSupported(any(DocFlavor.class))).thenReturn(Boolean.TRUE);
         PrintServiceLookup psLookup = mock(PrintServiceLookup.class);
-        when(psLookup.getPrintServices()).thenReturn(new PrintService[]{psDefault});
+        when(psLookup.getPrintServices()).thenReturn(new PrintService[] { psDefault });
         when(psLookup.getDefaultPrintService()).thenReturn(psDefault);
         DocPrintJob docPrintJob = mock(DocPrintJob.class);
         when(psDefault.createPrintJob()).thenReturn(docPrintJob);
-        MediaTray[] trays = new MediaTray[]{
-            MediaTray.TOP,
-            MediaTray.MIDDLE,
-            MediaTray.BOTTOM
+        MediaTray[] trays = new MediaTray[] {
+                MediaTray.TOP,
+                MediaTray.MIDDLE,
+                MediaTray.BOTTOM
         };
         when(psDefault.getSupportedAttributeValues(Media.class, null, null)).thenReturn(trays);
         PrintServiceLookup.registerServiceProvider(psLookup);
+    }
+
+    protected void restoreJavaPrint() throws Exception {
+        // restore print services
+        if (printServiceLookup != null) {
+            Class<?> clazz = context.getClassResolver().resolveClass("sun.awt.AppContext");
+            Object ac = clazz.getMethod("getAppContext").invoke(null);
+            clazz.getMethod("put", Object.class, Object.class).invoke(ac, printServiceLookupServicesClass, printServiceLookup);
+        }
     }
 
 }

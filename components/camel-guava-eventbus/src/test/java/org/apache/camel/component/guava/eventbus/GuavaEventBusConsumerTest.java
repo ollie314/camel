@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,40 +19,37 @@ package org.apache.camel.component.guava.eventbus;
 import java.util.Date;
 
 import com.google.common.eventbus.EventBus;
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.impl.JndiRegistry;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class GuavaEventBusConsumerTest extends CamelTestSupport {
 
+    @BindToRegistry("eventBus")
     EventBus eventBus = new EventBus();
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("guava-eventbus:eventBus").to("mock:allEvents");
                 from("guava-eventbus:eventBus").to("mock:multipliedConsumer");
 
-                from("guava-eventbus:eventBus?eventClass=org.apache.camel.component.guava.eventbus.MessageWrapper").
-                        to("mock:wrapperEvents");
+                from("guava-eventbus:eventBus?eventClass=org.apache.camel.component.guava.eventbus.MessageWrapper")
+                        .to("mock:wrapperEvents");
 
-                from("guava-eventbus:eventBus?listenerInterface=org.apache.camel.component.guava.eventbus.CustomListener").
-                        to("mock:customListenerEvents");
+                from("guava-eventbus:eventBus?listenerInterface=org.apache.camel.component.guava.eventbus.CustomListener")
+                        .to("mock:customListenerEvents");
 
-                from("guava-eventbus:eventBus?listenerInterface=org.apache.camel.component.guava.eventbus.CustomMultiEventListener").
-                        to("mock:customMultiEventListenerEvents");
+                from("guava-eventbus:eventBus?listenerInterface=org.apache.camel.component.guava.eventbus.CustomMultiEventListener")
+                        .to("mock:customMultiEventListenerEvents");
             }
         };
-    }
-
-    @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry registry = super.createRegistry();
-        registry.bind("eventBus", eventBus);
-        return registry;
     }
 
     @Test
@@ -65,7 +62,7 @@ public class GuavaEventBusConsumerTest extends CamelTestSupport {
 
         // Then
         getMockEndpoint("mock:allEvents").setExpectedMessageCount(1);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
         assertEquals(message, getMockEndpoint("mock:allEvents").getExchanges().get(0).getIn().getBody());
     }
 
@@ -80,7 +77,7 @@ public class GuavaEventBusConsumerTest extends CamelTestSupport {
         // Then
         getMockEndpoint("mock:allEvents").setExpectedMessageCount(1);
         getMockEndpoint("mock:multipliedConsumer").setExpectedMessageCount(1);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
         assertEquals(message, getMockEndpoint("mock:allEvents").getExchanges().get(0).getIn().getBody());
         assertEquals(message, getMockEndpoint("mock:multipliedConsumer").getExchanges().get(0).getIn().getBody());
     }
@@ -96,7 +93,7 @@ public class GuavaEventBusConsumerTest extends CamelTestSupport {
 
         // Then
         getMockEndpoint("mock:wrapperEvents").setExpectedMessageCount(1);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
         assertEquals(wrappedMessage, getMockEndpoint("mock:wrapperEvents").getExchanges().get(0).getIn().getBody());
     }
 
@@ -111,7 +108,7 @@ public class GuavaEventBusConsumerTest extends CamelTestSupport {
 
         // Then
         getMockEndpoint("mock:customListenerEvents").setExpectedMessageCount(1);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
         assertEquals(wrappedMessage, getMockEndpoint("mock:customListenerEvents").getExchanges().get(0).getIn().getBody());
     }
 
@@ -127,8 +124,9 @@ public class GuavaEventBusConsumerTest extends CamelTestSupport {
 
         // Then
         getMockEndpoint("mock:customMultiEventListenerEvents").setExpectedMessageCount(2);
-        assertMockEndpointsSatisfied();
-        assertEquals(stringEvent, getMockEndpoint("mock:customMultiEventListenerEvents").getExchanges().get(0).getIn().getBody());
+        MockEndpoint.assertIsSatisfied(context);
+        assertEquals(stringEvent,
+                getMockEndpoint("mock:customMultiEventListenerEvents").getExchanges().get(0).getIn().getBody());
         assertEquals(dateEvent, getMockEndpoint("mock:customMultiEventListenerEvents").getExchanges().get(1).getIn().getBody());
     }
 

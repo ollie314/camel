@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,86 +16,106 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
+import jakarta.jms.ConnectionFactory;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import org.apache.camel.test.infra.artemis.common.ConnectionFactoryHelper;
+import org.apache.camel.test.infra.artemis.services.ArtemisService;
+import org.apache.camel.test.infra.artemis.services.ArtemisServiceFactory;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-/**
- * @version 
- */
+import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class JmsComponentTest extends CamelTestSupport {
 
-    protected String componentName = "activemq123";
+    @RegisterExtension
+    public static ArtemisService service = ArtemisServiceFactory.createVMService();
+
+    protected final String componentName = "activemq123";
     protected JmsEndpoint endpoint;
 
     @Test
-    public void testComponentOptions() throws Exception {
-        String reply = template.requestBody("activemq123:queue:hello?requestTimeout=5000", "Hello World", String.class);
+    public void testComponentInOut() {
+        String reply
+                = template.requestBody("activemq123:queue:JmsComponentTest?requestTimeout=5000", "Hello World", String.class);
         assertEquals("Bye World", reply);
+    }
 
-        assertEquals(true, endpoint.isAcceptMessagesWhileStopping());
-        assertEquals(true, endpoint.isAllowReplyManagerQuickStop());
-        assertEquals(true, endpoint.isAlwaysCopyMessage());
+    @Timeout(10)
+    @Test
+    public void testComponentOptions() {
+        assertTrue(endpoint.isAcceptMessagesWhileStopping());
+        assertTrue(endpoint.isAllowReplyManagerQuickStop());
+        assertTrue(endpoint.isAlwaysCopyMessage());
         assertEquals(1, endpoint.getAcknowledgementMode());
-        assertEquals(true, endpoint.isAutoStartup());
+        assertTrue(endpoint.isAutoStartup());
         assertEquals(1, endpoint.getCacheLevel());
         assertEquals("foo", endpoint.getClientId());
         assertEquals(2, endpoint.getConcurrentConsumers());
-        assertEquals(true, endpoint.isDeliveryPersistent());
-        assertEquals(true, endpoint.isExplicitQosEnabled());
+        assertTrue(endpoint.isDeliveryPersistent());
+        assertTrue(endpoint.isExplicitQosEnabled());
         assertEquals(20, endpoint.getIdleTaskExecutionLimit());
-        assertEquals(21, endpoint.getIdleConsumerLimit());        
+        assertEquals(21, endpoint.getIdleConsumerLimit());
         assertEquals(5, endpoint.getMaxConcurrentConsumers());
         assertEquals(90, endpoint.getMaxMessagesPerTask());
+        assertEquals(45, endpoint.getIdleReceivesPerTaskLimit());
         assertEquals(3, endpoint.getPriority());
         assertEquals(5000, endpoint.getReceiveTimeout());
         assertEquals(9000, endpoint.getRecoveryInterval());
         assertEquals(3000, endpoint.getTimeToLive());
-        assertEquals(true, endpoint.isTransacted());
+        assertTrue(endpoint.isTransacted());
         assertEquals(15000, endpoint.getTransactionTimeout());
     }
 
+    @Override
     protected CamelContext createCamelContext() throws Exception {
         CamelContext camelContext = super.createCamelContext();
 
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
+        // Note: this one seems to mess with the component configuration, so we use a disposable broker
+        ConnectionFactory connectionFactory = ConnectionFactoryHelper.createConnectionFactory(service.serviceAddress(), 0);
         JmsComponent comp = jmsComponentAutoAcknowledge(connectionFactory);
 
         comp.setAcceptMessagesWhileStopping(true);
-        comp.setAllowReplyManagerQuickStop(true);
-        comp.setAlwaysCopyMessage(true);
-        comp.setAcknowledgementMode(1);
-        comp.setAutoStartup(true);
-        comp.setCacheLevel(1);
-        comp.setClientId("foo");
-        comp.setConcurrentConsumers(2);
-        comp.setDeliveryPersistent(true);
-        comp.setExplicitQosEnabled(true);
-        comp.setIdleTaskExecutionLimit(20);
-        comp.setIdleConsumerLimit(21);
-        comp.setMaxConcurrentConsumers(5);
-        comp.setMaxMessagesPerTask(90);
-        comp.setPriority(3);
-        comp.setReceiveTimeout(5000);
-        comp.setRecoveryInterval(9000);
-        comp.setTimeToLive(3000);
-        comp.setTransacted(true);
-        comp.setTransactionTimeout(15000);
+        comp.getConfiguration().setAllowReplyManagerQuickStop(true);
+        comp.getConfiguration().setAlwaysCopyMessage(true);
+        comp.getConfiguration().setAcknowledgementMode(1);
+        comp.getConfiguration().setAutoStartup(true);
+        comp.getConfiguration().setCacheLevel(1);
+        comp.getConfiguration().setClientId("foo");
+        comp.getConfiguration().setConcurrentConsumers(2);
+        comp.getConfiguration().setDeliveryPersistent(true);
+        comp.getConfiguration().setExplicitQosEnabled(true);
+        comp.getConfiguration().setIdleTaskExecutionLimit(20);
+        comp.getConfiguration().setIdleConsumerLimit(21);
+        comp.getConfiguration().setMaxConcurrentConsumers(5);
+        comp.getConfiguration().setMaxMessagesPerTask(90);
+        comp.getConfiguration().setIdleReceivesPerTaskLimit(45);
+        comp.getConfiguration().setPriority(3);
+        comp.getConfiguration().setReceiveTimeout(5000);
+        comp.getConfiguration().setRecoveryInterval(9000);
+        comp.getConfiguration().setTimeToLive(3000);
+        comp.getConfiguration().setTransacted(true);
+        comp.getConfiguration().setTransactionTimeout(15000);
 
         camelContext.addComponent(componentName, comp);
 
-        endpoint = (JmsEndpoint) comp.createEndpoint("queue:hello");
+        endpoint = (JmsEndpoint) comp.createEndpoint("queue:JmsComponentTest");
 
         return camelContext;
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 from(endpoint).transform(constant("Bye World"));
             }
         };

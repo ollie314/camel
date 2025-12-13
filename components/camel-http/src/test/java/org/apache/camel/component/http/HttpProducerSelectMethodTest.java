@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,172 +16,151 @@
  */
 package org.apache.camel.component.http;
 
-import java.io.IOException;
-
 import org.apache.camel.Exchange;
-import org.apache.camel.http.common.HttpOperationFailedException;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.apache.commons.httpclient.HttpMethod;
-import org.junit.Test;
+import org.apache.camel.component.http.handler.BasicValidationHandler;
+import org.apache.hc.core5.http.impl.bootstrap.HttpServer;
+import org.apache.hc.core5.http.impl.bootstrap.ServerBootstrap;
+import org.junit.jupiter.api.Test;
 
 import static org.apache.camel.component.http.HttpMethods.GET;
 import static org.apache.camel.component.http.HttpMethods.POST;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 /**
  * Unit test to verify the algorithm for selecting either GET or POST.
  */
-public class HttpProducerSelectMethodTest extends CamelTestSupport {
+public class HttpProducerSelectMethodTest extends BaseHttpTest {
+
+    private HttpServer localServer;
+
+    private String baseUrl;
+
+    private Exchange exchange;
+
+    @Override
+    public void setupResources() throws Exception {
+        localServer = ServerBootstrap.bootstrap()
+                .setCanonicalHostName("localhost").setHttpProcessor(getBasicHttpProcessor())
+                .setConnectionReuseStrategy(getConnectionReuseStrategy()).setResponseFactory(getHttpResponseFactory())
+                .setSslContext(getSSLContext())
+                .register("/myget", new BasicValidationHandler(GET.name(), null, null, getExpectedContent()))
+                .register("/mypost", new BasicValidationHandler(POST.name(), null, null, getExpectedContent()))
+                .register("/myget2", new BasicValidationHandler(GET.name(), "q=Camel", null, getExpectedContent()))
+                .create();
+        localServer.start();
+
+        baseUrl = "http://localhost:" + localServer.getLocalPort();
+
+    }
+
+    @Override
+    public void cleanupResources() throws Exception {
+
+        if (localServer != null) {
+            localServer.stop();
+        }
+    }
 
     @Test
-    public void testNoDataDefaultIsGet() throws Exception {
-        HttpComponent component = context.getComponent("http", HttpComponent.class);
-        
-        HttpEndpoint endpoiont = (HttpEndpoint) component.createEndpoint("http://www.google.com");
-        MyHttpProducer producer = new MyHttpProducer(endpoiont, "GET", null);
-
-        Exchange exchange = producer.createExchange();
+    public void noDataDefaultIsGet() throws Exception {
+        HttpProducer producer = createProducer("/myget");
+        exchange = producer.createExchange();
         exchange.getIn().setBody(null);
-        try {
-            producer.process(exchange);
-            fail("Should have thrown HttpOperationFailedException");
-        } catch (HttpOperationFailedException e) {
-            assertEquals(500, e.getStatusCode());
-        }
+        assertDoesNotThrow(() -> runProducer(producer));
+
+        assertExchange(exchange);
+    }
+
+    private void runProducer(HttpProducer producer) throws Exception {
+        producer.start();
+        producer.process(exchange);
         producer.stop();
     }
 
     @Test
-    public void testDataDefaultIsPost() throws Exception {
-        HttpComponent component = context.getComponent("http", HttpComponent.class);
+    public void dataDefaultIsPost() throws Exception {
+        HttpProducer producer = createProducer("/mypost");
 
-        HttpEndpoint endpoiont = (HttpEndpoint) component.createEndpoint("http://www.google.com");
-        MyHttpProducer producer = new MyHttpProducer(endpoiont, "POST", null);
-
-        Exchange exchange = producer.createExchange();
+        exchange = producer.createExchange();
         exchange.getIn().setBody("This is some data to post");
-        try {
-            producer.process(exchange);
-            fail("Should have thrown HttpOperationFailedException");
-        } catch (HttpOperationFailedException e) {
-            assertEquals(500, e.getStatusCode());
-        }
-        producer.stop();
+        assertDoesNotThrow(() -> runProducer(producer));
+
+        assertExchange(exchange);
     }
 
     @Test
-    public void testWithMethodPostInHeader() throws Exception {
-        HttpComponent component = context.getComponent("http", HttpComponent.class);
+    public void withMethodPostInHeader() throws Exception {
+        HttpProducer producer = createProducer("/mypost");
 
-        HttpEndpoint endpoiont = (HttpEndpoint) component.createEndpoint("http://www.google.com");
-        MyHttpProducer producer = new MyHttpProducer(endpoiont, "POST", null);
-
-        Exchange exchange = producer.createExchange();
+        exchange = producer.createExchange();
         exchange.getIn().setBody("");
         exchange.getIn().setHeader(Exchange.HTTP_METHOD, POST);
-        try {
-            producer.process(exchange);
-            fail("Should have thrown HttpOperationFailedException");
-        } catch (HttpOperationFailedException e) {
-            assertEquals(500, e.getStatusCode());
-        }
-        producer.stop();
+        assertDoesNotThrow(() -> runProducer(producer));
     }
 
     @Test
-    public void testWithMethodGetInHeader() throws Exception {
-        HttpComponent component = context.getComponent("http", HttpComponent.class);
+    public void withMethodGetInHeader() throws Exception {
+        HttpProducer producer = createProducer("/myget");
 
-        HttpEndpoint endpoiont = (HttpEndpoint) component.createEndpoint("http://www.google.com");
-        MyHttpProducer producer = new MyHttpProducer(endpoiont, "GET", null);
-
-        Exchange exchange = producer.createExchange();
+        exchange = producer.createExchange();
         exchange.getIn().setBody("");
         exchange.getIn().setHeader(Exchange.HTTP_METHOD, GET);
-        try {
-            producer.process(exchange);
-            fail("Should have thrown HttpOperationFailedException");
-        } catch (HttpOperationFailedException e) {
-            assertEquals(500, e.getStatusCode());
-        }
-        producer.stop();
+        assertDoesNotThrow(() -> runProducer(producer));
+    }
+
+    private HttpProducer createProducer(String path) throws Exception {
+        HttpComponent component = context.getComponent("http", HttpComponent.class);
+
+        HttpEndpoint endpoint = (HttpEndpoint) component.createEndpoint(baseUrl + path);
+        return new HttpProducer(endpoint);
     }
 
     @Test
-    public void testWithEndpointQuery() throws Exception {
-        HttpComponent component = context.getComponent("http", HttpComponent.class);
+    public void withMethodCommonHttpGetInHeader() throws Exception {
+        HttpProducer producer = createProducer("/myget");
 
-        HttpEndpoint endpoiont = (HttpEndpoint) component.createEndpoint("http://www.google.com?q=Camel");
-        MyHttpProducer producer = new MyHttpProducer(endpoiont, "GET", "q=Camel");
-
-        Exchange exchange = producer.createExchange();
-        // no body should be GET
-        exchange.getIn().setBody(null);
-        try {
-            producer.process(exchange);
-            fail("Should have thrown HttpOperationFailedException");
-        } catch (HttpOperationFailedException e) {
-            assertEquals(500, e.getStatusCode());
-        }
-        producer.stop();
+        exchange = producer.createExchange();
+        exchange.getIn().setBody("");
+        exchange.getIn().setHeader(Exchange.HTTP_METHOD, org.apache.camel.http.common.HttpMethods.GET);
+        assertDoesNotThrow(() -> runProducer(producer));
     }
 
     @Test
-    public void testWithQueryInHeader() throws Exception {
-        HttpComponent component = context.getComponent("http", HttpComponent.class);
+    public void withEndpointQuery() throws Exception {
+        HttpProducer producer = createProducer("/myget2?q=Camel");
 
-        HttpEndpoint endpoiont = (HttpEndpoint) component.createEndpoint("http://www.google.com");
-        MyHttpProducer producer = new MyHttpProducer(endpoiont, "GET", "q=Camel");
+        exchange = producer.createExchange();
+        exchange.getIn().setBody("");
+        assertDoesNotThrow(() -> runProducer(producer));
+    }
 
-        Exchange exchange = producer.createExchange();
-        // no body should be GET
-        exchange.getIn().setBody(null);
+    @Test
+    public void withQueryInHeader() throws Exception {
+        HttpProducer producer = createProducer("/myget2");
+
+        exchange = producer.createExchange();
+        exchange.getIn().setBody("");
         exchange.getIn().setHeader(Exchange.HTTP_QUERY, "q=Camel");
-        try {
-            producer.process(exchange);
-            fail("Should have thrown HttpOperationFailedException");
-        } catch (HttpOperationFailedException e) {
-            assertEquals(500, e.getStatusCode());
-        }
-        producer.stop();
+        assertDoesNotThrow(() -> runProducer(producer));
     }
 
     @Test
-    public void testWithQueryInHeaderOverrideEndpoint() throws Exception {
-        HttpComponent component = context.getComponent("http", HttpComponent.class);
+    public void withHttpURIInHeader() throws Exception {
+        HttpProducer producer = createProducer("/myget2");
 
-        HttpEndpoint endpoiont = (HttpEndpoint) component.createEndpoint("http://www.google.com?q=Donkey");
-        MyHttpProducer producer = new MyHttpProducer(endpoiont, "GET", "q=Camel");
-
-        Exchange exchange = producer.createExchange();
-        // no body should be GET
-        exchange.getIn().setBody(null);
-        exchange.getIn().setHeader(Exchange.HTTP_QUERY, "q=Camel");
-        try {
-            producer.process(exchange);
-            fail("Should have thrown HttpOperationFailedException");
-        } catch (HttpOperationFailedException e) {
-            assertEquals(500, e.getStatusCode());
-        }
-        producer.stop();
+        exchange = producer.createExchange();
+        exchange.getIn().setBody("");
+        exchange.getIn().setHeader(Exchange.HTTP_URI, baseUrl + "/myget2?q=Camel");
+        assertDoesNotThrow(() -> runProducer(producer));
     }
 
-    private static class MyHttpProducer extends HttpProducer {
-        private String name;
-        private String queryString;
+    @Test
+    public void withQueryInHeaderOverrideEndpoint() throws Exception {
+        HttpProducer producer = createProducer("/myget2?q=Donkey");
 
-        MyHttpProducer(HttpEndpoint endpoint, String name, String queryString) {
-            super(endpoint);
-            this.name = name;
-            this.queryString = queryString;
-        }
-
-        @Override
-        protected int executeMethod(HttpMethod method) throws IOException {
-            // do the assertion what to expected either GET or POST
-            assertEquals(name, method.getName());
-            assertEquals(queryString, method.getQueryString());
-            // return 500 to not extract response as we dont have any
-            return 500;
-        }
+        exchange = producer.createExchange();
+        exchange.getIn().setBody("");
+        exchange.getIn().setHeader(Exchange.HTTP_QUERY, "q=Camel");
+        assertDoesNotThrow(() -> runProducer(producer));
     }
 }

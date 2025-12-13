@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,83 +16,100 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
-
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
 import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * @version 
- */
-public class JmsRequestReplyFixedReplyToInEndpointTest extends CamelTestSupport {
+@Timeout(60)
+@TestInstance(TestInstance.Lifecycle.PER_METHOD)
+public class JmsRequestReplyFixedReplyToInEndpointTest extends AbstractJMSTest {
+
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
-    public void testJmsRequestReplyTempReplyTo() throws Exception {
-        Exchange reply = template.request("activemq:queue:foo", new Processor() {
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setBody("World");
-            }
-        });
-        assertEquals("Hello World", reply.getOut().getBody());
-        assertTrue("Should have headers", reply.getOut().hasHeaders());
-        String replyTo = reply.getOut().getHeader("JMSReplyTo", String.class);
-        assertTrue("Should be a temp queue", replyTo.startsWith("temp-queue"));
+    public void testJmsRequestReplyTempReplyTo() {
+        Exchange reply = template.request("activemq:queue:JmsRequestReplyFixedReplyToInEndpointTest",
+                exchange -> exchange.getIn().setBody("World"));
+        assertEquals("Hello World", reply.getMessage().getBody());
+
+        assertTrue(reply.getMessage().hasHeaders(), "Should have headers");
+        String replyTo = reply.getMessage().getHeader("JMSReplyTo", String.class);
+        assertTrue(replyTo.contains("ActiveMQTemporaryQueue"), "Should be a temp queue");
     }
 
     @Test
-    public void testJmsRequestReplyFixedReplyToInEndpoint() throws Exception {
-        Exchange reply = template.request("activemq:queue:foo?replyTo=bar", new Processor() {
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setBody("World");
-            }
-        });
-        assertEquals("Hello World", reply.getOut().getBody());
-        assertTrue("Should have headers", reply.getOut().hasHeaders());
-        assertEquals("queue://bar", reply.getOut().getHeader("JMSReplyTo", String.class));
+    public void testJmsRequestReplyFixedReplyToInEndpoint() {
+        Exchange reply = template.request(
+                "activemq:queue:JmsRequestReplyFixedReplyToInEndpointTest?replyTo=JmsRequestReplyFixedReplyToInEndpointTest.reply",
+                exchange -> exchange.getIn().setBody("World"));
+        assertEquals("Hello World", reply.getMessage().getBody());
+        assertTrue(reply.getMessage().hasHeaders(), "Should have headers");
+        assertEquals("ActiveMQQueue[JmsRequestReplyFixedReplyToInEndpointTest.reply]",
+                reply.getMessage().getHeader("JMSReplyTo", String.class));
     }
 
     @Test
-    public void testJmsRequestReplyFixedReplyToInEndpointTwoMessages() throws Exception {
-        Exchange reply = template.request("activemq:queue:foo?replyTo=bar", new Processor() {
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setBody("World");
-            }
-        });
-        assertEquals("Hello World", reply.getOut().getBody());
-        assertTrue("Should have headers", reply.getOut().hasHeaders());
-        assertEquals("queue://bar", reply.getOut().getHeader("JMSReplyTo", String.class));
+    public void testJmsRequestReplyFixedReplyToInEndpointTwoMessages() {
+        Exchange reply = template.request(
+                "activemq:queue:JmsRequestReplyFixedReplyToInEndpointTest?replyTo=JmsRequestReplyFixedReplyToInEndpointTest.reply",
+                exchange -> exchange.getIn().setBody("World"));
+        assertEquals("Hello World", reply.getMessage().getBody());
+        assertTrue(reply.getMessage().hasHeaders(), "Should have headers");
+        assertEquals("ActiveMQQueue[JmsRequestReplyFixedReplyToInEndpointTest.reply]",
+                reply.getMessage().getHeader("JMSReplyTo", String.class));
 
-        reply = template.request("activemq:queue:foo?replyTo=bar", new Processor() {
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setBody("Moon");
-            }
-        });
-        assertEquals("Hello Moon", reply.getOut().getBody());
-        assertTrue("Should have headers", reply.getOut().hasHeaders());
-        assertEquals("queue://bar", reply.getOut().getHeader("JMSReplyTo", String.class));
-    }
-
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-        return camelContext;
+        reply = template.request(
+                "activemq:queue:JmsRequestReplyFixedReplyToInEndpointTest?replyTo=JmsRequestReplyFixedReplyToInEndpointTest.reply",
+                exchange -> exchange.getIn().setBody("Moon"));
+        assertEquals("Hello Moon", reply.getMessage().getBody());
+        assertTrue(reply.getMessage().hasHeaders(), "Should have headers");
+        assertEquals("ActiveMQQueue[JmsRequestReplyFixedReplyToInEndpointTest.reply]",
+                reply.getMessage().getHeader("JMSReplyTo", String.class));
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected String getComponentName() {
+        return "activemq";
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("activemq:queue:foo")
-                    .transform(body().prepend("Hello "));
+            public void configure() {
+                from("activemq:queue:JmsRequestReplyFixedReplyToInEndpointTest")
+                        .transform(body().prepend("Hello "));
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
     }
 }

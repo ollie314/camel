@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,6 +19,8 @@ package org.apache.camel.dataformat.tarfile;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 
 /**
  * Keeps a handle on the original {@link InputStream} even after closing the buffered input stream.
@@ -42,5 +44,20 @@ public class TarElementInputStreamWrapper extends BufferedInputStream {
         } finally {
             in = input;
         }
+    }
+
+    @Override
+    public synchronized int available() throws IOException {
+        if (in instanceof TarArchiveInputStream) {
+            TarArchiveInputStream tai = (TarArchiveInputStream) in;
+            if (tai.getCurrentEntry() != null) {
+                // avoid NPE in TarArchiveInputStream.available which
+                // only works if there is a current entry
+                return tai.available();
+            } else {
+                return 0;
+            }
+        }
+        return super.available();
     }
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,12 +18,12 @@ package org.apache.camel.component.quartz;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.quartz.JobDetail;
 
-/**
- * @version 
- */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 public class QuartzJobRouteUnderscoreTest extends BaseQuartzTest {
 
     @Test
@@ -33,11 +33,11 @@ public class QuartzJobRouteUnderscoreTest extends BaseQuartzTest {
         mock.message(0).header("triggerGroup").isEqualTo("my_group");
         mock.message(0).header("triggerName").isEqualTo("my_timer");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         JobDetail detail = mock.getReceivedExchanges().get(0).getIn().getHeader("jobDetail", JobDetail.class);
         assertNotNull(detail);
-        assertEquals("my_job", detail.getName());
+        assertEquals("my_job", detail.getKey().getName());
     }
 
     @Override

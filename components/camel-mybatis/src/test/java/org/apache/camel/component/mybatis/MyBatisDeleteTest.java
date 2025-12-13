@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,9 @@ package org.apache.camel.component.mybatis;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class MyBatisDeleteTest extends MyBatisTestSupport {
 
@@ -29,17 +31,17 @@ public class MyBatisDeleteTest extends MyBatisTestSupport {
 
         template.sendBody("direct:start", 456);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // there should be 1 rows now
         Integer rows = template.requestBody("mybatis:count?statementType=SelectOne", null, Integer.class);
-        assertEquals("There should be 1 rows", 1, rows.intValue());
+        assertEquals(1, rows.intValue(), "There should be 1 rows");
 
         template.sendBody("direct:start", 123);
 
         // there should be 0 rows now
         rows = template.requestBody("mybatis:count?statementType=SelectOne", null, Integer.class);
-        assertEquals("There should be 0 rows", 0, rows.intValue());
+        assertEquals(0, rows.intValue(), "There should be 0 rows");
     }
 
     @Test
@@ -49,21 +51,21 @@ public class MyBatisDeleteTest extends MyBatisTestSupport {
 
         template.sendBody("direct:start", 999);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // there should be 2 rows now
         Integer rows = template.requestBody("mybatis:count?statementType=SelectOne", null, Integer.class);
-        assertEquals("There should be 2 rows", 2, rows.intValue());
+        assertEquals(2, rows.intValue(), "There should be 2 rows");
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .to("mybatis:deleteAccountById?statementType=Delete")
-                    .to("mock:result");
+                        .to("mybatis:deleteAccountById?statementType=Delete")
+                        .to("mock:result");
             }
         };
     }

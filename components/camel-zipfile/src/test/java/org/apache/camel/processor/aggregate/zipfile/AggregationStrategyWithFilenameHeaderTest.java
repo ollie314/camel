@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,18 +26,24 @@ import java.util.zip.ZipFile;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.test.junit5.CamelTestSupport;
 import org.apache.camel.util.IOHelper;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class AggregationStrategyWithFilenameHeaderTest extends CamelTestSupport {
 
     private static final List<String> FILE_NAMES = Arrays.asList("foo", "bar");
+    private static final String TEST_DIR = "target/out_AggregationStrategyWithFilenameHeaderTest";
 
-    @Override
-    public void setUp() throws Exception {
-        deleteDirectory("target/out");
-        super.setUp();
+    @BeforeEach
+    public void deleteTestDirs() {
+        deleteDirectory(TEST_DIR);
     }
 
     @Test
@@ -48,13 +54,11 @@ public class AggregationStrategyWithFilenameHeaderTest extends CamelTestSupport 
         template.setDefaultEndpointUri("direct:start");
         template.sendBodyAndHeader("foo", Exchange.FILE_NAME, FILE_NAMES.get(0));
         template.sendBodyAndHeader("bar", Exchange.FILE_NAME, FILE_NAMES.get(1));
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
-        Thread.sleep(500);
-
-        File[] files = new File("target/out").listFiles();
-        assertTrue(files != null);
-        assertTrue("Should be a file in target/out directory", files.length > 0);
+        File[] files = new File(TEST_DIR).listFiles();
+        assertNotNull(files);
+        assertTrue(files.length > 0, "Should be a file in " + TEST_DIR + " directory");
 
         File resultFile = files[0];
 
@@ -65,26 +69,26 @@ public class AggregationStrategyWithFilenameHeaderTest extends CamelTestSupport 
             while (entries.hasMoreElements()) {
                 fileCount++;
                 final ZipEntry entry = entries.nextElement();
-                assertTrue("Zip entry file name should be on of: " + FILE_NAMES, FILE_NAMES.contains(entry.getName()));
+                assertTrue(FILE_NAMES.contains(entry.getName()), "Zip entry file name should be on of: " + FILE_NAMES);
             }
-            assertEquals("Zip file should contain " + FILE_NAMES.size() + " files", FILE_NAMES.size(), fileCount);
+            assertEquals(FILE_NAMES.size(), fileCount, "Zip file should contain " + FILE_NAMES.size() + " files");
         } finally {
             IOHelper.close(file);
         }
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
                         .aggregate(new ZipAggregationStrategy(false, true))
-                            .constant(true)
-                            .completionTimeout(50)
-                            .to("file:target/out")
-                            .to("mock:aggregateToZipEntry")
-                            .log("Done processing zip file: ${header.CamelFileName}");
+                        .constant(true)
+                        .completionTimeout(50)
+                        .to("file:" + TEST_DIR)
+                        .to("mock:aggregateToZipEntry")
+                        .log("Done processing zip file: ${header.CamelFileName}");
             }
         };
 

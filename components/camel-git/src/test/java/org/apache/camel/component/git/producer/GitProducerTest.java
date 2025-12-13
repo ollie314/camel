@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,7 +17,13 @@
 package org.apache.camel.component.git.producer;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
 
 import org.apache.camel.CamelExecutionException;
 import org.apache.camel.Exchange;
@@ -27,435 +33,379 @@ import org.apache.camel.component.git.GitConstants;
 import org.apache.camel.component.git.GitTestSupport;
 import org.eclipse.jgit.api.CreateBranchCommand.SetupUpstreamMode;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.MergeResult;
 import org.eclipse.jgit.api.PullResult;
+import org.eclipse.jgit.api.RemoteAddCommand;
 import org.eclipse.jgit.api.Status;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
-import org.junit.Test;
+import org.eclipse.jgit.transport.RemoteConfig;
+import org.eclipse.jgit.transport.URIish;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class GitProducerTest extends GitTestSupport {
-    
+
     @Test
-    public void cloneTest() throws Exception {
+    public void cloneTest() {
         template.sendBody("direct:clone", "");
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
+        File gitDir = new File(getCloneDir(), ".git");
+        assertEquals(true, gitDir.exists());
     }
-    
+
     @Test
-    public void initTest() throws Exception {
+    public void initTest() {
         template.sendBody("direct:init", "");
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
     }
-    
-    @Test(expected = CamelExecutionException.class)
-    public void doubleCloneOperationTest() throws Exception {
-        template.sendBody("direct:clone", "");
-        template.sendBody("direct:clone", "");
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-    }
-    
+
     @Test
-    public void pullTest() throws Exception {
+    public void checkoutTest() throws Exception {
+        // Init
+        Git git = getGitTestRepository();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
+        fileToAdd.createNewFile();
+        git.add().addFilepattern(filenameToAdd).call();
+        Status status = git.status().call();
+        assertTrue(status.getAdded().contains(filenameToAdd));
+        git.commit().setMessage(commitMessage).call();
+
+        // Test camel-git checkout
+        template.sendBody("direct:checkout", "");
+
+        // Check
+        List<Ref> ref = git.branchList().call();
+        boolean branchCreated = false;
+        for (Ref refInternal : ref) {
+            if (refInternal.getName().equals("refs/heads/" + branchTest)) {
+                branchCreated = true;
+            }
+        }
+        assertEquals(true, branchCreated);
+        git.close();
+    }
+
+    @Test
+    public void checkoutSpecificTagTest() throws Exception {
+        // Init
+        Git git = getGitTestRepository();
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
+        fileToAdd.createNewFile();
+        git.add().addFilepattern(filenameToAdd).call();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        Status status = git.status().call();
+        assertTrue(status.getAdded().contains(filenameToAdd));
+        git.commit().setMessage(commitMessage).call();
+
+        // Test camel-git create tag
+        template.sendBody("direct:create-tag", "");
+
+        // Check
+        List<Ref> ref = git.tagList().call();
+        boolean tagCreated = false;
+        for (Ref refInternal : ref) {
+            if (refInternal.getName().equals("refs/tags/" + tagTest)) {
+                tagCreated = true;
+            }
+        }
+        assertEquals(true, tagCreated);
+
+        // Test camel-git create-branch
+        template.sendBody("direct:checkout-specific-tag", "");
+
+        // Check
+        ref = git.branchList().call();
+        boolean branchCreated = false;
+        for (Ref refInternal : ref) {
+            if (refInternal.getName().equals("refs/heads/" + branchTest)) {
+                branchCreated = true;
+            }
+        }
+        assertEquals(true, branchCreated);
+        git.close();
+    }
+
+    @Test
+    public void doubleCloneOperationTest() {
         template.sendBody("direct:clone", "");
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
+
+        assertThrows(CamelExecutionException.class, () -> template.sendBody("direct:clone", ""));
+
+        File gitDir = new File(getCloneDir(), ".git");
+        assertEquals(true, gitDir.exists());
+    }
+
+    @Test
+    public void pullTest() {
+        template.sendBody("direct:clone", "");
+        File gitDir = new File(getCloneDir(), ".git");
+        assertEquals(true, gitDir.exists());
         PullResult pr = template.requestBody("direct:pull", "", PullResult.class);
         assertTrue(pr.isSuccessful());
     }
-    
+
     @Test
     public void addTest() throws Exception {
-
-        Repository repository = getTestRepository();
-       
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        Git git = getGitTestRepository();
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
-        Status status = new Git(repository).status().call();
+
+        // Test camel-git add
+        template.sendBodyAndHeader("direct:add", "", GitConstants.GIT_FILE_NAME, filenameToAdd);
+
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        Status status = git.status().call();
         assertTrue(status.getAdded().contains(filenameToAdd));
-        repository.close();
+        git.close();
     }
-    
+
     @Test
     public void removeTest() throws Exception {
-
-        Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        // Init
+        Git git = getGitTestRepository();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
-        Status status = new Git(repository).status().call();
+        git.add().addFilepattern(filenameToAdd).call();
+        Status status = git.status().call();
         assertTrue(status.getAdded().contains(filenameToAdd));
-        
-        template.send("direct:remove", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
-        template.send("direct:commit", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
-            }
-        });
-        Iterable<RevCommit> logs = new Git(repository).log()
-                .call();
-        int count = 0;
-        for (RevCommit rev : logs) {
-            assertEquals(rev.getShortMessage(), commitMessage);
-            count++;
-        }
-        assertEquals(count, 1);
-        
-        status = new Git(repository).status().call();
 
+        // Test camel-git remove
+        template.sendBodyAndHeader("direct:remove", "", GitConstants.GIT_FILE_NAME, filenameToAdd);
+
+        // Check
+        gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        git.commit().setMessage(commitMessage).call();
+        validateGitLogs(git, commitMessage);
+        status = git.status().call();
         assertFalse(status.getAdded().contains(filenameToAdd));
-        
-        repository.close();
+        git.close();
     }
-    
+
     @Test
     public void commitTest() throws Exception {
-
-        Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        // Init
+        Git git = getGitTestRepository();
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
-        Status status = new Git(repository).status().call();
+        git.add().addFilepattern(filenameToAdd).call();
+        Status status = git.status().call();
         assertTrue(status.getAdded().contains(filenameToAdd));
-        
-        template.send("direct:commit", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
-            }
-        });
-        Iterable<RevCommit> logs = new Git(repository).log()
-                .call();
-        int count = 0;
-        for (RevCommit rev : logs) {
-            assertEquals(rev.getShortMessage(), commitMessage);
-            count++;
-        }
-        assertEquals(count, 1);
-        repository.close();
+
+        // Test camel-git commit
+        template.sendBodyAndHeader("direct:commit", "", GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
+
+        // Check
+        validateGitLogs(git, commitMessage);
+        git.close();
     }
-    
+
+    @Test
+    public void commitTestEmpty() throws Exception {
+        // Init
+        Git git = getGitTestRepository();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
+        fileToAdd.createNewFile();
+        git.add().addFilepattern(filenameToAdd).call();
+        Status status = git.status().call();
+        assertTrue(status.getAdded().contains(filenameToAdd));
+        git.commit().setMessage(commitMessage).call();
+
+        // Test camel-git commit (with no changes)
+        template.requestBodyAndHeader("direct:commit", "", GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
+
+        // Check that it has been commited twice
+        validateGitLogs(git, commitMessage, commitMessage);
+        git.close();
+    }
+
+    @Test
+    public void commitTestAllowEmptyFalse() throws Exception {
+        // Init
+        Git git = getGitTestRepository();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
+        fileToAdd.createNewFile();
+        git.add().addFilepattern(filenameToAdd).call();
+        Status status = git.status().call();
+        assertTrue(status.getAdded().contains(filenameToAdd));
+        git.commit().setMessage(commitMessage).call();
+
+        // Test camel-git commit (with allowEmpty set to false)
+        Map<String, Object> headers = new HashMap<>();
+        headers.put(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
+        assertThrows(CamelExecutionException.class,
+                () -> template.requestBodyAndHeaders("direct:commit-not-allow-empty", "", headers));
+
+        // Check : An exception should have been raised
+    }
+
+    @Test
+    public void addAndStatusAndCommitTest() throws Exception {
+        // Initialize repository using JGit
+        Repository repository = getTestRepository();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        Git git = new Git(repository);
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
+        fileToAdd.createNewFile();
+        // Checking camel route
+        Map<String, Object> headers = new HashMap<>();
+        headers.put(GitConstants.GIT_FILE_NAME, filenameToAdd);
+        headers.put(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
+        template.requestBodyAndHeaders("direct:add-status-commit", "", headers);
+        validateGitLogs(git, commitMessage);
+        git.close();
+    }
+
     @Test
     public void commitBranchTest() throws Exception {
-
-        Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        // Init
+        Git git = getGitTestRepository();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
-        Status status = new Git(repository).status().call();
+        git.add().addFilepattern(filenameToAdd).call();
+        Status status = git.status().call();
         assertTrue(status.getAdded().contains(filenameToAdd));
-        
-        template.send("direct:commit", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
-            }
-        });
-        Iterable<RevCommit> logs = new Git(repository).log()
-                .call();
-        int count = 0;
-        for (RevCommit rev : logs) {
-            assertEquals(rev.getShortMessage(), commitMessage);
-            count++;
-        }
-        assertEquals(count, 1);
-        
-        Git git = new Git(repository);
-        git.checkout().setCreateBranch(true).setName(branchTest).
-        setUpstreamMode(SetupUpstreamMode.SET_UPSTREAM).call();
-        
+        git.commit().setMessage(commitMessage).call();
+        validateGitLogs(git, commitMessage);
+        git.checkout().setCreateBranch(true).setName(branchTest).setUpstreamMode(SetupUpstreamMode.SET_UPSTREAM).call();
+
+        // Test camel-git commit (with branch)
         template.send("direct:commit-branch", new Processor() {
             @Override
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessageBranch);
             }
         });
-        logs = git.log().call();
-        count = 0;
-        for (RevCommit rev : logs) {
-            if (count == 0) {
-                assertEquals(rev.getShortMessage(), commitMessageBranch);
-            }
-            if (count == 1) {
-                assertEquals(rev.getShortMessage(), commitMessage);
-            }
-            count++;
-        }
-        assertEquals(count, 2);
-        repository.close();
+        validateGitLogs(git, commitMessageBranch, commitMessage);
+        git.close();
     }
-    
 
-    
     @Test
     public void commitAllTest() throws Exception {
-
-        Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        Git git = getGitTestRepository();
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        
+        git.add().addFilepattern(filenameToAdd).call();
+
         template.send("direct:commit-all", new Processor() {
             @Override
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessageAll);
             }
         });
-        Iterable<RevCommit> logs = new Git(repository).log()
-                .call();
-        int count = 0;
-        for (RevCommit rev : logs) {
-            assertEquals(rev.getShortMessage(), commitMessageAll);
-            count++;
-        }
-        assertEquals(count, 1);
-        repository.close();
+        validateGitLogs(git, commitMessageAll);
+        git.close();
     }
-    
+
     @Test
     public void commitAllDifferentBranchTest() throws Exception {
-
-        Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        // Init
+        Git git = getGitTestRepository();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
-        Status status = new Git(repository).status().call();
+        git.add().addFilepattern(filenameToAdd).call();
+        Status status = git.status().call();
         assertTrue(status.getAdded().contains(filenameToAdd));
-        
-        template.send("direct:commit", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
-            }
-        });
-        Iterable<RevCommit> logs = new Git(repository).log()
-                .call();
-        int count = 0;
-        for (RevCommit rev : logs) {
-            assertEquals(rev.getShortMessage(), commitMessage);
-            count++;
-        }
-        assertEquals(count, 1);
-        
-        Git git = new Git(repository);
-        git.checkout().setCreateBranch(true).setName(branchTest).
-        setUpstreamMode(SetupUpstreamMode.SET_UPSTREAM).call();
-        
-        File fileToAdd1 = new File(gitLocalRepo, filenameBranchToAdd);
+        git.commit().setMessage(commitMessage).call();
+        validateGitLogs(git, commitMessage);
+        git.checkout().setCreateBranch(true).setName(branchTest).setUpstreamMode(SetupUpstreamMode.SET_UPSTREAM).call();
+        File fileToAdd1 = new File(getGitDir(), filenameBranchToAdd);
         fileToAdd1.createNewFile();
-        
+
+        // Test camel-git add and commit (different branches)
         template.send("direct:add-on-branch", new Processor() {
             @Override
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameBranchToAdd);
             }
         });
-        
+
         template.send("direct:commit-all-branch", new Processor() {
             @Override
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessageAll);
             }
         });
-        logs = git.log().call();
-        count = 0;
-        for (RevCommit rev : logs) {
-            if (count == 0) {
-                assertEquals(rev.getShortMessage(), commitMessageAll);
-            }
-            if (count == 1) {
-                assertEquals(rev.getShortMessage(), commitMessage);
-            }
-            count++;
-        }
-        assertEquals(count, 2);
-        repository.close();
+
+        // Check
+        validateGitLogs(git, commitMessageAll, commitMessage);
+        git.close();
     }
-    
+
     @Test
     public void removeFileBranchTest() throws Exception {
-
-        Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        // Init
+        Git git = getGitTestRepository();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
-        Status status = new Git(repository).status().call();
+        git.add().addFilepattern(filenameToAdd).call();
+        Status status = git.status().call();
         assertTrue(status.getAdded().contains(filenameToAdd));
-        
-        template.send("direct:commit", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
-            }
-        });
-        Iterable<RevCommit> logs = new Git(repository).log()
-                .call();
-        int count = 0;
-        for (RevCommit rev : logs) {
-            assertEquals(rev.getShortMessage(), commitMessage);
-            count++;
-        }
-        assertEquals(count, 1);
-        
-        Git git = new Git(repository);
-        git.checkout().setCreateBranch(true).setName(branchTest).
-        setUpstreamMode(SetupUpstreamMode.SET_UPSTREAM).call();
-        
-        File fileToAdd1 = new File(gitLocalRepo, filenameBranchToAdd);
+        git.commit().setMessage(commitMessage).call();
+        validateGitLogs(git, commitMessage);
+        git.checkout().setCreateBranch(true).setName(branchTest).setUpstreamMode(SetupUpstreamMode.SET_UPSTREAM).call();
+        File fileToAdd1 = new File(getGitDir(), filenameBranchToAdd);
         fileToAdd1.createNewFile();
-        
-        template.send("direct:add-on-branch", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameBranchToAdd);
-            }
-        });
-        
-        template.send("direct:commit-all-branch", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessageAll);
-            }
-        });
-        logs = git.log().call();
-        count = 0;
-        for (RevCommit rev : logs) {
-            if (count == 0) {
-                assertEquals(rev.getShortMessage(), commitMessageAll);
-            }
-            if (count == 1) {
-                assertEquals(rev.getShortMessage(), commitMessage);
-            }
-            count++;
-        }
-        assertEquals(count, 2);
-        
+        git.add().addFilepattern(filenameBranchToAdd).call();
+        git.commit().setMessage(commitMessageAll).call();
+        validateGitLogs(git, commitMessageAll, commitMessage);
+
+        // Test camel-git remove
         template.send("direct:remove-on-branch", new Processor() {
             @Override
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
             }
         });
-        
-        git = new Git(repository);
+
+        // Check
         git.checkout().setCreateBranch(false).setName(branchTest).call();
-        
         status = git.status().call();
         assertFalse(status.getAdded().contains(filenameToAdd));
-        
-        repository.close();
+        git.close();
     }
-    
+
     @Test
     public void createBranchTest() throws Exception {
-
-        Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        // Init
+        Git git = getGitTestRepository();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
-        Status status = new Git(repository).status().call();
+        git.add().addFilepattern(filenameToAdd).call();
+        Status status = git.status().call();
         assertTrue(status.getAdded().contains(filenameToAdd));
-        
-        template.send("direct:commit", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
-            }
-        });
-        
-        Git git = new Git(repository);
-        
+        git.commit().setMessage(commitMessage).call();
+
+        // Test camel-git create-branch
         template.sendBody("direct:create-branch", "");
-        
+
+        // Check
         List<Ref> ref = git.branchList().call();
         boolean branchCreated = false;
         for (Ref refInternal : ref) {
@@ -463,41 +413,23 @@ public class GitProducerTest extends GitTestSupport {
                 branchCreated = true;
             }
         }
-        assertEquals(branchCreated, true);
-        repository.close();
+        assertEquals(true, branchCreated);
+        git.close();
     }
-    
+
     @Test
     public void deleteBranchTest() throws Exception {
-
-        Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        // Init
+        Git git = getGitTestRepository();
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
-        Status status = new Git(repository).status().call();
+        git.add().addFilepattern(filenameToAdd).call();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        Status status = git.status().call();
         assertTrue(status.getAdded().contains(filenameToAdd));
-        
-        template.send("direct:commit", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
-            }
-        });
-        
-        Git git = new Git(repository);
-        
-        template.sendBody("direct:create-branch", "");
-        
+        git.commit().setMessage(commitMessage).call();
+        git.branchCreate().setName(branchTest).call();
         List<Ref> ref = git.branchList().call();
         boolean branchCreated = false;
         for (Ref refInternal : ref) {
@@ -505,10 +437,11 @@ public class GitProducerTest extends GitTestSupport {
                 branchCreated = true;
             }
         }
-        assertEquals(branchCreated, true);
-        
+        assertEquals(true, branchCreated);
+
+        // Test camel-git delete-branch
         template.sendBody("direct:delete-branch", "");
-        
+
         ref = git.branchList().call();
         branchCreated = false;
         for (Ref refInternal : ref) {
@@ -516,64 +449,43 @@ public class GitProducerTest extends GitTestSupport {
                 branchCreated = true;
             }
         }
-        assertEquals(branchCreated, false);
-        repository.close();
+        assertEquals(false, branchCreated);
+        git.close();
     }
-    
+
     @Test
     public void statusTest() throws Exception {
-
-        Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        // Init
+        Git git = getGitTestRepository();
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
+        git.add().addFilepattern(filenameToAdd).call();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+
+        // Test camel-git status
         Status status = template.requestBody("direct:status", "", Status.class);
+
+        // Check
         assertTrue(status.getAdded().contains(filenameToAdd));
-        
-        repository.close();
+        Status gitStatus = git.status().call();
+        assertEquals(gitStatus.getAdded(), status.getAdded());
+        git.close();
     }
-    
+
     @Test
     public void statusBranchTest() throws Exception {
-
-        Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        // Init
+        Git git = getGitTestRepository();
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
-        Status status = template.requestBody("direct:status", "", Status.class);
+        git.add().addFilepattern(filenameToAdd).call();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        Status status = git.status().call();
         assertTrue(status.getAdded().contains(filenameToAdd));
-        
-        template.send("direct:commit", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
-            }
-        });
-        
-        template.sendBody("direct:create-branch", "");
-        
-        Git git = new Git(repository);
-        
+        git.commit().setMessage(commitMessage).call();
+        git.branchCreate().setName(branchTest).call();
         List<Ref> ref = git.branchList().call();
         boolean branchCreated = false;
         for (Ref refInternal : ref) {
@@ -581,94 +493,61 @@ public class GitProducerTest extends GitTestSupport {
                 branchCreated = true;
             }
         }
-        assertEquals(branchCreated, true);
-        
-        File fileToAddDifferent = new File(gitLocalRepo, filenameBranchToAdd);
+        assertEquals(true, branchCreated);
+        File fileToAddDifferent = new File(getGitDir(), filenameBranchToAdd);
         fileToAddDifferent.createNewFile();
-        
-        template.send("direct:add-on-branch", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameBranchToAdd);
-            }
-        });
-        
+        git.add().addFilepattern(filenameBranchToAdd).call();
+
+        // Test camel-git status branch
         status = template.requestBody("direct:status-branch", "", Status.class);
+
+        // Check
         assertTrue(status.getAdded().contains(filenameBranchToAdd));
-        
-        repository.close();
+        Status gitStatus = git.status().call();
+        assertEquals(gitStatus.getAdded(), status.getAdded());
+
+        git.close();
     }
-    
+
     @Test
     public void logTest() throws Exception {
-
-        Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        // Init
+        Git git = getGitTestRepository();
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
-        Status status = template.requestBody("direct:status", "", Status.class);
+        git.add().addFilepattern(filenameToAdd).call();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        Status status = git.status().call();
         assertTrue(status.getAdded().contains(filenameToAdd));
-        
-        template.send("direct:commit", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
-            }
-        });
-        
+        git.commit().setMessage(commitMessage).call();
+
+        // Test camel-git log
         Iterable<RevCommit> revCommits = template.requestBody("direct:log", "", Iterable.class);
+
+        // Check
+        Iterator<RevCommit> gitLogs = git.log().call().iterator();
         for (RevCommit rev : revCommits) {
-            assertEquals(rev.getShortMessage(), commitMessage);
-        }        
-        repository.close();
+            RevCommit gitRevCommit = gitLogs.next();
+            assertEquals(gitRevCommit.getName(), rev.getName());
+        }
+
+        git.close();
     }
-    
+
     @Test
     public void logBranchTest() throws Exception {
-
-        Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        // Init
+        Git git = getGitTestRepository();
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
-        Status status = template.requestBody("direct:status", "", Status.class);
+        git.add().addFilepattern(filenameToAdd).call();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        Status status = git.status().call();
         assertTrue(status.getAdded().contains(filenameToAdd));
-        
-        template.send("direct:commit", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
-            }
-        });
-        
-        Iterable<RevCommit> revCommits = template.requestBody("direct:log", "", Iterable.class);
-        for (RevCommit rev : revCommits) {
-            assertEquals(rev.getShortMessage(), commitMessage);
-        }
-        
-        template.sendBody("direct:create-branch", "");
-        
-        Git git = new Git(repository);
-        
+        git.commit().setMessage(commitMessage).call();
+        git.branchCreate().setName(branchTest).call();
         List<Ref> ref = git.branchList().call();
         boolean branchCreated = false;
         for (Ref refInternal : ref) {
@@ -676,71 +555,42 @@ public class GitProducerTest extends GitTestSupport {
                 branchCreated = true;
             }
         }
-        assertEquals(branchCreated, true);
-        
-        File fileToAddDifferent = new File(gitLocalRepo, filenameBranchToAdd);
+        assertEquals(true, branchCreated);
+        File fileToAddDifferent = new File(getGitDir(), filenameBranchToAdd);
         fileToAddDifferent.createNewFile();
-        
-        template.send("direct:add-on-branch", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameBranchToAdd);
-            }
-        });
-        
-        template.send("direct:commit-all-branch", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessageAll);
-            }
-        });
-        
-        revCommits = template.requestBody("direct:log-branch", "", Iterable.class);
-        int count = 0;
+        git.add().addFilepattern(filenameBranchToAdd).call();
+        git.commit().setMessage(commitMessageAll).call();
+
+        // Test camel-git log (with branches)
+        Iterable<RevCommit> revCommits = template.requestBody("direct:log-branch", "", Iterable.class);
+
+        // Check
+        Iterator<RevCommit> gitLogs = git.log().call().iterator();
         for (RevCommit rev : revCommits) {
-            if (count == 0) {
-                assertEquals(rev.getShortMessage(), commitMessageAll);
-            }
-            if (count == 1) {
-                assertEquals(rev.getShortMessage(), commitMessage);
-            }
-            count++;
+            RevCommit gitRevCommit = gitLogs.next();
+            assertEquals(gitRevCommit.getName(), rev.getName());
+            assertEquals(gitRevCommit.getShortMessage(), rev.getShortMessage());
         }
-        
-        repository.close();
+        git.close();
     }
-    
+
     @Test
     public void createTagTest() throws Exception {
-
-        Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        // Init
+        Git git = getGitTestRepository();
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
-        Status status = new Git(repository).status().call();
+        git.add().addFilepattern(filenameToAdd).call();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        Status status = git.status().call();
         assertTrue(status.getAdded().contains(filenameToAdd));
-        
-        template.send("direct:commit", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
-            }
-        });
-        
-        Git git = new Git(repository);
-        
+        git.commit().setMessage(commitMessage).call();
+
+        // Test camel-git create tag
         template.sendBody("direct:create-tag", "");
-        
+
+        // Check
         List<Ref> ref = git.tagList().call();
         boolean tagCreated = false;
         for (Ref refInternal : ref) {
@@ -748,41 +598,23 @@ public class GitProducerTest extends GitTestSupport {
                 tagCreated = true;
             }
         }
-        assertEquals(tagCreated, true);
-        repository.close();
+        assertEquals(true, tagCreated);
+        git.close();
     }
-    
+
     @Test
     public void deleteTagTest() throws Exception {
-
-        Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        // Init
+        Git git = getGitTestRepository();
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
-        Status status = new Git(repository).status().call();
+        git.add().addFilepattern(filenameToAdd).call();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        Status status = git.status().call();
         assertTrue(status.getAdded().contains(filenameToAdd));
-        
-        template.send("direct:commit", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
-            }
-        });
-        
-        Git git = new Git(repository);
-        
-        template.sendBody("direct:create-tag", "");
-        
+        git.commit().setMessage(commitMessage).call();
+        git.tag().setName(tagTest).call();
         List<Ref> ref = git.tagList().call();
         boolean tagCreated = false;
         for (Ref refInternal : ref) {
@@ -790,10 +622,12 @@ public class GitProducerTest extends GitTestSupport {
                 tagCreated = true;
             }
         }
-        assertEquals(tagCreated, true);
-        
+        assertEquals(true, tagCreated);
+
+        // Test camel-git delete-tag
         template.sendBody("direct:delete-tag", "");
-        
+
+        // Check
         ref = git.tagList().call();
         boolean tagExists = false;
         for (Ref refInternal : ref) {
@@ -801,314 +635,346 @@ public class GitProducerTest extends GitTestSupport {
                 tagExists = true;
             }
         }
-        assertEquals(tagExists, false);
-        repository.close();
+        assertEquals(false, tagExists);
+        git.close();
     }
-    
+
     @Test
     public void showBranchesTest() throws Exception {
-
-        Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        // Init
+        Git git = getGitTestRepository();
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
-        Status status = new Git(repository).status().call();
+        git.add().addFilepattern(filenameToAdd).call();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        Status status = git.status().call();
         assertTrue(status.getAdded().contains(filenameToAdd));
-        
-        template.send("direct:commit", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
-            }
-        });
-        
-        Git git = new Git(repository);
-        
-        template.sendBody("direct:create-branch", "");
-        
+        git.commit().setMessage(commitMessage).call();
+        git.branchCreate().setName(branchTest).call();
+
+        // Test camel-git show-branches
         List<Ref> branches = template.requestBody("direct:show-branches", "", List.class);
-        
-        Boolean branchExists = false;
-        
+
+        // Check
+        boolean branchExists = false;
         for (Ref reference : branches) {
             if (("refs/heads/" + branchTest).equals(reference.getName())) {
                 branchExists = true;
             }
         }
         assertTrue(branchExists);
-        
-        repository.close();
+        git.close();
     }
-    
+
     @Test
     public void cherryPickTest() throws Exception {
-
-        Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        // Init
+        Git git = getGitTestRepository();
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
-        Status status = new Git(repository).status().call();
+        git.add().addFilepattern(filenameToAdd).call();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        Status status = git.status().call();
         assertTrue(status.getAdded().contains(filenameToAdd));
-        
-        template.send("direct:commit", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
-            }
-        });
-        Iterable<RevCommit> logs = new Git(repository).log()
-                .call();
-        int count = 0;
-        
-        for (RevCommit rev : logs) {
-            assertEquals(rev.getShortMessage(), commitMessage);
-            count++;
-        }
-        assertEquals(count, 1);
-        
-        template.sendBody("direct:create-branch", "");
-        
-        List<Ref> branches = template.requestBody("direct:show-branches", "", List.class);
-        
-        Boolean branchExists = false;
-        
+        git.commit().setMessage(commitMessage).call();
+        git.branchCreate().setName(branchTest).call();
+        List<Ref> branches = git.branchList().call();
+        boolean branchExists = false;
         for (Ref reference : branches) {
             if (("refs/heads/" + branchTest).equals(reference.getName())) {
                 branchExists = true;
             }
         }
         assertTrue(branchExists);
-        
-        File fileToAdd1 = new File(gitLocalRepo, "filetest1test.txt");
+        String fileToAdd1Name = "filetest1test.txt";
+        File fileToAdd1 = new File(getGitDir(), fileToAdd1Name);
         fileToAdd1.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, "filetest1test.txt");
-            }
-        });
-        
-        status = new Git(repository).status().call();
-        assertTrue(status.getAdded().contains("filetest1test.txt"));
-        
-        template.send("direct:commit", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, "Test second commit");
-            }
-        });
-        logs = new Git(repository).log()
-                .call();
-        count = 0;
-        String id = "";
-        for (RevCommit rev : logs) {
-            if (count == 0) { 
-                id = rev.getName();
-                assertEquals(rev.getShortMessage(), "Test second commit");
-            }
-            count++;
-        }
-        assertEquals(count, 2);
-        
-        final String str = id;
-        template.send("direct:cherrypick", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_ID, str);
-            }
-        });
-        
-        Git git = new Git(repository);
-        git.checkout().setCreateBranch(false).setName(branchTest).call();
-        logs = git.log()
-                .call();
-        count = 0;
-        for (RevCommit rev : logs) {
-            if (count == 0) {
-                assertEquals(rev.getShortMessage(), "Test second commit");
-            }
-            count++;
-        }
-        assertEquals(count, 2);
-        repository.close();
+        git.add().addFilepattern(fileToAdd1Name).call();
+        status = git.status().call();
+        assertTrue(status.getAdded().contains(fileToAdd1Name));
+        git.commit().setMessage("Test second commit").call();
+        Iterable<RevCommit> logs = git.log().call();
+        validateGitLogs(git, "Test second commit", commitMessage);
+        String id = logs.iterator().next().getName();
+
+        // Test camel-git cherry-pick
+        template.sendBodyAndHeader("direct:cherrypick", "", GitConstants.GIT_COMMIT_ID, id);
+
+        // Check
+        validateGitLogs(git, "Test second commit", commitMessage);
+        git.close();
     }
-    
+
     @Test
     public void cherryPickBranchToMasterTest() throws Exception {
-
-        Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+        // Init
+        Git git = getGitTestRepository();
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
-        template.send("direct:add", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
-            }
-        });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
-        Status status = new Git(repository).status().call();
+        git.add().addFilepattern(filenameToAdd).call();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        Status status = git.status().call();
         assertTrue(status.getAdded().contains(filenameToAdd));
-        
-        template.send("direct:commit", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
-            }
-        });
-        Iterable<RevCommit> logs = new Git(repository).log()
-                .call();
-        int count = 0;
-        
-        for (RevCommit rev : logs) {
-            assertEquals(rev.getShortMessage(), commitMessage);
-            count++;
-        }
-        assertEquals(count, 1);
-        
-        template.sendBody("direct:create-branch", "");
-        
-        List<Ref> branches = template.requestBody("direct:show-branches", "", List.class);
-        
-        Boolean branchExists = false;
-        
+        git.commit().setMessage(commitMessage).call();
+        git.branchCreate().setName(branchTest).call();
+        List<Ref> branches = git.branchList().call();
+        boolean branchExists = false;
         for (Ref reference : branches) {
             if (("refs/heads/" + branchTest).equals(reference.getName())) {
                 branchExists = true;
             }
         }
         assertTrue(branchExists);
-        
-        File fileToAdd1 = new File(gitLocalRepo, "filetest1test.txt");
+        String fileToAdd1Name = "filetest1test.txt";
+        File fileToAdd1 = new File(getGitDir(), fileToAdd1Name);
         fileToAdd1.createNewFile();
-        
-        template.send("direct:add-on-branch", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, "filetest1test.txt");
-            }
-        });
-        Git git = new Git(repository);
-        git.checkout().setCreateBranch(false).setName(branchTest).call();
+        git.add().addFilepattern(fileToAdd1Name).call();
         status = git.status().call();
-        assertTrue(status.getAdded().contains("filetest1test.txt"));
-        
+        assertTrue(status.getAdded().contains(fileToAdd1Name));
+        git.commit().setMessage("Test second commit").call();
+        Iterable<RevCommit> logs = git.log().call();
+        validateGitLogs(git, "Test second commit", commitMessage);
+        String id = logs.iterator().next().getName();
+
+        // Test camel-git cherry-pick (on master)
+        template.sendBodyAndHeader("direct:cherrypick-master", "", GitConstants.GIT_COMMIT_ID, id);
+
+        // Check
+        git.checkout().setCreateBranch(false).setName("refs/heads/master").call();
+        validateGitLogs(git, "Test second commit", commitMessage);
+        git.close();
+    }
+
+    @Test
+    public void remoteAddTest() throws Exception {
+        Repository repository = getTestRepository();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        Git git = new Git(repository);
+        List<RemoteConfig> remoteConfigList = git.remoteList().call();
+        assertEquals(0, remoteConfigList.size());
+        Object result = template.requestBody("direct:remoteAdd", "");
+        assertTrue(result instanceof RemoteConfig);
+        RemoteConfig remoteConfig = (RemoteConfig) result;
+        remoteConfigList = git.remoteList().call();
+        assertEquals(1, remoteConfigList.size());
+        assertEquals(remoteConfigList.get(0).getName(), remoteConfig.getName());
+        assertEquals(remoteConfigList.get(0).getURIs(), remoteConfig.getURIs());
+        git.close();
+    }
+
+    @Test
+    public void remoteListTest() throws Exception {
+        Repository repository = getTestRepository();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        Git git = new Git(repository);
+        RemoteAddCommand remoteAddCommand = git.remoteAdd();
+        remoteAddCommand.setName("origin");
+        remoteAddCommand.setUri(new URIish(remoteUriTest));
+        remoteAddCommand.call();
+        List<RemoteConfig> gitRemoteConfigs = git.remoteList().call();
+        Object result = template.requestBody("direct:remoteList", "");
+        assertTrue(result instanceof List);
+        List<RemoteConfig> remoteConfigs = (List<RemoteConfig>) result;
+        assertEquals(gitRemoteConfigs.size(), remoteConfigs.size());
+        assertEquals(gitRemoteConfigs.get(0).getName(), remoteConfigs.get(0).getName());
+        assertEquals(gitRemoteConfigs.get(0).getURIs(), remoteConfigs.get(0).getURIs());
+        git.close();
+    }
+
+    @Test
+    public void cleanTest() throws Exception {
+        Git git = getGitTestRepository();
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
+        fileToAdd.createNewFile();
+
+        // Test camel-git add
+        Set<String> cleaned
+                = template.requestBodyAndHeader("direct:clean", "", GitConstants.GIT_FILE_NAME, filenameToAdd, Set.class);
+
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        assertTrue(cleaned.contains(filenameToAdd));
+        git.close();
+    }
+
+    @Test
+    public void gcTest() throws Exception {
+        Git git = getGitTestRepository();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
+        fileToAdd.createNewFile();
+        git.add().addFilepattern(filenameToAdd).call();
+        Status status = git.status().call();
+        assertTrue(status.getAdded().contains(filenameToAdd));
+        git.commit().setMessage(commitMessage).call();
+
+        // Test camel-git commit (with no changes)
+        template.requestBodyAndHeader("direct:commit", "", GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
+
+        // Check that it has been commited twice
+        validateGitLogs(git, commitMessage, commitMessage);
+
+        // Test camel-git add
+        Properties gcResult
+                = template.requestBodyAndHeader("direct:gc", "", GitConstants.GIT_FILE_NAME, filenameToAdd, Properties.class);
+
+        assertNotNull(gcResult);
+        git.close();
+    }
+
+    @Test
+    public void mergeTest() throws Exception {
+        // Init
+        Git git = getGitTestRepository();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
+        fileToAdd.createNewFile();
+        git.add().addFilepattern(filenameToAdd).call();
+        Status status = git.status().call();
+        assertTrue(status.getAdded().contains(filenameToAdd));
+        git.commit().setMessage(commitMessage).call();
+        validateGitLogs(git, commitMessage);
+        git.checkout().setCreateBranch(true).setName(branchTest).setUpstreamMode(SetupUpstreamMode.SET_UPSTREAM).call();
+
+        // Test camel-git commit (with branch)
         template.send("direct:commit-branch", new Processor() {
             @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, "Test second commit");
+            public void process(Exchange exchange) {
+                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessageBranch);
             }
         });
-        logs = git.log()
-                .call();
-        count = 0;
-        String id = "";
-        for (RevCommit rev : logs) {
-            if (count == 0) { 
-                id = rev.getName();
-                assertEquals(rev.getShortMessage(), "Test second commit");
-            }
-            count++;
-        }
-        assertEquals(count, 2);
-        
-        final String str = id;
-        template.send("direct:cherrypick-master", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(GitConstants.GIT_COMMIT_ID, str);
-            }
-        });
-        
-        git = new Git(repository);
-        git.checkout().setCreateBranch(false).setName("refs/heads/master").call();
-        logs = git.log()
-                .call();
-        count = 0;
-        for (RevCommit rev : logs) {
-            if (count == 0) {
-                assertEquals(rev.getShortMessage(), "Test second commit");
-            }
-            count++;
-        }
-        assertEquals(count, 2);
-        repository.close();
+        validateGitLogs(git, commitMessageBranch, commitMessage);
+
+        // Test camel-git commit (with branch)
+        MergeResult result = template.requestBody("direct:merge", "", MergeResult.class);
+        assertEquals("Fast-forward", result.getMergeStatus().toString());
+        git.close();
     }
-    
+
+    @Test
+    public void showTagsTest() throws Exception {
+        // Init
+        Git git = getGitTestRepository();
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
+        fileToAdd.createNewFile();
+        git.add().addFilepattern(filenameToAdd).call();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        Status status = git.status().call();
+        assertTrue(status.getAdded().contains(filenameToAdd));
+        git.commit().setMessage(commitMessage).call();
+
+        // Test camel-git create tag
+        template.sendBody("direct:create-tag", "");
+
+        // Check
+        List<Ref> result = template.requestBody("direct:show-tags", "", List.class);
+        boolean tagCreated = false;
+        for (Ref refInternal : result) {
+            if (refInternal.getName().equals("refs/tags/" + tagTest)) {
+                tagCreated = true;
+            }
+        }
+        assertEquals(true, tagCreated);
+        git.close();
+    }
+
+    @Test
+    public void mergeTargetBranchTest() throws Exception {
+        // Init
+        Git git = getGitTestRepository();
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
+        fileToAdd.createNewFile();
+        git.add().addFilepattern(filenameToAdd).call();
+        Status status = git.status().call();
+        assertTrue(status.getAdded().contains(filenameToAdd));
+        git.commit().setMessage(commitMessage).call();
+
+        template.sendBody("direct:create-targetBranch", ""); //create target branch
+        template.sendBody("direct:checkout", ""); //checkout test branch
+
+        //add file to test branch and commit
+        fileToAdd = new File(getGitDir(), filenameBranchToAdd);
+        fileToAdd.createNewFile();
+        git.add().addFilepattern(filenameBranchToAdd).call();
+        status = git.status().call();
+        assertTrue(status.getAdded().contains(filenameBranchToAdd));
+        git.commit().setMessage(commitMessageMergeBranch).call();
+
+        //merge test branch into target branch
+        MergeResult result = template.requestBody("direct:merge-targetBranch", "", MergeResult.class);
+        assertEquals("Fast-forward", result.getMergeStatus().toString());
+        assertTrue(Files.exists(fileToAdd.toPath())); //file exists in target branch, so merge was successful
+        git.close();
+    }
+
     @Override
     protected RouteBuilder createRouteBuilder() throws Exception {
-        return new RouteBuilder() {            
+        // force create git repo before routes
+        getTestRepository();
+        final String dir = getGitDir().getPath();
+        final String cloneDir = getCloneDir().getPath();
+        return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("direct:clone")
-                        .to("git://" + gitLocalRepo + "?remotePath=https://github.com/oscerd/json-webserver-example.git&operation=clone");
-                from("direct:init")
-                        .to("git://" + gitLocalRepo + "?operation=init");
-                from("direct:add")
-                        .to("git://" + gitLocalRepo + "?operation=add");
-                from("direct:remove")
-                        .to("git://" + gitLocalRepo + "?operation=remove");
-                from("direct:add-on-branch")
-                        .to("git://" + gitLocalRepo + "?operation=add&branchName=" + branchTest);
-                from("direct:remove-on-branch")
-                        .to("git://" + gitLocalRepo + "?operation=add&branchName=" + branchTest);
-                from("direct:commit")
-                        .to("git://" + gitLocalRepo + "?operation=commit");
-                from("direct:commit-branch")
-                        .to("git://" + gitLocalRepo + "?operation=commit&branchName=" + branchTest);
-                from("direct:commit-all")
-                        .to("git://" + gitLocalRepo + "?operation=commit");
-                from("direct:commit-all-branch")
-                        .to("git://" + gitLocalRepo + "?operation=commit&branchName=" + branchTest);
-                from("direct:create-branch")
-                        .to("git://" + gitLocalRepo + "?operation=createBranch&branchName=" + branchTest);
-                from("direct:delete-branch")
-                        .to("git://" + gitLocalRepo + "?operation=deleteBranch&branchName=" + branchTest);
-                from("direct:status")
-                        .to("git://" + gitLocalRepo + "?operation=status");
-                from("direct:status-branch")
-                        .to("git://" + gitLocalRepo + "?operation=status&branchName=" + branchTest);
-                from("direct:log")
-                        .to("git://" + gitLocalRepo + "?operation=log");
-                from("direct:log-branch")
-                        .to("git://" + gitLocalRepo + "?operation=log&branchName=" + branchTest);
-                from("direct:create-tag")
-                        .to("git://" + gitLocalRepo + "?operation=createTag&tagName=" + tagTest);
-                from("direct:delete-tag")
-                        .to("git://" + gitLocalRepo + "?operation=deleteTag&tagName=" + tagTest);
-                from("direct:show-branches")
-                        .to("git://" + gitLocalRepo + "?operation=showBranches");
-                from("direct:cherrypick")
-                        .to("git://" + gitLocalRepo + "?operation=cherryPick&branchName=" + branchTest);
+            public void configure() {
+                from("direct:clone").to("git://" + cloneDir
+                                        + "?remotePath=https://github.com/oscerd/json-webserver-example.git&operation=clone");
+                from("direct:init").to("git://" + dir + "?operation=init");
+                from("direct:add").to("git://" + dir + "?operation=add");
+                from("direct:checkout").to("git://" + dir + "?operation=checkout&branchName=" + branchTest);
+                from("direct:checkout-specific-tag")
+                        .to("git://" + dir + "?operation=checkout&branchName=" + branchTest + "&tagName=" + tagTest);
+                from("direct:remove").to("git://" + dir + "?operation=remove");
+                from("direct:add-on-branch").to("git://" + dir + "?operation=add&branchName=" + branchTest);
+                from("direct:remove-on-branch").to("git://" + dir + "?operation=add&branchName=" + branchTest);
+                from("direct:commit").to("git://" + dir + "?operation=commit");
+                from("direct:commit-not-allow-empty").to("git://" + dir + "?operation=commit&allowEmpty=false");
+                from("direct:commit-branch").to("git://" + dir + "?operation=commit&branchName=" + branchTest);
+                from("direct:commit-all").to("git://" + dir + "?operation=commit");
+                from("direct:commit-all-branch").to("git://" + dir + "?operation=commit&branchName=" + branchTest);
+                from("direct:add-status-commit").to("git://" + dir + "?operation=add")
+                        .to("git://" + dir + "?operation=status")
+                        .choice()
+                            .when(simple("${body.hasUncommittedChanges()}")).log("Commiting changes...")
+                                .to("git://" + dir + "?operation=commit")
+                            .otherwise()
+                                .log("Nothing to commit")
+                        .end();
+                from("direct:create-branch").to("git://" + dir + "?operation=createBranch&branchName=" + branchTest);
+                from("direct:delete-branch").to("git://" + dir + "?operation=deleteBranch&branchName=" + branchTest);
+                from("direct:status").to("git://" + dir + "?operation=status");
+                from("direct:status-branch").to("git://" + dir + "?operation=status&branchName=" + branchTest);
+                from("direct:log").to("git://" + dir + "?operation=log");
+                from("direct:log-branch").to("git://" + dir + "?operation=log&branchName=" + branchTest);
+                from("direct:create-tag").to("git://" + dir + "?operation=createTag&tagName=" + tagTest);
+                from("direct:delete-tag").to("git://" + dir + "?operation=deleteTag&tagName=" + tagTest);
+                from("direct:show-branches").to("git://" + dir + "?operation=showBranches");
+                from("direct:cherrypick").to("git://" + dir + "?operation=cherryPick&branchName=" + branchTest);
                 from("direct:cherrypick-master")
-                        .to("git://" + gitLocalRepo + "?operation=cherryPick&branchName=refs/heads/master");
-                from("direct:pull")
-                        .to("git://" + gitLocalRepo + "?remoteName=origin&operation=pull");
-            } 
+                        .to("git://" + dir + "?operation=cherryPick&branchName=refs/heads/master");
+                from("direct:pull").to("git://" + cloneDir + "?remoteName=origin&operation=pull");
+                from("direct:clean").to("git://" + dir + "?operation=clean");
+                from("direct:gc").to("git://" + dir + "?operation=gc");
+                from("direct:remoteAdd")
+                        .to("git://" + dir
+                            + "?operation=remoteAdd&remotePath=https://github.com/oscerd/json-webserver-example.git&remoteName=origin");
+                from("direct:remoteList").to("git://" + dir + "?operation=remoteList");
+                from("direct:merge").to("git://" + dir + "?operation=merge&branchName=" + branchTest);
+                from("direct:show-tags").to("git://" + dir + "?operation=showTags");
+                from("direct:create-targetBranch")
+                        .to("git://" + getGitDir() + "?operation=createBranch&branchName=" + targetBranchTest);
+                from("direct:merge-targetBranch").to("git://" + dir + "?operation=merge&targetBranchName="
+                                                     + targetBranchTest + "&branchName=" + branchTest);
+            }
         };
     }
 

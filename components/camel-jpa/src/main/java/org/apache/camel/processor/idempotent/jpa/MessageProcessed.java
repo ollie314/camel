@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,25 +19,21 @@ package org.apache.camel.processor.idempotent.jpa;
 import java.io.Serializable;
 import java.util.Date;
 
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.Id;
-import javax.persistence.Table;
-import javax.persistence.Temporal;
-import javax.persistence.TemporalType;
-import javax.persistence.UniqueConstraint;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.Temporal;
+import jakarta.persistence.TemporalType;
+import jakarta.persistence.UniqueConstraint;
 
-/**
- * @version 
- */
 @Entity
 @Table(
-    name = "CAMEL_MESSAGEPROCESSED",
-    uniqueConstraints = @UniqueConstraint(columnNames = {"processorName", "messageId"})
-)
+       name = "CAMEL_MESSAGEPROCESSED",
+       uniqueConstraints = @UniqueConstraint(columnNames = { "processorName", "messageId" }))
 public class MessageProcessed implements Serializable {
     private static final long serialVersionUID = 5594244386689371118L;
-    
+
     protected Date createdAt;
     private Long id;
     private String messageId;
@@ -45,7 +41,8 @@ public class MessageProcessed implements Serializable {
 
     @Override
     public String toString() {
-        return "MessageProcessed[processorName: " + getProcessorName() + " messageId: " + getMessageId() + " createdAt: " + getCreatedAt() + "]";
+        return "MessageProcessed[processorName: " + getProcessorName() + " messageId: " + getMessageId() + " createdAt: "
+               + getCreatedAt() + "]";
     }
 
     @Id

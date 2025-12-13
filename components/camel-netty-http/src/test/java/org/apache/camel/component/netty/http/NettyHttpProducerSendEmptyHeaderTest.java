@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,7 @@ package org.apache.camel.component.netty.http;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class NettyHttpProducerSendEmptyHeaderTest extends BaseNettyTest {
 
@@ -30,14 +30,14 @@ public class NettyHttpProducerSendEmptyHeaderTest extends BaseNettyTest {
 
         template.sendBodyAndHeader("netty-http:http://localhost:{{port}}/myapp/mytest", "Hello World", "foo", "");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("netty-http:http://localhost:{{port}}/myapp/mytest")
                         .convertBodyTo(String.class)
                         .to("mock:result");

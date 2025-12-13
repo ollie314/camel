@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,17 +16,25 @@
  */
 package org.apache.camel.component.crypto;
 
+import org.apache.camel.spi.Metadata;
+
 /**
- * <code>DigitalSignatureConstants</code> contains Constants for use as Message
- * header keys.
+ * <code>DigitalSignatureConstants</code> contains Constants for use as Message header keys.
  */
 public final class DigitalSignatureConstants {
+    @Metadata(description = "The PrivateKey that should be used to sign the message", javaType = "java.security.PrivateKey")
     public static final String SIGNATURE_PRIVATE_KEY = "CamelSignaturePrivateKey";
+    @Metadata(description = "The Certificate or PublicKey that should be used to verify the signature",
+              javaType = "Certificate or PublicKey")
     public static final String SIGNATURE_PUBLIC_KEY_OR_CERT = "CamelSignaturePublicKeyOrCert";
     public static final String SIGNATURE = "CamelDigitalSignature";
+    @Metadata(description = "The alias used to query the KeyStore for keys and Certificates to be\n" +
+                            " used in signing and verifying exchanges",
+              javaType = "String")
     public static final String KEYSTORE_ALIAS = "CamelSignatureKeyStoreAlias";
+    @Metadata(description = "The password used to access an aliased PrivateKey in the KeyStore.", javaType = "char[]")
     public static final String KEYSTORE_PASSWORD = "CamelSignatureKeyStorePassword";
-    
+
     private DigitalSignatureConstants() {
         // Helper Class
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,8 +19,7 @@ package org.apache.camel.dataformat.soap;
 import com.example.customerservice.GetCustomersByName;
 
 /**
- * Works like SoapMarshalTest but the data format is initialized by using the setters
- * instead of the constructor
+ * Works like SoapMarshalTest but the data format is initialized by using the setters instead of the constructor
  */
 public class SoapMarshalSetterTest extends SoapMarshalTest {
 
@@ -28,12 +27,12 @@ public class SoapMarshalSetterTest extends SoapMarshalTest {
      * Create Dataformat by using the setters
      */
     @Override
-    protected SoapJaxbDataFormat createDataFormat() {
+    protected SoapDataFormat createDataFormat() {
         String jaxbPackage = GetCustomersByName.class.getPackage().getName();
-        SoapJaxbDataFormat dataFormat = new SoapJaxbDataFormat();
+        SoapDataFormat dataFormat = new SoapDataFormat();
         dataFormat.setContextPath(jaxbPackage);
         dataFormat.setElementNameStrategy(null);
         return dataFormat;
     }
-    
+
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,67 +16,86 @@
  */
 package org.apache.camel.component.jms.issues;
 
-import javax.jms.ConnectionFactory;
-
 import org.apache.camel.CamelContext;
-import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.jms.CamelJmsTestHelper;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.jms.AbstractJMSTest;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.awaitility.Awaitility;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/**
- * @version 
- */
-public class JmsInOutExclusiveTopicRecipientListTest extends CamelTestSupport {
+public class JmsInOutExclusiveTopicRecipientListTest extends AbstractJMSTest {
+
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
     public void testJmsInOutExclusiveTopicTest() throws Exception {
         getMockEndpoint("mock:result").expectedBodiesReceived("Bye Camel");
 
-        String out = template.requestBodyAndHeader("direct:start", "Camel", "whereTo", "activemq:topic:news?replyToType=Exclusive&replyTo=queue:back", String.class);
-        assertEquals("Bye Camel", out);
+        // instantiate JmsInOutExclusiveTopicRecipientListTest.reply queue
+        Awaitility.await().untilAsserted(() -> {
+            String out = template.requestBodyAndHeader("direct:start", "Camel", "whereTo",
+                    "activemq:topic:JmsInOutExclusiveTopicRecipientListTest.news?replyToType=Exclusive&replyTo=queue:JmsInOutExclusiveTopicRecipientListTest.reply",
+                    String.class);
+            assertEquals("Bye Camel", out);
 
-        assertMockEndpointsSatisfied();
+            MockEndpoint.assertIsSatisfied(context);
+        });
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-        return camelContext;
+    @Override
+    protected String getComponentName() {
+        return "activemq";
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .recipientList().header("whereTo")
-                    .to("mock:result");
+                        .recipientList().header("whereTo")
+                        .to("mock:result");
 
-                from("activemq:topic:news?disableReplyTo=true")
+                from("activemq:topic:JmsInOutExclusiveTopicRecipientListTest.news")
                         .transform(body().prepend("Bye "))
-                        .process(new Processor() {
-                            @Override
-                            public void process(Exchange exchange) throws Exception {
-                                String replyTo = exchange.getIn().getHeader("JMSReplyTo", String.class);
-                                String cid = exchange.getIn().getHeader("JMSCorrelationID", String.class);
+                        .process(exchange -> {
+                            String replyTo = exchange.getIn().getHeader("JMSReplyTo", String.class);
+                            String cid = exchange.getIn().getHeader("JMSCorrelationID", String.class);
 
-                                log.info("ReplyTo: {}", replyTo);
-                                log.info("CorrelationID: {}", cid);
-                                if (replyTo != null && cid != null) {
-                                    // wait a bit before sending back
-                                    Thread.sleep(1000);
-                                    log.info("Sending back reply message on {}", replyTo);
-                                    template.sendBodyAndHeader("activemq:" + replyTo, exchange.getIn().getBody(), "JMSCorrelationID", cid);
-                                }
+                            log.info("ReplyTo: {}", replyTo);
+                            log.info("CorrelationID: {}", cid);
+                            if (replyTo != null && cid != null) {
+                                log.info("Sending back reply message on {}", replyTo);
+                                template.sendBodyAndHeader("activemq:" + replyTo, exchange.getIn().getBody(),
+                                        "JMSCorrelationID", cid);
                             }
                         });
             }
         };
     }
 
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
+    }
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,20 +16,23 @@
  */
 package org.apache.camel.component.sjms.producer;
 
-import org.apache.activemq.ActiveMQConnectionFactory;
+import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.component.sjms.SjmsComponent;
 import org.apache.camel.component.sjms.support.MyAsyncComponent;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.test.infra.artemis.services.ArtemisService;
+import org.apache.camel.test.infra.artemis.services.ArtemisServiceFactory;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
-/**
- * @version 
- */
 public class AsyncQueueProducerTest extends CamelTestSupport {
 
     private static String beforeThreadName;
@@ -37,30 +40,34 @@ public class AsyncQueueProducerTest extends CamelTestSupport {
     private static String sedaThreadName;
     private static String route = "";
 
+    @RegisterExtension
+    public static ArtemisService service = ArtemisServiceFactory.createSingletonVMService();
+
     @Test
     public void testAsyncJmsProducerEndpoint() throws Exception {
         getMockEndpoint("mock:before").expectedBodiesReceived("Hello Camel");
         getMockEndpoint("mock:after").expectedBodiesReceived("Bye Camel");
         getMockEndpoint("mock:result").expectedBodiesReceived("Bye Camel");
 
-        template.sendBody("direct:start", "Hello Camel");
+        template.sendBody("direct:start.AsyncQueueProducerTest", "Hello Camel");
         // we should run before the async processor that sets B
         route += "A";
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
-        assertFalse("Should use different threads", beforeThreadName.equalsIgnoreCase(afterThreadName));
-        assertFalse("Should use different threads", beforeThreadName.equalsIgnoreCase(sedaThreadName));
-        assertFalse("Should use different threads", afterThreadName.equalsIgnoreCase(sedaThreadName));
+        assertFalse(beforeThreadName.equalsIgnoreCase(afterThreadName), "Should use different threads");
+        assertFalse(beforeThreadName.equalsIgnoreCase(sedaThreadName), "Should use different threads");
+        assertFalse(afterThreadName.equalsIgnoreCase(sedaThreadName), "Should use different threads");
 
         assertEquals("AB", route);
     }
 
+    @Override
     protected CamelContext createCamelContext() throws Exception {
         CamelContext camelContext = super.createCamelContext();
 
         ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory(
-                "vm://broker?broker.persistent=false&broker.useJmx=false");
+                service.serviceAddress());
         SjmsComponent component = new SjmsComponent();
         component.setConnectionFactory(connectionFactory);
         camelContext.addComponent("sjms", component);
@@ -69,34 +76,34 @@ public class AsyncQueueProducerTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 context.addComponent("async", new MyAsyncComponent());
 
-                from("direct:start")
+                from("direct:start.AsyncQueueProducerTest")
                         .to("mock:before")
                         .to("log:before")
                         .process(new Processor() {
-                            public void process(Exchange exchange) throws Exception {
+                            public void process(Exchange exchange) {
                                 beforeThreadName = Thread.currentThread().getName();
                             }
                         })
                         .to("async:bye:camel")
                         .process(new Processor() {
-                            public void process(Exchange exchange) throws Exception {
+                            public void process(Exchange exchange) {
                                 afterThreadName = Thread.currentThread().getName();
                             }
                         })
-                        .to("sjms:queue:foo?synchronous=false");
+                        .to("sjms:queue:foo.AsyncQueueProducerTest");
 
-                from("sjms:queue:foo?synchronous=false")
+                from("sjms:queue:foo.AsyncQueueProducerTest?asyncConsumer=true")
                         .to("mock:after")
                         .to("log:after")
                         .delay(1000)
                         .process(new Processor() {
-                            public void process(Exchange exchange) throws Exception {
+                            public void process(Exchange exchange) {
                                 route += "B";
                                 sedaThreadName = Thread.currentThread().getName();
                             }

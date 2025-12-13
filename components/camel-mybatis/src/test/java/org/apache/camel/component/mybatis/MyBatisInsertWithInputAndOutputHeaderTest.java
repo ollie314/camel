@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,9 @@ package org.apache.camel.component.mybatis;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class MyBatisInsertWithInputAndOutputHeaderTest extends MyBatisTestSupport {
 
@@ -41,21 +43,22 @@ public class MyBatisInsertWithInputAndOutputHeaderTest extends MyBatisTestSuppor
 
         template.sendBodyAndHeader("direct:start", RETAINED_BODY, TEST_CASE_INPUT_HEADER_NAME, account);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // there should be 3 rows now
         Integer rows = template.requestBody("mybatis:count?statementType=SelectOne", null, Integer.class);
-        assertEquals("There should be 3 rows", 3, rows.intValue());
+        assertEquals(3, rows.intValue(), "There should be 3 rows");
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .to("mybatis:insertAccount?statementType=Insert&inputHeader=" + TEST_CASE_INPUT_HEADER_NAME + "&outputHeader=" + TEST_CASE_OUTPUT_HEADER_NAME)
-                    .to("mock:result");
+                        .to("mybatis:insertAccount?statementType=Insert&inputHeader=" + TEST_CASE_INPUT_HEADER_NAME
+                            + "&outputHeader=" + TEST_CASE_OUTPUT_HEADER_NAME)
+                        .to("mock:result");
             }
         };
     }

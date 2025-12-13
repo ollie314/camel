@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,10 +18,10 @@ package org.apache.camel.component.xmpp;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.RuntimeExchangeException;
-import org.apache.camel.impl.DefaultProducer;
-import org.jivesoftware.smack.XMPPConnection;
+import org.apache.camel.support.DefaultProducer;
 import org.jivesoftware.smack.XMPPException;
-import org.jivesoftware.smack.packet.Packet;
+import org.jivesoftware.smack.packet.Stanza;
+import org.jivesoftware.smack.tcp.XMPPTCPConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,7 +31,7 @@ public class XmppDirectProducer extends DefaultProducer {
 
     private final XmppEndpoint endpoint;
 
-    private XMPPConnection connection;
+    private XMPPTCPConnection connection;
 
     public XmppDirectProducer(XmppEndpoint endpoint) {
         super(endpoint);
@@ -48,38 +48,45 @@ public class XmppDirectProducer extends DefaultProducer {
             // make sure we are connected
             if (!connection.isConnected()) {
                 if (LOG.isDebugEnabled()) {
-                    LOG.debug("Reconnecting to: " + XmppEndpoint.getConnectionMessage(connection));
+                    LOG.debug("Reconnecting to: {}", XmppEndpoint.getConnectionMessage(connection));
                 }
 
                 connection.connect();
             }
         } catch (XMPPException e) {
-            throw new RuntimeExchangeException("Cannot connect to XMPP Server: "
-                    + ((connection != null) ? XmppEndpoint.getConnectionMessage(connection) : endpoint.getHost()),
+            throw new RuntimeExchangeException(
+                    "Cannot connect to XMPP Server: "
+                                               + ((connection != null)
+                                                       ? XmppEndpoint.getConnectionMessage(connection) : endpoint.getHost()),
                     exchange, e);
         }
 
         try {
             Object body = exchange.getIn().getBody();
-            if (body instanceof Packet) {
-                connection.sendPacket((Packet) body);
+            if (body instanceof Stanza) {
+                connection.sendStanza((Stanza) body);
 
-            } else if (body instanceof Packet[]) {
-                final Packet[] packets = (Packet[]) body;
-                for (final Packet packet : packets) {
-                    connection.sendPacket(packet);
+            } else if (body instanceof Stanza[]) {
+                final Stanza[] packets = (Stanza[]) body;
+                for (final Stanza packet : packets) {
+                    connection.sendStanza(packet);
                 }
 
             } else {
-                throw new Exception("Body does not contain Packet/Packet[] object(s)");
+                throw new Exception("Body does not contain Stanza/Stanza[] object(s)");
             }
-        } catch (XMPPException xmppe) {
-            throw new RuntimeExchangeException("Cannot send XMPP direct: from " + endpoint.getUser() + " to: "
-                    + XmppEndpoint.getConnectionMessage(connection), exchange, xmppe);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeExchangeException(
+                    "Interrupted while sending XMPP direct: from " + endpoint.getUser() + " to: "
+                                               + XmppEndpoint.getConnectionMessage(connection),
+                    exchange, e);
 
         } catch (Exception e) {
-            throw new RuntimeExchangeException("Cannot send XMPP direct: from " + endpoint.getUser() + " to: "
-                    + XmppEndpoint.getConnectionMessage(connection), exchange, e);
+            throw new RuntimeExchangeException(
+                    "Cannot send XMPP direct: from " + endpoint.getUser() + " to: "
+                                               + XmppEndpoint.getConnectionMessage(connection),
+                    exchange, e);
         }
     }
 }

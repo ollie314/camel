@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,42 +17,36 @@
 package org.apache.camel.component.mina;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class MinaSendToProcessorTest extends BaseMinaTest {
 
+    private RouteBuilder getRouteBuilder(String uri) {
+        return new RouteBuilder() {
+
+            @Override
+            public void configure() {
+                from("direct:start")
+                        .toF(uri, getPort());
+            }
+        };
+    }
+
     @Test
     public void testConnectionOnStartupTest() throws Exception {
-        context.addRoutes(new RouteBuilder() {
-            @Override
-            public void configure() throws Exception {
-                from("direct:start").to("mina:tcp://localhost:{{port}}?sync=false&lazySessionCreation=false");
-            }
-        });
+        context.addRoutes(getRouteBuilder("mina:tcp://localhost:%1$s?sync=false&lazySessionCreation=false"));
 
-        try {
-            context.start();
-            fail("Should have thrown an exception");
-        } catch (Exception e) {
-            // expected
-        }
+        assertThrows(Exception.class, () -> context.start(), "Should have thrown an exception");
     }
 
     @Test
     public void testConnectionOnSendMessage() throws Exception {
-        context.addRoutes(new RouteBuilder() {
-            @Override
-            public void configure() throws Exception {
-                from("direct:start").to("mina:tcp://localhost:{{port}}?sync=false");
-            }
-        });
+        context.addRoutes(getRouteBuilder("mina:tcp://localhost:%1$s?sync=false"));
 
-        try {
-            context.start();            
-        } catch (Exception e) {
-            fail("Should not have thrown an exception");
-        }
-                
+        assertDoesNotThrow(() -> context.start(), "Should not have thrown an exception");
     }
 
     @Override

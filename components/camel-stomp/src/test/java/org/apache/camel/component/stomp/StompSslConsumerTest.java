@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,7 +17,9 @@
 package org.apache.camel.component.stomp;
 
 import org.apache.camel.builder.RouteBuilder;
+import org.junit.jupiter.api.Disabled;
 
+@Disabled("Starting with Artmis 2.43, test can be played only one by one")
 public class StompSslConsumerTest extends StompConsumerTest {
 
     @Override
@@ -29,9 +31,10 @@ public class StompSslConsumerTest extends StompConsumerTest {
     protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
-                fromF("stomp:queue:test?brokerURL=ssl://localhost:%d&sslContextParameters=#sslContextParameters", getPort())
-                    .transform(body().convertToString())
-                    .to("mock:result");
+                fromF("stomp:test?brokerURL=ssl://localhost:%d&sslContextParameters=#sslContextParameters",
+                        sslServicePort)
+                        .transform(body().convertToString())
+                        .to("mock:result");
             }
         };
     }

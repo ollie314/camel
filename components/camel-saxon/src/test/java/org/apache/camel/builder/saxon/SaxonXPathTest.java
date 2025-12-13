@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,8 +17,9 @@
 package org.apache.camel.builder.saxon;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
 /**
  *
@@ -35,25 +36,24 @@ public class SaxonXPathTest extends CamelTestSupport {
         template.sendBody("direct:start", "<person><city>Berlin</city></person>");
         template.sendBody("direct:start", "<person><city>Paris</city></person>");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .choice()
+                        .choice()
                         .when().xpath("person/city = 'London'")
-                            .to("mock:london")
+                        .to("mock:london")
                         .when().xpath("person/city = 'Paris'")
-                            .to("mock:paris")
+                        .to("mock:paris")
                         .otherwise()
-                            .to("mock:other");
+                        .to("mock:other");
             }
         };
     }
-
 
 }

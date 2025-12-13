@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,22 +18,25 @@ package org.apache.camel.component.cm;
 
 import java.util.Set;
 
-import javax.validation.ConstraintViolation;
-import javax.validation.Validator;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validator;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.InvalidPayloadRuntimeException;
 import org.apache.camel.component.cm.client.SMSMessage;
 import org.apache.camel.component.cm.exceptions.HostUnavailableException;
-import org.apache.camel.impl.DefaultProducer;
-import org.apache.http.client.methods.HttpHead;
-import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.camel.support.DefaultProducer;
+import org.apache.hc.client5.http.classic.HttpClient;
+import org.apache.hc.client5.http.classic.methods.HttpHead;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * is the exchange processor. Sends a validated sms message to CM Endpoints.
  */
 public class CMProducer extends DefaultProducer {
 
+    private static final Logger LOG = LoggerFactory.getLogger(CMProducer.class);
     private Validator validator;
 
     /**
@@ -41,14 +44,17 @@ public class CMProducer extends DefaultProducer {
      */
     private CMSender sender;
 
+    private final HttpClient client;
+
     public CMProducer(final CMEndpoint endpoint, final CMSender sender) {
         super(endpoint);
         this.sender = sender;
+        this.client = endpoint.getHttpClient();
     }
 
     /**
-     * Producer is a exchange processor. This process is built in several steps. 1. Validate message receive from client 2. Send validated message to CM endpoints. 3. Process response from CM
-     * endpoints.
+     * Producer is a exchange processor. This process is built in several steps. 1. Validate message receive from client
+     * 2. Send validated message to CM endpoints. 3. Process response from CM endpoints.
      */
     @Override
     public void process(final Exchange exchange) throws Exception {
@@ -58,29 +64,29 @@ public class CMProducer extends DefaultProducer {
         final SMSMessage smsMessage = exchange.getIn().getMandatoryBody(SMSMessage.class);
 
         // Validates Payload - SMSMessage
-        log.trace("Validating SMSMessage instance provided: {}", smsMessage.toString());
+        LOG.trace("Validating SMSMessage instance provided: {}", smsMessage);
         final Set<ConstraintViolation<SMSMessage>> constraintViolations = getValidator().validate(smsMessage);
-        if (constraintViolations.size() > 0) {
-            final StringBuffer msg = new StringBuffer();
+        if (!constraintViolations.isEmpty()) {
+            final StringBuilder msg = new StringBuilder();
             for (final ConstraintViolation<SMSMessage> cv : constraintViolations) {
                 msg.append(String.format("- Invalid value for %s: %s", cv.getPropertyPath().toString(), cv.getMessage()));
             }
-            log.debug(msg.toString());
+            LOG.debug("SMS message: {}", msg);
             throw new InvalidPayloadRuntimeException(exchange, SMSMessage.class);
         }
-        log.trace("SMSMessage instance is valid: {}", smsMessage.toString());
+        LOG.trace("SMSMessage instance is valid: {}", smsMessage);
 
         // We have a valid (immutable) SMSMessage instance, lets extend to
         // CMMessage
         // This is the instance we will use to build the XML document to be
         // sent to CM SMS GW.
         final CMMessage cmMessage = new CMMessage(smsMessage.getPhoneNumber(), smsMessage.getMessage());
-        log.debug("CMMessage instance build from valid SMSMessage instance");
+        LOG.debug("CMMessage instance build from valid SMSMessage instance");
 
         if (smsMessage.getFrom() == null || smsMessage.getFrom().isEmpty()) {
             String df = getConfiguration().getDefaultFrom();
             cmMessage.setSender(df);
-            log.debug("Dynamic sender is set to default dynamic sender: {}", df);
+            LOG.debug("Dynamic sender is set to default dynamic sender: {}", df);
         }
 
         // Remember, this can be null.
@@ -93,7 +99,7 @@ public class CMProducer extends DefaultProducer {
         //  for abnormal situations.
         sender.send(cmMessage);
 
-        log.debug("Request accepted by CM Host: {}", cmMessage.toString());
+        LOG.debug("Request accepted by CM Host: {}", cmMessage);
     }
 
     @Override
@@ -102,24 +108,25 @@ public class CMProducer extends DefaultProducer {
         // log at debug level for singletons, for prototype scoped log at trace
         // level to not spam logs
 
-        log.debug("Starting CMProducer");
+        LOG.debug("Starting CMProducer");
 
         final CMConfiguration configuration = getConfiguration();
 
         if (configuration.isTestConnectionOnStartup()) {
             try {
-                log.debug("Checking connection - {}", getEndpoint().getCMUrl());
-                HttpClientBuilder.create().build().execute(new HttpHead(getEndpoint().getCMUrl()));
-                log.debug("Connection to {}: OK", getEndpoint().getCMUrl());
+                LOG.debug("Checking connection - {}", getEndpoint().getCMUrl());
+                client.execute(new HttpHead(getEndpoint().getCMUrl()), res -> null);
+                LOG.debug("Connection to {}: OK", getEndpoint().getCMUrl());
             } catch (final Exception e) {
-                throw new HostUnavailableException(String.format("Connection to %s: NOT AVAILABLE", getEndpoint().getCMUrl()), e);
+                throw new HostUnavailableException(
+                        String.format("Connection to %s: NOT AVAILABLE", getEndpoint().getCMUrl()), e);
             }
         }
 
         // keep starting
         super.doStart();
 
-        log.debug("CMProducer started");
+        LOG.debug("CMProducer started");
     }
 
     @Override

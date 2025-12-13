@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,14 +23,11 @@ import org.apache.pdfbox.pdmodel.font.PDFont;
 import static org.apache.camel.component.pdf.PdfConstants.PDF_PIXEL_SIZE;
 
 public final class PdfUtils {
-    private PdfUtils() { }
-
-    public static float getAverageFontHeight(PDFont font, float fontSize) throws IOException {
-        return font.getFontHeight("A".getBytes(), 0, 1) / PDF_PIXEL_SIZE * fontSize;
+    private PdfUtils() {
     }
 
-    public static float getFontHeightForString(String str, PDFont font, float fontSize) throws IOException {
-        return font.getFontHeight(str.getBytes(), 0, 1) / PDF_PIXEL_SIZE * fontSize;
+    public static float getAverageFontHeight(PDFont font, float fontSize) throws IOException {
+        return font.getBoundingBox().getHeight() / PDF_PIXEL_SIZE * fontSize;
     }
 
     public static float getFontWidth(String str, PDFont font, float fontSize) throws IOException {

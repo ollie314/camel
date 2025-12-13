@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,18 +17,16 @@
 package org.apache.camel.component.jms;
 
 /**
- * Enum for different {@link javax.jms.Message} types.
- *
- * @version 
+ * Enum for different {@link jakarta.jms.Message} types.
  */
 public enum JmsMessageType {
 
-    Bytes, 
-    Map, 
-    Object, 
-    Stream, 
+    Bytes,
+    Map,
+    Object,
+    Stream,
     Text,
-    
+
     /**
      * BlobMessage which is not supported by all JMS implementations
      */

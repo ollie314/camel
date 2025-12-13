@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,42 +16,28 @@
  */
 package org.apache.camel.component.mail;
 
-import javax.mail.Folder;
-import javax.mail.Message;
-import javax.mail.Store;
-import javax.mail.internet.MimeMessage;
+import java.io.UnsupportedEncodingException;
 
-import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import org.jvnet.mock_javamail.Mailbox;
+import jakarta.mail.Folder;
+import jakarta.mail.Message;
+import jakarta.mail.MessagingException;
+import jakarta.mail.Store;
+import jakarta.mail.internet.MimeMessage;
 
-/**
- * @version 
- */
+import org.apache.camel.component.mail.Mailbox.MailboxUser;
+import org.apache.camel.component.mail.Mailbox.Protocol;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.Test;
+
 public class MailConsumerUnsupportedCharsetTest extends CamelTestSupport {
-
-    @Override
-    public void setUp() throws Exception {
-        prepareMailbox();
-        super.setUp();
-    }
+    private static final MailboxUser jones = Mailbox.getOrCreateUser("jones", "secret");
 
     @Test
     public void testConsumeUnsupportedCharset() throws Exception {
-        MockEndpoint mock = getMockEndpoint("mock:result");
-        mock.expectedBodiesReceived("Bye World");
-
-        mock.assertIsSatisfied();
-    }
-
-    private void prepareMailbox() throws Exception {
-        // connect to mailbox
-        Mailbox.clearAll();
         JavaMailSender sender = new DefaultJavaMailSender();
         Store store = sender.getSession().getStore("imap");
-        store.connect("localhost", 25, "jones", "secret");
+        store.connect("localhost", Mailbox.getPort(Protocol.imap), jones.getLogin(), jones.getPassword());
         Folder folder = store.getFolder("INBOX");
         folder.open(Folder.READ_WRITE);
         folder.expunge();
@@ -60,15 +46,12 @@ public class MailConsumerUnsupportedCharsetTest extends CamelTestSupport {
         MimeMessage mime = new MimeMessage(sender.getSession());
         mime.setContent("Bye World", "text/plain; charset=ThisIsNotAKnownCharset");
         msg[0] = mime;
-        folder.appendMessages(msg);
-        folder.close(true);
+        try {
+            Assertions.assertThatThrownBy(() -> folder.appendMessages(msg)).isInstanceOf(MessagingException.class)
+                    .hasCauseInstanceOf(UnsupportedEncodingException.class);
+        } finally {
+            folder.close(true);
+        }
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
-        return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("pop3://jones@localhost?password=secret&consumer.delay=1000&ignoreUnsupportedCharset=true").to("mock:result");
-            }
-        };
-    }
 }

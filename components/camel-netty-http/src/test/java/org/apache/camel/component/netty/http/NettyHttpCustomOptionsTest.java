@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,25 +17,27 @@
 package org.apache.camel.component.netty.http;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import static org.apache.camel.Exchange.HTTP_METHOD;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class NettyHttpCustomOptionsTest extends BaseNettyTest {
 
-    String expectedResponse = "response";
+    final String expectedResponse = "response";
 
     @Test
-    public void shouldReturnCustomResponseForOptions() throws Exception {
-        String response = template.requestBodyAndHeader("netty-http:http://localhost:{{port}}/foo", "", HTTP_METHOD, "OPTIONS", String.class);
+    public void shouldReturnCustomResponseForOptions() {
+        String response = template.requestBodyAndHeader("netty-http:http://localhost:{{port}}/foo", "", HTTP_METHOD, "OPTIONS",
+                String.class);
         assertEquals(expectedResponse, response);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("netty-http:http://0.0.0.0:{{port}}/foo?httpMethodRestrict=OPTIONS").setBody().constant(expectedResponse);
             }
         };

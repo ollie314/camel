@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,7 +16,6 @@
  */
 package org.apache.camel.component.schematron.processor;
 
-
 import java.io.InputStream;
 
 import javax.xml.transform.Source;
@@ -31,46 +30,41 @@ import org.w3c.dom.Node;
 
 import org.apache.camel.component.schematron.constant.Constants;
 import org.apache.camel.component.schematron.exception.SchematronConfigException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 
 /**
  * Class generating Templates for a given schematron rules
  */
 public final class TemplatesFactory {
 
-
     private static final TemplatesFactory INSTANCE = new TemplatesFactory();
-    private static final String[] PIPELINE = new String[]{"iso_dsdl_include.xsl", "iso_abstract_expand.xsl", "iso_svrl_for_xslt2.xsl"};
-    private Logger logger = LoggerFactory.getLogger(TemplatesFactory.class);
+    private static final String[] PIPELINE
+            = new String[] { "iso_dsdl_include.xsl", "iso_abstract_expand.xsl", "iso_svrl_for_xslt2.xsl" };
 
     /**
-     * Singleton constructor;
-     *
-     * @return
+     * Singleton constructor
      */
     public static TemplatesFactory newInstance() {
-
         return INSTANCE;
     }
 
     /**
      * Generate the schematron template for given rule.
      *
-     * @param rules the schematron rules
-     * @param fac   the transformer factory.
-     * @return schematron template.
+     * @param  rules the schematron rules
+     * @param  fac   the transformer factory.
+     * @return       schematron template.
      */
     public Templates getTemplates(final InputStream rules, final TransformerFactory fac) {
-
         Node node = null;
         Source source = new StreamSource(rules);
         try {
             for (String template : PIPELINE) {
                 String path = Constants.SCHEMATRON_TEMPLATES_ROOT_DIR
                         .concat("/").concat(template);
-                InputStream xsl =  this.getClass().getClassLoader().getResourceAsStream(path);
+                InputStream xsl = org.apache.camel.util.ObjectHelper.loadResourceAsStream(path);
+                if (xsl == null) {
+                    xsl = this.getClass().getClassLoader().getResourceAsStream(path);
+                }
                 Transformer t = fac.newTransformer(new StreamSource(xsl));
                 DOMResult result = new DOMResult();
                 t.transform(source, result);
@@ -78,7 +72,6 @@ public final class TemplatesFactory {
             }
             return fac.newTemplates(new DOMSource(node));
         } catch (Exception e) {
-            logger.error(e.getMessage(), e);
             throw new SchematronConfigException(e);
         }
     }

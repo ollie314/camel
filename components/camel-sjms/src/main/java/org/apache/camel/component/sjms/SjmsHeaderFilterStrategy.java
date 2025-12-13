@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,11 +16,8 @@
  */
 package org.apache.camel.component.sjms;
 
-import org.apache.camel.impl.DefaultHeaderFilterStrategy;
+import org.apache.camel.support.DefaultHeaderFilterStrategy;
 
-/**
- * @version
- */
 public class SjmsHeaderFilterStrategy extends DefaultHeaderFilterStrategy {
 
     public SjmsHeaderFilterStrategy() {
@@ -28,6 +25,8 @@ public class SjmsHeaderFilterStrategy extends DefaultHeaderFilterStrategy {
     }
 
     public SjmsHeaderFilterStrategy(boolean includeAllJMSXProperties) {
+        setOutFilterStartsWith(DefaultHeaderFilterStrategy.CAMEL_FILTER_STARTS_WITH);
+        setInFilterStartsWith(DefaultHeaderFilterStrategy.CAMEL_FILTER_STARTS_WITH);
         if (!includeAllJMSXProperties) {
             initialize();
         }

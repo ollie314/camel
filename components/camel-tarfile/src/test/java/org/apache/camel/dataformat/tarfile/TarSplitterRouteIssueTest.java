@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,46 +19,49 @@ package org.apache.camel.dataformat.tarfile;
 import java.io.File;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-public class TarSplitterRouteIssueTest extends CamelTestSupport {
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
 
-    @Override
-    public void setUp() throws Exception {
+class TarSplitterRouteIssueTest extends CamelTestSupport {
+
+    @BeforeEach
+    public void cleanOutputDirectory() {
         deleteDirectory("target/tar");
-        super.setUp();
     }
 
     @Test
-    public void testSplitter() throws Exception {
+    void testSplitter() throws Exception {
         getMockEndpoint("mock:entry").expectedMessageCount(3);
 
         template.sendBody("direct:decompressFiles", new File("src/test/resources/data/tarfile3.tar"));
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
-    public void testSplitterWithWrongFile() throws Exception {
+    void testSplitterWithWrongFile() throws Exception {
         getMockEndpoint("mock:entry").expectedMessageCount(0);
         getMockEndpoint("mock:errors").expectedMessageCount(1);
 
         // send a file which does not exit
         template.sendBody("direct:decompressFiles", new File("src/test/resources/data"));
-        
-        assertMockEndpointsSatisfied();
+
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 errorHandler(deadLetterChannel("mock:errors"));
-                
+
                 from("direct:decompressFiles")
-                    .split(new TarSplitter()).streaming().shareUnitOfWork()
+                        .split(new TarSplitter()).streaming().shareUnitOfWork()
                         .to("log:entry")
                         .to("mock:entry");
             }

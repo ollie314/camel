@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -14,68 +14,42 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.camel.component.jcache;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
-import org.apache.camel.RuntimeCamelException;
+import org.apache.camel.CamelContext;
+import org.apache.camel.support.CamelContextHelper;
 
 public final class JCacheHelper {
     private JCacheHelper() {
     }
 
-    public static <K, V> JCacheManager<K, V> createManager(JCacheConfiguration configuration) {
-        if (isOSGi()) {
-            try {
-                Class<?> type = Class.forName("org.apache.camel.component.jcache.osgi.OSGiCacheManager");
-                Constructor<?> ctor = type.getConstructor(JCacheConfiguration.class);
-
-                return (JCacheManager<K, V>)ctor.newInstance(configuration);
-            } catch (Exception e) {
-                throw new RuntimeCamelException(e);
-            }
+    public static <K, V> JCacheManager<K, V> createManager(CamelContext camelContext, JCacheConfiguration configuration) {
+        JCacheManagerFactory factory = CamelContextHelper.findSingleByType(camelContext, JCacheManagerFactory.class);
+        if (factory == null) {
+            factory = new DefaultJCacheManagerFactory();
         }
-
-        return new JCacheManager<>(configuration);
+        return factory.createManager(configuration);
     }
 
-    @SuppressWarnings("uncheked")
+    @SuppressWarnings("unchecked")
     public static <T> T tcclProxy(final T instance, Class<T> type, final ClassLoader classLoader) {
         return (T) Proxy.newProxyInstance(
-            JCacheHelper.class.getClassLoader(),
-            new Class<?>[] {
-                type
-            },
-            (Object proxy, Method method, Object[] args) -> {
-                final ClassLoader tccl = Thread.currentThread().getContextClassLoader();
-                try {
-                    Thread.currentThread().setContextClassLoader(classLoader);
-                    return method.invoke(instance, args);
-                } finally {
-                    Thread.currentThread().setContextClassLoader(tccl);
-                }
-            }
-        );
+                JCacheHelper.class.getClassLoader(),
+                new Class<?>[] {
+                        type
+                },
+                (Object proxy, Method method, Object[] args) -> {
+                    final ClassLoader tccl = Thread.currentThread().getContextClassLoader();
+                    try {
+                        Thread.currentThread().setContextClassLoader(classLoader);
+                        return method.invoke(instance, args);
+                    } finally {
+                        Thread.currentThread().setContextClassLoader(tccl);
+                    }
+                });
     }
 
-    public static boolean isOSGi() {
-        try {
-            // Check if we are in an osgi container
-            Class<?> fu = Class.forName("org.osgi.framework.FrameworkUtil");
-            if (fu != null) {
-                Method method = fu.getMethod("getBundle", Class.class);
-                if (method != null) {
-                    return method.invoke(null, JCacheHelper.class) != null;
-                }
-            }
-        } catch (ClassNotFoundException e) {
-        } catch (Exception e) {
-            throw new RuntimeCamelException(e);
-        }
-
-        return false;
-    }
 }

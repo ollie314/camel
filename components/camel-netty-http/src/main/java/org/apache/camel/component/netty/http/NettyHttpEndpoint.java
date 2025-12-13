@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,42 +16,49 @@
  */
 package org.apache.camel.component.netty.http;
 
+import java.net.URI;
 import java.util.Map;
 
 import org.apache.camel.AsyncEndpoint;
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
-import org.apache.camel.Exchange;
-import org.apache.camel.Message;
 import org.apache.camel.PollingConsumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
 import org.apache.camel.component.netty.NettyConfiguration;
 import org.apache.camel.component.netty.NettyEndpoint;
-import org.apache.camel.impl.SynchronousDelegateProducer;
+import org.apache.camel.http.base.cookie.CookieHandler;
 import org.apache.camel.spi.HeaderFilterStrategy;
 import org.apache.camel.spi.HeaderFilterStrategyAware;
+import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
+import org.apache.camel.support.SynchronousDelegateProducer;
 import org.apache.camel.util.ObjectHelper;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.MessageEvent;
-import org.jboss.netty.handler.codec.http.HttpRequest;
+import org.apache.camel.util.StringHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Netty HTTP server and client using the Netty 3.x library.
+ * Netty HTTP server and client using the Netty 4.x.
  */
-@UriEndpoint(scheme = "netty-http", extendsScheme = "netty", title = "Netty HTTP",
-        syntax = "netty-http:protocol:host:port/path", consumerClass = NettyHttpConsumer.class, label = "http", lenientProperties = true,
-        excludeProperties = "textline,delimiter,autoAppendDelimiter,decoderMaxLineLength,encoding,allowDefaultCodec,udpConnectionlessSending,networkInterface"
-                + ",clientMode,reconnect,reconnectInterval,broadcast")
+@UriEndpoint(firstVersion = "2.14.0", scheme = "netty-http", extendsScheme = "netty", title = "Netty HTTP",
+             syntax = "netty-http:protocol://host:port/path", category = { Category.NETWORKING, Category.HTTP },
+             lenientProperties = true, headersClass = NettyHttpConstants.class)
+@Metadata(excludeProperties = "textline,delimiter,autoAppendDelimiter,decoderMaxLineLength,encoding,allowDefaultCodec,udpConnectionlessSending,networkInterface"
+                              + ",clientMode,reconnect,reconnectInterval,useByteBuf,udpByteArrayCodec,broadcast,correlationManager",
+          annotations = {
+                  "protocol=http",
+          })
 public class NettyHttpEndpoint extends NettyEndpoint implements AsyncEndpoint, HeaderFilterStrategyAware {
 
     private static final Logger LOG = LoggerFactory.getLogger(NettyHttpEndpoint.class);
+    static final String PROXY_NOT_SUPPORTED_MESSAGE = "Netty Http Producer does not support proxy mode";
+
     @UriParam
     private NettyHttpConfiguration configuration;
-    @UriParam(label = "advanced", name = "configuration", javaType = "org.apache.camel.component.netty.http.NettyHttpConfiguration",
+    @UriParam(label = "advanced", name = "configuration",
+              javaType = "org.apache.camel.component.netty.http.NettyHttpConfiguration",
               description = "To use a custom configured NettyHttpConfiguration for configuring this endpoint.")
     private Object httpConfiguration; // to include in component docs as NettyHttpConfiguration is a @UriParams class
     @UriParam(label = "advanced")
@@ -68,6 +75,8 @@ public class NettyHttpEndpoint extends NettyEndpoint implements AsyncEndpoint, H
     private NettyHttpSecurityConfiguration securityConfiguration;
     @UriParam(label = "consumer,security", prefix = "securityConfiguration.", multiValue = true)
     private Map<String, Object> securityOptions; // to include in component docs
+    @UriParam(label = "producer")
+    private CookieHandler cookieHandler;
 
     public NettyHttpEndpoint(String endpointUri, NettyHttpComponent component, NettyConfiguration configuration) {
         super(endpointUri, component, configuration);
@@ -85,7 +94,8 @@ public class NettyHttpEndpoint extends NettyEndpoint implements AsyncEndpoint, H
 
         if (nettySharedHttpServer != null) {
             answer.setNettyServerBootstrapFactory(nettySharedHttpServer.getServerBootstrapFactory());
-            LOG.info("NettyHttpConsumer: {} is using NettySharedHttpServer on port: {}", answer, nettySharedHttpServer.getPort());
+            LOG.info("NettyHttpConsumer: {} is using NettySharedHttpServer on port: {}", answer,
+                    nettySharedHttpServer.getPort());
         } else {
             // reuse pipeline factory for the same address
             HttpServerBootstrapFactory factory = getComponent().getOrCreateHttpNettyServerBootstrapFactory(answer);
@@ -98,8 +108,12 @@ public class NettyHttpEndpoint extends NettyEndpoint implements AsyncEndpoint, H
 
     @Override
     public Producer createProducer() throws Exception {
+        if (isProxyProtocol()) {
+            doFail(new IllegalArgumentException(PROXY_NOT_SUPPORTED_MESSAGE));
+        }
+
         Producer answer = new NettyHttpProducer(this, getConfiguration());
-        if (isSynchronous()) {
+        if (getConfiguration().isSynchronous()) {
             return new SynchronousDelegateProducer(answer);
         } else {
             return answer;
@@ -109,29 +123,6 @@ public class NettyHttpEndpoint extends NettyEndpoint implements AsyncEndpoint, H
     @Override
     public PollingConsumer createPollingConsumer() throws Exception {
         throw new UnsupportedOperationException("This component does not support polling consumer");
-    }
-
-    @Override
-    public Exchange createExchange(ChannelHandlerContext ctx, MessageEvent messageEvent) throws Exception {
-        Exchange exchange = createExchange();
-
-        // use the http binding
-        HttpRequest request = (HttpRequest) messageEvent.getMessage();
-        Message in = getNettyHttpBinding().toCamelMessage(request, exchange, getConfiguration());
-        exchange.setIn(in);
-        
-        // setup the common message headers 
-        updateMessageHeader(in, ctx, messageEvent);
-
-        // honor the character encoding
-        String contentType = in.getHeader(Exchange.CONTENT_TYPE, String.class);
-        String charset = NettyHttpHelper.getCharsetFromContentType(contentType);
-        if (charset != null) {
-            exchange.setProperty(Exchange.CHARSET_NAME, charset);
-            in.setHeader(Exchange.HTTP_CHARACTER_ENCODING, charset);
-        }
-
-        return exchange;
     }
 
     @Override
@@ -156,12 +147,14 @@ public class NettyHttpEndpoint extends NettyEndpoint implements AsyncEndpoint, H
     }
 
     /**
-     * To use a custom org.apache.camel.component.netty.http.NettyHttpBinding for binding to/from Netty and Camel Message API.
+     * To use a custom org.apache.camel.component.netty.http.NettyHttpBinding for binding to/from Netty and Camel
+     * Message API.
      */
     public void setNettyHttpBinding(NettyHttpBinding nettyHttpBinding) {
         this.nettyHttpBinding = nettyHttpBinding;
     }
 
+    @Override
     public HeaderFilterStrategy getHeaderFilterStrategy() {
         return headerFilterStrategy;
     }
@@ -169,6 +162,7 @@ public class NettyHttpEndpoint extends NettyEndpoint implements AsyncEndpoint, H
     /**
      * To use a custom org.apache.camel.spi.HeaderFilterStrategy to filter headers.
      */
+    @Override
     public void setHeaderFilterStrategy(HeaderFilterStrategy headerFilterStrategy) {
         this.headerFilterStrategy = headerFilterStrategy;
         getNettyHttpBinding().setHeaderFilterStrategy(headerFilterStrategy);
@@ -212,7 +206,8 @@ public class NettyHttpEndpoint extends NettyEndpoint implements AsyncEndpoint, H
     }
 
     /**
-     * Refers to a org.apache.camel.component.netty.http.NettyHttpSecurityConfiguration for configuring secure web resources.
+     * Refers to a org.apache.camel.component.netty.http.NettyHttpSecurityConfiguration for configuring secure web
+     * resources.
      */
     public void setSecurityConfiguration(NettyHttpSecurityConfiguration securityConfiguration) {
         this.securityConfiguration = securityConfiguration;
@@ -229,16 +224,27 @@ public class NettyHttpEndpoint extends NettyEndpoint implements AsyncEndpoint, H
         this.securityOptions = securityOptions;
     }
 
+    public CookieHandler getCookieHandler() {
+        return cookieHandler;
+    }
+
+    /**
+     * Configure a cookie handler to maintain a HTTP session
+     */
+    public void setCookieHandler(CookieHandler cookieHandler) {
+        this.cookieHandler = cookieHandler;
+    }
+
     @Override
-    protected void doStart() throws Exception {
-        super.doStart();
+    protected void doInit() throws Exception {
+        super.doInit();
 
         ObjectHelper.notNull(nettyHttpBinding, "nettyHttpBinding", this);
         ObjectHelper.notNull(headerFilterStrategy, "headerFilterStrategy", this);
 
         if (securityConfiguration != null) {
-            ObjectHelper.notEmpty(securityConfiguration.getRealm(), "realm", securityConfiguration);
-            ObjectHelper.notEmpty(securityConfiguration.getConstraint(), "restricted", securityConfiguration);
+            StringHelper.notEmpty(securityConfiguration.getRealm(), "realm", securityConfiguration);
+            StringHelper.notEmpty(securityConfiguration.getConstraint(), "restricted", securityConfiguration);
 
             if (securityConfiguration.getSecurityAuthenticator() == null) {
                 // setup default JAAS authenticator if none was configured
@@ -248,5 +254,11 @@ public class NettyHttpEndpoint extends NettyEndpoint implements AsyncEndpoint, H
                 securityConfiguration.setSecurityAuthenticator(jaas);
             }
         }
+    }
+
+    private boolean isProxyProtocol() {
+        URI baseUri = URI.create(getEndpointBaseUri());
+        String protocol = baseUri.getScheme();
+        return protocol != null && protocol.equalsIgnoreCase("proxy");
     }
 }

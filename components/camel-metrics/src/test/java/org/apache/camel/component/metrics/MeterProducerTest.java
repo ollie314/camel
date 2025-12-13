@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,23 +20,24 @@ import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.apache.camel.component.metrics.MetricsConstants.HEADER_METER_MARK;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
-import static org.junit.Assert.assertThat;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class MeterProducerTest {
 
     private static final String METRICS_NAME = "metrics.name";
@@ -61,17 +62,16 @@ public class MeterProducerTest {
 
     private InOrder inOrder;
 
-    @Before
-    public void setUp() throws Exception {
+    @BeforeEach
+    public void setUp() {
         producer = new MeterProducer(endpoint);
         inOrder = Mockito.inOrder(endpoint, registry, meter, exchange, in);
-        when(endpoint.getRegistry()).thenReturn(registry);
-        when(registry.meter(METRICS_NAME)).thenReturn(meter);
-        when(exchange.getIn()).thenReturn(in);
+        lenient().when(registry.meter(METRICS_NAME)).thenReturn(meter);
+        lenient().when(exchange.getIn()).thenReturn(in);
     }
 
     @Test
-    public void testMeterProducer() throws Exception {
+    public void testMeterProducer() {
         assertThat(producer, is(notNullValue()));
         assertThat(producer.getEndpoint(), is(equalTo(endpoint)));
     }
@@ -104,25 +104,14 @@ public class MeterProducerTest {
 
     @Test
     public void testProcessMarkNotSet() throws Exception {
+        Object action = null;
         when(endpoint.getMark()).thenReturn(null);
-        when(in.getHeader(HEADER_METER_MARK, null, Long.class)).thenReturn(null);
         producer.doProcess(exchange, endpoint, registry, METRICS_NAME);
         inOrder.verify(registry, times(1)).meter(METRICS_NAME);
         inOrder.verify(endpoint, times(1)).getMark();
-        inOrder.verify(in, times(1)).getHeader(HEADER_METER_MARK, null, Long.class);
+        inOrder.verify(in, times(1)).getHeader(HEADER_METER_MARK, action, Long.class);
         inOrder.verify(meter, times(1)).mark();
         inOrder.verifyNoMoreInteractions();
     }
 
-    @Test
-    public void testProcessMarkNotSetOverrideByHeaderValue() throws Exception {
-        when(endpoint.getMark()).thenReturn(null);
-        when(in.getHeader(HEADER_METER_MARK, null, Long.class)).thenReturn(MARK);
-        producer.doProcess(exchange, endpoint, registry, METRICS_NAME);
-        inOrder.verify(registry, times(1)).meter(METRICS_NAME);
-        inOrder.verify(endpoint, times(1)).getMark();
-        inOrder.verify(in, times(1)).getHeader(HEADER_METER_MARK, null, Long.class);
-        inOrder.verify(meter, times(1)).mark(MARK);
-        inOrder.verifyNoMoreInteractions();
-    }
 }

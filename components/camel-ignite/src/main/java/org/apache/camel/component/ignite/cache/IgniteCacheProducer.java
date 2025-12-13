@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,9 +27,9 @@ import org.apache.camel.Message;
 import org.apache.camel.RuntimeCamelException;
 import org.apache.camel.component.ignite.IgniteConstants;
 import org.apache.camel.component.ignite.IgniteHelper;
-import org.apache.camel.impl.DefaultAsyncProducer;
 import org.apache.camel.spi.Synchronization;
-import org.apache.camel.util.MessageHelper;
+import org.apache.camel.support.DefaultAsyncProducer;
+import org.apache.camel.support.MessageHelper;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.cache.CachePeekMode;
 import org.apache.ignite.cache.query.Query;
@@ -57,39 +57,44 @@ public class IgniteCacheProducer extends DefaultAsyncProducer {
 
         switch (cacheOperationFor(exchange)) {
 
-        case GET:
-            doGet(in, out);
-            break;
+            case GET:
+                doGet(in, out);
+                break;
 
-        case PUT:
-            doPut(in, out);
-            break;
+            case PUT:
+                doPut(in, out);
+                break;
 
-        case QUERY:
-            doQuery(in, out, exchange);
-            break;
+            case QUERY:
+                doQuery(in, out, exchange);
+                break;
 
-        case REMOVE:
-            doRemove(in, out);
-            break;
+            case REMOVE:
+                doRemove(in, out);
+                break;
 
-        case CLEAR:
-            doClear(in, out);
-            break;
+            case CLEAR:
+                doClear(in, out);
+                break;
 
-        case SIZE:
-            doSize(in, out);
-            break;
+            case SIZE:
+                doSize(in, out);
+                break;
 
-        case REBALANCE:
-            doRebalance(in, out);
-            break;
+            case REBALANCE:
+                doRebalance(in, out);
+                break;
 
-        default:
-            break;
+            case REPLACE:
+                doReplace(in, out);
+                break;
+
+            default:
+                break;
         }
 
-        return true;
+        callback.done(false);
+        return false;
     }
 
     @SuppressWarnings("unchecked")
@@ -115,7 +120,9 @@ public class IgniteCacheProducer extends DefaultAsyncProducer {
         Object cacheKey = in.getHeader(IgniteConstants.IGNITE_CACHE_KEY);
 
         if (cacheKey == null) {
-            throw new RuntimeCamelException("Cache PUT operation requires the cache key in the CamelIgniteCacheKey header, " + "or a payload of type Map.");
+            throw new RuntimeCamelException(
+                    "Cache PUT operation requires the cache key in the CamelIgniteCacheKey header, "
+                                            + "or a payload of type Map.");
         }
 
         cache.put(cacheKey, in.getBody());
@@ -140,7 +147,7 @@ public class IgniteCacheProducer extends DefaultAsyncProducer {
 
         out.setBody(cursor.iterator());
 
-        exchange.addOnCompletion(new Synchronization() {
+        exchange.getExchangeExtension().addOnCompletion(new Synchronization() {
             @Override
             public void onFailure(Exchange exchange) {
                 cursor.close();
@@ -193,6 +200,24 @@ public class IgniteCacheProducer extends DefaultAsyncProducer {
         out.setBody(result);
     }
 
+    private void doReplace(Message in, Message out) {
+        Object cacheKey = in.getHeader(IgniteConstants.IGNITE_CACHE_KEY);
+
+        if (cacheKey == null) {
+            throw new RuntimeCamelException(
+                    "Cache REPLACE operation requires the cache key in the CamelIgniteCacheKey header");
+        }
+
+        Object oldValue = in.getHeader(IgniteConstants.IGNITE_CACHE_OLD_VALUE);
+        if (oldValue == null) {
+            cache.replace(cacheKey, in.getBody());
+        } else {
+            cache.replace(cacheKey, oldValue, in.getBody());
+        }
+
+        IgniteHelper.maybePropagateIncomingBody(endpoint, in, out);
+    }
+
     private Object cacheKey(Message msg) {
         Object cacheKey = msg.getHeader(IgniteConstants.IGNITE_CACHE_KEY);
         if (cacheKey == null) {
@@ -202,7 +227,8 @@ public class IgniteCacheProducer extends DefaultAsyncProducer {
     }
 
     private IgniteCacheOperation cacheOperationFor(Exchange exchange) {
-        return exchange.getIn().getHeader(IgniteConstants.IGNITE_CACHE_OPERATION, endpoint.getOperation(), IgniteCacheOperation.class);
+        return exchange.getIn().getHeader(IgniteConstants.IGNITE_CACHE_OPERATION, endpoint.getOperation(),
+                IgniteCacheOperation.class);
     }
 
 }

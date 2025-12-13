@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,27 +26,28 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.dataformat.bindy.annotation.DataField;
 import org.apache.camel.dataformat.bindy.annotation.FixedLengthRecord;
 import org.apache.camel.dataformat.bindy.fixed.BindyFixedLengthDataFormat;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
 public class BindySimpleFixedLengthMarshallWithClipAndTrimTest extends CamelTestSupport {
 
-    private List<Map<String, Object>> models = new ArrayList<Map<String, Object>>();
+    private List<Map<String, Object>> models = new ArrayList<>();
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 BindyFixedLengthDataFormat bindy = new BindyFixedLengthDataFormat(Order.class);
                 bindy.setLocale("en");
 
                 from("direct:start")
-                    .marshal(bindy)
-                    .to("mock:result");
+                        .marshal(bindy)
+                        .to("mock:result");
             }
         };
     }
@@ -58,11 +59,11 @@ public class BindySimpleFixedLengthMarshallWithClipAndTrimTest extends CamelTest
 
         template.sendBody("direct:start", generateModel());
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     public List<Map<String, Object>> generateModel() {
-        Map<String, Object> modelObjects = new HashMap<String, Object>();
+        Map<String, Object> modelObjects = new HashMap<>();
 
         Order order = new Order();
         order.setOrderNr(10);
@@ -122,7 +123,6 @@ public class BindySimpleFixedLengthMarshallWithClipAndTrimTest extends CamelTest
 
         @DataField(pos = 56, length = 10, pattern = "dd-MM-yyyy")
         private Date orderDate;
-
 
         public int getOrderNr() {
             return orderNr;
@@ -214,11 +214,12 @@ public class BindySimpleFixedLengthMarshallWithClipAndTrimTest extends CamelTest
 
         @Override
         public String toString() {
-            return "Model : " + Order.class.getName() + " : " + this.orderNr + ", " + this.orderType + ", " + String.valueOf(this.amount) + ", " + this.instrumentCode + ", "
-                    + this.instrumentNumber + ", " + this.instrumentType + ", " + this.currency + ", " + this.clientNr + ", " + this.firstName + ", " + this.lastName + ", "
-                    + String.valueOf(this.orderDate);
+            return "Model : " + Order.class.getName() + " : " + this.orderNr + ", " + this.orderType + ", "
+                   + String.valueOf(this.amount) + ", " + this.instrumentCode + ", "
+                   + this.instrumentNumber + ", " + this.instrumentType + ", " + this.currency + ", " + this.clientNr + ", "
+                   + this.firstName + ", " + this.lastName + ", "
+                   + String.valueOf(this.orderDate);
         }
     }
-
 
 }

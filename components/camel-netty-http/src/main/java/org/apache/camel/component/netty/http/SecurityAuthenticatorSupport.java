@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,18 +16,16 @@
  */
 package org.apache.camel.component.netty.http;
 
-import java.io.IOException;
 import java.security.Principal;
-import java.util.Iterator;
 import java.util.Locale;
+
 import javax.security.auth.Subject;
 import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.CallbackHandler;
 import javax.security.auth.callback.NameCallback;
 import javax.security.auth.callback.PasswordCallback;
-import javax.security.auth.callback.UnsupportedCallbackException;
 
-import org.apache.camel.util.ObjectHelper;
+import org.apache.camel.support.ObjectHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,17 +37,20 @@ public abstract class SecurityAuthenticatorSupport implements SecurityAuthentica
     private String name;
     private String roleClassNames;
 
-    public SecurityAuthenticatorSupport() {
+    protected SecurityAuthenticatorSupport() {
     }
 
+    @Override
     public void setName(String name) {
         this.name = name;
     }
 
+    @Override
     public String getName() {
         return name;
     }
 
+    @Override
     public void setRoleClassNames(String roleClassNames) {
         this.roleClassNames = roleClassNames;
     }
@@ -57,8 +58,8 @@ public abstract class SecurityAuthenticatorSupport implements SecurityAuthentica
     /**
      * Is the given principal a role class?
      *
-     * @param principal the principal
-     * @return <tt>true</tt> if role class, <tt>false</tt> if not
+     * @param  principal the principal
+     * @return           <tt>true</tt> if role class, <tt>false</tt> if not
      */
     protected boolean isRoleClass(Principal principal) {
         if (roleClassNames == null) {
@@ -67,9 +68,7 @@ public abstract class SecurityAuthenticatorSupport implements SecurityAuthentica
         }
 
         // check each role class name if they match the principal class name
-        Iterator<Object> it = ObjectHelper.createIterator(roleClassNames);
-        while (it.hasNext()) {
-            String name = it.next().toString().trim();
+        for (String name : ObjectHelper.createIterable(roleClassNames)) {
             if (principal.getClass().getName().equals(name)) {
                 return true;
             }
@@ -82,13 +81,13 @@ public abstract class SecurityAuthenticatorSupport implements SecurityAuthentica
         StringBuilder sb = new StringBuilder();
         for (Principal p : subject.getPrincipals()) {
             if (isRoleClass(p)) {
-                if (sb.length() > 0) {
+                if (!sb.isEmpty()) {
                     sb.append(",");
                 }
                 sb.append(p.getName());
             }
         }
-        if (sb.length() > 0) {
+        if (!sb.isEmpty()) {
             return sb.toString();
         } else {
             return null;
@@ -109,7 +108,7 @@ public abstract class SecurityAuthenticatorSupport implements SecurityAuthentica
         }
 
         @Override
-        public void handle(Callback[] callbacks) throws IOException, UnsupportedCallbackException {
+        public void handle(Callback[] callbacks) {
             for (Callback callback : callbacks) {
                 LOG.trace("Callback {}", callback);
                 if (callback instanceof PasswordCallback) {

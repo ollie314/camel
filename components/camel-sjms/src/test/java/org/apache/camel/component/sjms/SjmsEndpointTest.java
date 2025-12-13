@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,13 +16,20 @@
  */
 package org.apache.camel.component.sjms;
 
-import org.apache.activemq.ActiveMQConnectionFactory;
+import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
 import org.apache.camel.ExchangePattern;
 import org.apache.camel.ResolveEndpointFailedException;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class SjmsEndpointTest extends CamelTestSupport {
 
@@ -32,64 +39,64 @@ public class SjmsEndpointTest extends CamelTestSupport {
     }
 
     @Test
-    public void testDefaults() throws Exception {
-        Endpoint endpoint = context.getEndpoint("sjms:test");
+    public void testDefaults() {
+        Endpoint endpoint = context.getEndpoint("sjms:test.SjmsEndpointTest");
         assertNotNull(endpoint);
         assertTrue(endpoint instanceof SjmsEndpoint);
-        SjmsEndpoint sjms = (SjmsEndpoint)endpoint;
-        assertEquals(sjms.getEndpointUri(), "sjms://test");
-        assertEquals(sjms.createExchange().getPattern(), ExchangePattern.InOnly);
+        SjmsEndpoint sjms = (SjmsEndpoint) endpoint;
+        assertEquals("sjms://test.SjmsEndpointTest", sjms.getEndpointUri());
+        assertEquals(ExchangePattern.InOnly, sjms.createExchange().getPattern());
     }
 
     @Test
-    public void testQueueEndpoint() throws Exception {
-        Endpoint sjms = context.getEndpoint("sjms:queue:test");
+    public void testQueueEndpoint() {
+        Endpoint sjms = context.getEndpoint("sjms:queue:test.SjmsEndpointTest");
         assertNotNull(sjms);
-        assertEquals(sjms.getEndpointUri(), "sjms://queue:test");
+        assertEquals("sjms://queue:test.SjmsEndpointTest", sjms.getEndpointUri());
         assertTrue(sjms instanceof SjmsEndpoint);
     }
 
     @Test
-    public void testJndiStyleEndpointName() throws Exception {
-        SjmsEndpoint sjms = context.getEndpoint("sjms:/jms/test/hov.t1.dev:topic", SjmsEndpoint.class);
+    public void testJndiStyleEndpointName() {
+        SjmsEndpoint sjms = context.getEndpoint("sjms:/jms/test/hov.t1.dev:topic.SjmsEndpointTest", SjmsEndpoint.class);
         assertNotNull(sjms);
         assertFalse(sjms.isTopic());
-        assertEquals("/jms/test/hov.t1.dev:topic", sjms.getDestinationName());
+        assertEquals("/jms/test/hov.t1.dev:topic.SjmsEndpointTest", sjms.getDestinationName());
     }
 
     @Test
-    public void testSetTransacted() throws Exception {
-        Endpoint endpoint = context.getEndpoint("sjms:queue:test?transacted=true");
+    public void testSetTransacted() {
+        Endpoint endpoint = context.getEndpoint("sjms:queue:test.SjmsEndpointTest?transacted=true");
         assertNotNull(endpoint);
         assertTrue(endpoint instanceof SjmsEndpoint);
-        SjmsEndpoint qe = (SjmsEndpoint)endpoint;
+        SjmsEndpoint qe = (SjmsEndpoint) endpoint;
         assertTrue(qe.isTransacted());
     }
 
     @Test
-    public void testAsyncProducer() throws Exception {
-        Endpoint endpoint = context.getEndpoint("sjms:queue:test?synchronous=true");
+    public void testAsyncProducer() {
+        Endpoint endpoint = context.getEndpoint("sjms:queue:test.SjmsEndpointTest?synchronous=true");
         assertNotNull(endpoint);
         assertTrue(endpoint instanceof SjmsEndpoint);
-        SjmsEndpoint qe = (SjmsEndpoint)endpoint;
+        SjmsEndpoint qe = (SjmsEndpoint) endpoint;
         assertTrue(qe.isSynchronous());
     }
 
     @Test
-    public void testNamedReplyTo() throws Exception {
-        String namedReplyTo = "reply.to.queue";
-        Endpoint endpoint = context.getEndpoint("sjms:queue:test?namedReplyTo=" + namedReplyTo);
+    public void testReplyTo() {
+        String replyTo = "reply.to.queue";
+        Endpoint endpoint = context.getEndpoint("sjms:queue:test.SjmsEndpointTest?replyTo=" + replyTo);
         assertNotNull(endpoint);
         assertTrue(endpoint instanceof SjmsEndpoint);
-        SjmsEndpoint qe = (SjmsEndpoint)endpoint;
-        assertEquals(qe.getNamedReplyTo(), namedReplyTo);
-        assertEquals(qe.createExchange().getPattern(), ExchangePattern.InOut);
+        SjmsEndpoint qe = (SjmsEndpoint) endpoint;
+        assertEquals(qe.getReplyTo(), replyTo);
+        assertEquals(ExchangePattern.InOut, qe.createExchange().getPattern());
     }
 
     @Test
-    public void testDefaultExchangePattern() throws Exception {
+    public void testDefaultExchangePattern() {
         try {
-            SjmsEndpoint sjms = (SjmsEndpoint)context.getEndpoint("sjms:queue:test");
+            SjmsEndpoint sjms = (SjmsEndpoint) context.getEndpoint("sjms:queue:test.SjmsEndpointTest");
             assertNotNull(sjms);
             assertEquals(ExchangePattern.InOnly, sjms.getExchangePattern());
             // assertTrue(sjms.createExchange().getPattern().equals(ExchangePattern.InOnly));
@@ -99,99 +106,62 @@ public class SjmsEndpointTest extends CamelTestSupport {
     }
 
     @Test
-    public void testInOnlyExchangePattern() throws Exception {
+    public void testInOnlyExchangePattern() {
         try {
-            Endpoint sjms = context.getEndpoint("sjms:queue:test?exchangePattern=" + ExchangePattern.InOnly);
+            Endpoint sjms = context.getEndpoint("sjms:queue:test.SjmsEndpointTest?exchangePattern=" + ExchangePattern.InOnly);
             assertNotNull(sjms);
-            assertTrue(sjms.createExchange().getPattern().equals(ExchangePattern.InOnly));
+            assertEquals(ExchangePattern.InOnly, sjms.createExchange().getPattern());
         } catch (Exception e) {
             fail("Exception thrown: " + e.getLocalizedMessage());
         }
     }
 
     @Test
-    public void testInOutExchangePattern() throws Exception {
+    public void testInOutExchangePattern() {
         try {
-            Endpoint sjms = context.getEndpoint("sjms:queue:test?exchangePattern=" + ExchangePattern.InOut);
+            Endpoint sjms = context.getEndpoint("sjms:queue:test.SjmsEndpointTest?exchangePattern=" + ExchangePattern.InOut);
             assertNotNull(sjms);
-            assertTrue(sjms.createExchange().getPattern().equals(ExchangePattern.InOut));
+            assertEquals(ExchangePattern.InOut, sjms.createExchange().getPattern());
         } catch (Exception e) {
             fail("Exception thrown: " + e.getLocalizedMessage());
         }
     }
 
-    @Test(expected = ResolveEndpointFailedException.class)
-    public void testUnsupportedMessageExchangePattern() throws Exception {
-        context.getEndpoint("sjms:queue:test2?messageExchangePattern=" + ExchangePattern.OutOnly);
+    @Test
+    public void testUnsupportedMessageExchangePattern() {
+        assertThrows(ResolveEndpointFailedException.class,
+                () -> context.getEndpoint("sjms:queue:test2.SjmsEndpointTest?messageExchangePattern=OutOnly"));
     }
 
     @Test
-    public void testNamedReplyToAndMEPMatch() throws Exception {
-        String namedReplyTo = "reply.to.queue";
-        Endpoint endpoint = context.getEndpoint("sjms:queue:test?namedReplyTo=" + namedReplyTo + "&exchangePattern=" + ExchangePattern.InOut);
+    public void testReplyToAndMEPMatch() {
+        String replyTo = "reply.to.queue";
+        Endpoint endpoint = context
+                .getEndpoint(
+                        "sjms:queue:test.SjmsEndpointTest?replyTo=" + replyTo + "&exchangePattern=" + ExchangePattern.InOut);
         assertNotNull(endpoint);
         assertTrue(endpoint instanceof SjmsEndpoint);
-        SjmsEndpoint qe = (SjmsEndpoint)endpoint;
-        assertEquals(qe.getNamedReplyTo(), namedReplyTo);
-        assertEquals(qe.createExchange().getPattern(), ExchangePattern.InOut);
-    }
-
-    @Test(expected = Exception.class)
-    public void testNamedReplyToAndMEPMismatch() throws Exception {
-        context.getEndpoint("sjms:queue:test?namedReplyTo=reply.to.queue&exchangePattern=" + ExchangePattern.InOnly);
+        SjmsEndpoint qe = (SjmsEndpoint) endpoint;
+        assertEquals(qe.getReplyTo(), replyTo);
+        assertEquals(ExchangePattern.InOut, qe.createExchange().getPattern());
     }
 
     @Test
-    public void testDestinationName() throws Exception {
-        Endpoint endpoint = context.getEndpoint("sjms:queue:test?synchronous=true");
+    public void testDestinationName() {
+        Endpoint endpoint = context.getEndpoint("sjms:queue:test.SjmsEndpointTest?synchronous=true");
         assertNotNull(endpoint);
         assertTrue(endpoint instanceof SjmsEndpoint);
-        SjmsEndpoint qe = (SjmsEndpoint)endpoint;
+        SjmsEndpoint qe = (SjmsEndpoint) endpoint;
         assertTrue(qe.isSynchronous());
     }
 
-    @Test
-    public void testTransactedBatchCountDefault() throws Exception {
-        Endpoint endpoint = context.getEndpoint("sjms:queue:test?transacted=true");
-        assertNotNull(endpoint);
-        assertTrue(endpoint instanceof SjmsEndpoint);
-        SjmsEndpoint qe = (SjmsEndpoint)endpoint;
-        assertTrue(qe.getTransactionBatchCount() == -1);
-    }
-
-    @Test
-    public void testTransactedBatchCountModified() throws Exception {
-        Endpoint endpoint = context.getEndpoint("sjms:queue:test?transacted=true&transactionBatchCount=10");
-        assertNotNull(endpoint);
-        assertTrue(endpoint instanceof SjmsEndpoint);
-        SjmsEndpoint qe = (SjmsEndpoint)endpoint;
-        assertTrue(qe.getTransactionBatchCount() == 10);
-    }
-
-    @Test
-    public void testTransactedBatchTimeoutDefault() throws Exception {
-        Endpoint endpoint = context.getEndpoint("sjms:queue:test?transacted=true");
-        assertNotNull(endpoint);
-        assertTrue(endpoint instanceof SjmsEndpoint);
-        SjmsEndpoint qe = (SjmsEndpoint)endpoint;
-        assertTrue(qe.getTransactionBatchTimeout() == 5000);
-    }
-
-    @Test
-    public void testTransactedBatchTimeoutModified() throws Exception {
-        Endpoint endpoint = context.getEndpoint("sjms:queue:test?transacted=true&transactionBatchTimeout=3000");
-        assertNotNull(endpoint);
-        assertTrue(endpoint instanceof SjmsEndpoint);
-        SjmsEndpoint qe = (SjmsEndpoint)endpoint;
-        assertTrue(qe.getTransactionBatchTimeout() == 3000);
-    }
-
+    @Override
     protected CamelContext createCamelContext() throws Exception {
         CamelContext camelContext = super.createCamelContext();
 
-        ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory("vm://broker?broker.persistent=false&broker.useJmx=false");
+        ActiveMQConnectionFactory connectionFactory
+                = new ActiveMQConnectionFactory("vm://broker?broker.persistent=false&broker.useJmx=false");
         SjmsComponent component = new SjmsComponent();
-        component.setConnectionCount(3);
         component.setConnectionFactory(connectionFactory);
         camelContext.addComponent("sjms", component);
 

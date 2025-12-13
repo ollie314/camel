@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,13 +21,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.model.dataformat.JsonLibrary;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
+import static org.apache.camel.test.junit5.TestSupport.body;
+
 public class JacksonConcurrentTest extends CamelTestSupport {
 
     @Test
@@ -47,8 +47,8 @@ public class JacksonConcurrentTest extends CamelTestSupport {
         ExecutorService executor = Executors.newFixedThreadPool(poolSize);
         for (int i = 0; i < files; i++) {
             final int index = i;
-            executor.submit(new Callable<Object>() {
-                public Object call() throws Exception {
+            executor.submit(new Callable<>() {
+                public Object call() {
                     TestPojo pojo = new TestPojo();
                     pojo.setName("Hi " + index);
 
@@ -58,21 +58,17 @@ public class JacksonConcurrentTest extends CamelTestSupport {
             });
         }
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
         executor.shutdownNow();
     }
 
+    @Override
     protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
-                from("direct:start").
-                        marshal().json(JsonLibrary.Jackson).
-                        to("log:marshalled").
-                        to("direct:marshalled");
+                from("direct:start").marshal().json(JsonLibrary.Jackson).to("log:marshalled").to("direct:marshalled");
 
-                from("direct:marshalled").
-                        unmarshal().json(JsonLibrary.Jackson, TestPojo.class).
-                        to("mock:result");
+                from("direct:marshalled").unmarshal().json(JsonLibrary.Jackson, TestPojo.class).to("mock:result");
             }
         };
     }

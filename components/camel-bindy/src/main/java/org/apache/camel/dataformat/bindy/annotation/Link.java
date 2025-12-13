@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,8 +21,8 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
 /**
- * This annotation allows to link classes together in the model. This release
- * version 1.0 only supports oneToone relation
+ * This annotation allows to link classes together in the model. This release version 1.0 only supports one-to-one
+ * relation
  */
 
 @Documented
@@ -31,7 +31,7 @@ public @interface Link {
 
     /**
      * Type of link identifying the relation between the classes
-     * 
+     *
      * @return LinkType
      */
     LinkType linkType() default LinkType.OneToOne;

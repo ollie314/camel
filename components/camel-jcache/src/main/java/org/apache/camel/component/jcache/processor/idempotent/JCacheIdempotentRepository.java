@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,26 +18,47 @@ package org.apache.camel.component.jcache.processor.idempotent;
 
 import javax.cache.Cache;
 
+import org.apache.camel.CamelContext;
+import org.apache.camel.CamelContextAware;
 import org.apache.camel.api.management.ManagedAttribute;
 import org.apache.camel.api.management.ManagedOperation;
 import org.apache.camel.api.management.ManagedResource;
 import org.apache.camel.component.jcache.JCacheConfiguration;
 import org.apache.camel.component.jcache.JCacheHelper;
 import org.apache.camel.component.jcache.JCacheManager;
+import org.apache.camel.spi.Configurer;
 import org.apache.camel.spi.IdempotentRepository;
-import org.apache.camel.support.ServiceSupport;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.support.service.ServiceSupport;
 import org.apache.camel.util.ObjectHelper;
 
+@Metadata(label = "bean",
+          description = "Idempotent repository that uses JCache to store message ids.",
+          annotations = { "interfaceName=org.apache.camel.spi.IdempotentRepository" })
+@Configurer(metadataOnly = true)
 @ManagedResource(description = "JCache based message id repository")
-public class JCacheIdempotentRepository extends ServiceSupport implements IdempotentRepository<Object> {
+public class JCacheIdempotentRepository extends ServiceSupport implements CamelContextAware, IdempotentRepository {
+
+    private CamelContext camelContext;
+    private Cache<String, Boolean> cache;
+    private JCacheManager<String, Boolean> cacheManager;
+
+    @Metadata(description = "Configuration for JCache")
     private JCacheConfiguration configuration;
-    private Cache<Object, Boolean> cache;
-    private JCacheManager<Object, Boolean> cacheManager;
 
     public JCacheIdempotentRepository() {
         this.configuration = new JCacheConfiguration();
     }
 
+    @Override
+    public CamelContext getCamelContext() {
+        return camelContext;
+    }
+
+    @Override
+    public void setCamelContext(CamelContext camelContext) {
+        this.camelContext = camelContext;
+    }
 
     public JCacheConfiguration getConfiguration() {
         return configuration;
@@ -47,36 +68,36 @@ public class JCacheIdempotentRepository extends ServiceSupport implements Idempo
         this.configuration = configuration;
     }
 
-    public Cache<Object, Boolean> getCache() {
+    public Cache<String, Boolean> getCache() {
         return cache;
     }
 
-    public void setCache(Cache<Object, Boolean> cache) {
+    public void setCache(Cache<String, Boolean> cache) {
         this.cache = cache;
     }
 
     @Override
     @ManagedOperation(description = "Adds the key to the store")
-    public boolean add(Object key) {
+    public boolean add(String key) {
         return cache.putIfAbsent(key, true);
     }
 
     @Override
     @ManagedOperation(description = "Does the store contain the given key")
-    public boolean contains(Object key) {
+    public boolean contains(String key) {
         return cache.containsKey(key);
     }
 
     @Override
     @ManagedOperation(description = "Remove the key from the store")
-    public boolean remove(Object key) {
+    public boolean remove(String key) {
         return cache.remove(key);
     }
-    
+
     @Override
     @ManagedOperation(description = "Clear the store")
     public void clear() {
-        cache.clear();      
+        cache.clear();
     }
 
     public void setCacheName(String cacheName) {
@@ -89,26 +110,27 @@ public class JCacheIdempotentRepository extends ServiceSupport implements Idempo
     }
 
     @Override
-    public boolean confirm(Object key) {
+    public boolean confirm(String key) {
         return cache.replace(key, false, true);
     }
 
     @Override
     protected void doStart() throws Exception {
+        ObjectHelper.notNull(camelContext, "camelContext");
+        ObjectHelper.notNull(configuration, "configuration");
+
         if (cache != null) {
             cacheManager = new JCacheManager<>(cache);
         } else {
-            cacheManager = JCacheHelper.createManager(
-                ObjectHelper.notNull(configuration, "configuration")
-            );
-
+            cacheManager = JCacheHelper.createManager(getCamelContext(), configuration);
             cache = cacheManager.getCache();
         }
     }
 
     @Override
     protected void doStop() throws Exception {
-        cacheManager.close();
+        if (cacheManager != null) {
+            cacheManager.close();
+        }
     }
 }
-

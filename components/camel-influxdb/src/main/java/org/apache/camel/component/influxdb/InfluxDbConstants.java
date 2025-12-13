@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,15 +16,21 @@
  */
 package org.apache.camel.component.influxdb;
 
+import org.apache.camel.spi.Metadata;
+
 public final class InfluxDbConstants {
 
     public static final String MEASUREMENT_NAME = "camelInfluxDB.MeasurementName";
+    @Metadata(description = "The string that defines the retention policy to the data created by the endpoint",
+              javaType = "String")
     public static final String RETENTION_POLICY_HEADER = "camelInfluxDB.RetentionPolicy";
+    @Metadata(description = "The name of the database where the time series will be stored", javaType = "String")
     public static final String DBNAME_HEADER = "camelInfluxDB.databaseName";
-    
+    @Metadata(description = "Define the query in case of operation query", javaType = "String")
+    public static final String INFLUXDB_QUERY = "camelInfluxDB.query";
+
     private InfluxDbConstants() {
 
     }
 
-   
 }

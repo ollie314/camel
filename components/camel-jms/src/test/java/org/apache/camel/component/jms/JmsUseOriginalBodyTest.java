@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,21 +16,33 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
-
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Unit test for useOriginalBody unit test
  */
-public class JmsUseOriginalBodyTest extends CamelTestSupport {
+public class JmsUseOriginalBodyTest extends AbstractJMSTest {
+
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
     public void testUseOriginalBody() throws Exception {
@@ -39,7 +51,7 @@ public class JmsUseOriginalBodyTest extends CamelTestSupport {
 
         template.sendBody("activemq:queue:a", "Hello");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -49,35 +61,47 @@ public class JmsUseOriginalBodyTest extends CamelTestSupport {
 
         template.sendBody("activemq:queue:b", "Hello");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("activemq:queue:a")
-                    .onException(IllegalArgumentException.class)
+                        .onException(IllegalArgumentException.class)
                         .handled(true)
                         .useOriginalMessage()
                         .maximumRedeliveries(2)
                         .to("mock:a")
                         .end()
-                    .setBody(body().append(" World"))
-                    .process(new MyThrowProcessor());
+                        .setBody(body().append(" World"))
+                        .process(new MyThrowProcessor());
 
                 from("activemq:queue:b")
-                    .onException(IllegalArgumentException.class)
+                        .onException(IllegalArgumentException.class)
                         .handled(true)
                         .maximumRedeliveries(2)
                         // this route does not .useOriginalMessage()
                         .to("mock:b")
                         .end()
-                    .setBody(body().append(" World"))
-                    .process(new MyThrowProcessor());
+                        .setBody(body().append(" World"))
+                        .process(new MyThrowProcessor());
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
     }
 
     public static class MyThrowProcessor implements Processor {
@@ -85,19 +109,15 @@ public class JmsUseOriginalBodyTest extends CamelTestSupport {
         public MyThrowProcessor() {
         }
 
-        public void process(Exchange exchange) throws Exception {
+        @Override
+        public void process(Exchange exchange) {
             assertEquals("Hello World", exchange.getIn().getBody(String.class));
             throw new IllegalArgumentException("Forced");
         }
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-
-        return camelContext;
+    @Override
+    protected String getComponentName() {
+        return "activemq";
     }
-
 }

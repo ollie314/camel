@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,23 +21,28 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.camel.util.IOHelper;
+import org.apache.commons.compress.archivers.ArchiveEntry;
+import org.apache.commons.compress.archivers.ArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 
 final class TarUtils {
 
     static final String TEXT = "The Masque of Queen Bersabe (excerpt) \n"
-            + "by: Algernon Charles Swinburne \n\n"
-            + "My lips kissed dumb the word of Ah \n"
-            + "Sighed on strange lips grown sick thereby. \n"
-            + "God wrought to me my royal bed; \n"
-            + "The inner work thereof was red, \n"
-            + "The outer work was ivory. \n"
-            + "My mouth's heat was the heat of flame \n"
-            + "For lust towards the kings that came \n"
-            + "With horsemen riding royally.";
+                               + "by: Algernon Charles Swinburne \n\n"
+                               + "My lips kissed dumb the word of Ah \n"
+                               + "Sighed on strange lips grown sick thereby. \n"
+                               + "God wrought to me my royal bed; \n"
+                               + "The inner work thereof was red, \n"
+                               + "The outer work was ivory. \n"
+                               + "My mouth's heat was the heat of flame \n"
+                               + "For lust towards the kings that came \n"
+                               + "With horsemen riding royally.";
 
     private TarUtils() {
         // Prevent instantiation
@@ -59,6 +64,27 @@ final class TarUtils {
         return baos.toByteArray();
     }
 
+    static byte[] getTaredTextInFolder(String folder, String file) throws IOException {
+        ByteArrayInputStream bais = new ByteArrayInputStream(TEXT.getBytes("UTF-8"));
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        TarArchiveOutputStream tos = new TarArchiveOutputStream(baos);
+        try {
+            TarArchiveEntry folderEntry = new TarArchiveEntry(folder);
+            folderEntry.setSize(0L);
+            tos.putArchiveEntry(folderEntry);
+
+            TarArchiveEntry fileEntry = new TarArchiveEntry(file);
+            fileEntry.setSize(bais.available());
+            tos.putArchiveEntry(fileEntry);
+
+            IOHelper.copy(bais, tos);
+        } finally {
+            tos.closeArchiveEntry();
+            IOHelper.close(bais, tos);
+        }
+        return baos.toByteArray();
+    }
+
     static byte[] getBytes(File file) throws IOException {
         FileInputStream fis = new FileInputStream(file);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -68,6 +94,34 @@ final class TarUtils {
             IOHelper.close(fis, baos);
         }
         return baos.toByteArray();
+    }
+
+    static class EntryMetadata {
+        public final long size;
+        public final boolean isDirectory;
+
+        public EntryMetadata(long size, boolean isDirectory) {
+            this.size = size;
+            this.isDirectory = isDirectory;
+        }
+    }
+
+    static Map<String, EntryMetadata> toEntries(byte[] tarFileBytes) throws IOException {
+        Map<String, EntryMetadata> ret = new HashMap<>();
+        try (ArchiveInputStream i = new TarArchiveInputStream(new ByteArrayInputStream(tarFileBytes))) {
+            ArchiveEntry entry = null;
+
+            while ((entry = i.getNextEntry()) != null) {
+                if (!i.canReadEntryData(entry)) {
+                    // log something?
+                    continue;
+                }
+
+                ret.put(entry.getName(), new EntryMetadata(entry.getSize(), entry.isDirectory()));
+            }
+        }
+
+        return ret;
     }
 
 }

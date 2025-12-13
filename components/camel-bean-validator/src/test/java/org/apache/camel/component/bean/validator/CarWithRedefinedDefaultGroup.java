@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,11 +16,11 @@
  */
 package org.apache.camel.component.bean.validator;
 
-import javax.validation.GroupSequence;
-import javax.validation.constraints.NotNull;
-import javax.validation.constraints.Size;
+import jakarta.validation.GroupSequence;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
-@GroupSequence({CarWithRedefinedDefaultGroup.class, OptionalChecks.class })
+@GroupSequence({ CarWithRedefinedDefaultGroup.class, OptionalChecks.class })
 public class CarWithRedefinedDefaultGroup implements Car {
 
     @NotNull(groups = RequiredChecks.class)
@@ -29,24 +29,28 @@ public class CarWithRedefinedDefaultGroup implements Car {
     @NotNull(groups = RequiredChecks.class)
     @Size(min = 5, max = 14, groups = OptionalChecks.class)
     private String licensePlate;
-    
+
     public CarWithRedefinedDefaultGroup(String manufacturer, String licencePlate) {
         this.manufacturer = manufacturer;
         this.licensePlate = licencePlate;
     }
 
+    @Override
     public String getManufacturer() {
         return manufacturer;
     }
 
+    @Override
     public void setManufacturer(String manufacturer) {
         this.manufacturer = manufacturer;
     }
 
+    @Override
     public String getLicensePlate() {
         return licensePlate;
     }
 
+    @Override
     public void setLicensePlate(String licensePlate) {
         this.licensePlate = licensePlate;
     }

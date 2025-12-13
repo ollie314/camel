@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -34,14 +34,15 @@ public class TimerProducer extends AbstractMetricsProducer {
     }
 
     @Override
-    protected void doProcess(Exchange exchange, MetricsEndpoint endpoint, MetricRegistry registry, String metricsName) throws Exception {
+    protected void doProcess(Exchange exchange, MetricsEndpoint endpoint, MetricRegistry registry, String metricsName)
+            throws Exception {
         Message in = exchange.getIn();
         MetricsTimerAction action = endpoint.getAction();
         MetricsTimerAction finalAction = in.getHeader(HEADER_TIMER_ACTION, action, MetricsTimerAction.class);
         if (finalAction == MetricsTimerAction.start) {
             handleStart(exchange, registry, metricsName);
         } else if (finalAction == MetricsTimerAction.stop) {
-            handleStop(exchange, registry, metricsName);
+            handleStop(exchange, metricsName);
         } else {
             LOG.warn("No action provided for timer \"{}\"", metricsName);
         }
@@ -59,7 +60,7 @@ public class TimerProducer extends AbstractMetricsProducer {
         }
     }
 
-    void handleStop(Exchange exchange, MetricRegistry registry, String metricsName) {
+    void handleStop(Exchange exchange, String metricsName) {
         String propertyName = getPropertyName(metricsName);
         Timer.Context context = getTimerContextFromExchange(exchange, propertyName);
         if (context != null) {

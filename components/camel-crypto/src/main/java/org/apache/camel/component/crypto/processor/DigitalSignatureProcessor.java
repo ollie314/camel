@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,28 +17,24 @@
 package org.apache.camel.component.crypto.processor;
 
 import java.io.InputStream;
-import java.lang.reflect.Field;
 import java.security.KeyStore;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.Signature;
-import java.util.Map;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.Processor;
 import org.apache.camel.component.crypto.DigitalSignatureConfiguration;
 import org.apache.camel.component.crypto.DigitalSignatureConstants;
-import org.apache.camel.util.ExchangeHelper;
+import org.apache.camel.support.ExchangeHelper;
 import org.apache.camel.util.IOHelper;
-import org.apache.camel.util.ObjectHelper;
-
 
 public abstract class DigitalSignatureProcessor implements Processor {
 
     protected DigitalSignatureConfiguration config;
 
-    public DigitalSignatureProcessor(DigitalSignatureConfiguration configuration) {
+    protected DigitalSignatureProcessor(DigitalSignatureConfiguration configuration) {
         this.config = configuration;
     }
 
@@ -82,16 +78,12 @@ public abstract class DigitalSignatureProcessor implements Processor {
     protected Signature createSignatureService() throws NoSuchAlgorithmException, NoSuchProviderException {
         String algorithm = config.getAlgorithm();
         String provider = config.getProvider();
-        Signature signer = provider == null ? Signature.getInstance(algorithm) : Signature.getInstance(algorithm, provider);
-        return signer;
+        return provider == null ? Signature.getInstance(algorithm) : Signature.getInstance(algorithm, provider);
     }
 
     protected void clearMessageHeaders(Message in) {
         if (config.isClearHeaders()) {
-            Map<String, Object> headers = in.getHeaders();
-            for (Field f : DigitalSignatureConstants.class.getFields()) {
-                headers.remove(ObjectHelper.lookupConstantFieldValue(DigitalSignatureConstants.class, f.getName()));
-            }
+            in.removeHeaders("^Camel(Digital)?Signature.*");
         }
     }
 }

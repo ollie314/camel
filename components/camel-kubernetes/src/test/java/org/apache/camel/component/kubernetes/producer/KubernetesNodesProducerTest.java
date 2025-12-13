@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,63 +21,126 @@ import java.util.List;
 import java.util.Map;
 
 import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.NodeBuilder;
+import io.fabric8.kubernetes.api.model.NodeListBuilder;
+import io.fabric8.kubernetes.api.model.NodeSpec;
+import io.fabric8.kubernetes.api.model.NodeSpecBuilder;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.NamespacedKubernetesClient;
+import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient;
+import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer;
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.kubernetes.KubernetesConstants;
 import org.apache.camel.component.kubernetes.KubernetesTestSupport;
-import org.apache.camel.util.ObjectHelper;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@EnableKubernetesMockClient
 public class KubernetesNodesProducerTest extends KubernetesTestSupport {
 
-    @Test
-    public void listTest() throws Exception {
-        if (ObjectHelper.isEmpty(authToken)) {
-            return;
-        }
-        List<Node> result = template.requestBody("direct:list", "",
-                List.class);
+    KubernetesMockServer server;
+    NamespacedKubernetesClient client;
 
-        assertTrue(result.size() == 1);
+    @BindToRegistry("kubernetesClient")
+    public KubernetesClient getClient() {
+        return client;
     }
 
     @Test
-    public void listByLabelsTest() throws Exception {
-        if (ObjectHelper.isEmpty(authToken)) {
-            return;
-        }
-        Exchange ex = template.request("direct:listByLabels", new Processor() {
+    void listTest() {
+        server.expect().withPath("/api/v1/nodes").andReturn(200, new NodeListBuilder().addNewItem().and().build()).once();
+        List<?> result = template.requestBody("direct:list", "", List.class);
 
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                Map<String, String> labels = new HashMap<String, String>();
-                labels.put("kubernetes.io/hostname", "172.28.128.4");
-                exchange.getIn()
-                        .setHeader(
-                                KubernetesConstants.KUBERNETES_NODES_LABELS,
-                                labels);
-            }
+        assertEquals(1, result.size());
+    }
+
+    @Test
+    void listByLabelsTest() throws Exception {
+        server.expect().withPath("/api/v1/nodes?labelSelector=" + toUrlEncoded("key1=value1,key2=value2"))
+                .andReturn(200, new NodeListBuilder().addNewItem().and().addNewItem().and().addNewItem().and().build()).once();
+        Exchange ex = template.request("direct:listByLabels", exchange -> {
+            Map<String, String> labels = new HashMap<>();
+            labels.put("key1", "value1");
+            labels.put("key2", "value2");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NODES_LABELS, labels);
         });
 
-        List<Node> result = ex.getOut().getBody(List.class);
-        
-        Node node = result.get(0);
-        
-        assertTrue(node.getStatus().getCapacity().get("pods").getAmount().equals("110"));
+        List<?> result = ex.getMessage().getBody(List.class);
+
+        assertEquals(3, result.size());
+    }
+
+    @Test
+    void createNodeTest() {
+        ObjectMeta meta = new ObjectMeta();
+        meta.setName("test");
+        server.expect().withPath("/api/v1/nodes").andReturn(200, new NodeBuilder().withMetadata(meta).build()).once();
+        Exchange ex = template.request("direct:createNode", exchange -> {
+            Map<String, String> labels = new HashMap<>();
+            labels.put("key1", "value1");
+            labels.put("key2", "value2");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NODES_LABELS, labels);
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NODE_NAME, "test");
+            NodeSpec spec = new NodeSpecBuilder().build();
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NODE_SPEC, spec);
+        });
+
+        Node result = ex.getMessage().getBody(Node.class);
+
+        assertEquals("test", result.getMetadata().getName());
+    }
+
+    @Test
+    void updateNodeTest() {
+        ObjectMeta meta = new ObjectMeta();
+        meta.setName("test");
+        server.expect().get().withPath("/api/v1/nodes/test").andReturn(200, new NodeBuilder().build()).once();
+        server.expect().put().withPath("/api/v1/nodes/test").andReturn(200, new NodeBuilder().withMetadata(meta).build())
+                .once();
+        Exchange ex = template.request("direct:updateNode", exchange -> {
+            Map<String, String> labels = new HashMap<>();
+            labels.put("key1", "value1");
+            labels.put("key2", "value2");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NODES_LABELS, labels);
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NODE_NAME, "test");
+            NodeSpec spec = new NodeSpecBuilder().build();
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NODE_SPEC, spec);
+        });
+
+        Node result = ex.getMessage().getBody(Node.class);
+
+        assertEquals("test", result.getMetadata().getName());
+    }
+
+    @Test
+    void deleteNode() {
+        Node node1 = new NodeBuilder().withNewMetadata().withName("node1").withNamespace("test").and().build();
+        server.expect().withPath("/api/v1/nodes/node1").andReturn(200, node1).once();
+
+        Exchange ex = template.request("direct:deleteNode",
+                exchange -> exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NODE_NAME, "node1"));
+
+        boolean nodeDeleted = ex.getMessage().getBody(Boolean.class);
+
+        assertTrue(nodeDeleted);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("direct:list")
-                        .toF("kubernetes://%s?oauthToken=%s&category=nodes&operation=listNodes",
-                                host, authToken);
+            public void configure() {
+                from("direct:list").toF("kubernetes-nodes:///?kubernetesClient=#kubernetesClient&operation=listNodes");
                 from("direct:listByLabels")
-                        .toF("kubernetes://%s?oauthToken=%s&category=nodes&operation=listNodesByLabels",
-                                host, authToken);
+                        .toF("kubernetes-nodes:///?kubernetesClient=#kubernetesClient&operation=listNodesByLabels");
+                from("direct:createNode").toF("kubernetes-nodes:///?kubernetesClient=#kubernetesClient&operation=createNode");
+                from("direct:updateNode").toF("kubernetes-nodes:///?kubernetesClient=#kubernetesClient&operation=updateNode");
+                from("direct:deleteNode").toF("kubernetes-nodes:///?kubernetesClient=#kubernetesClient&operation=deleteNode");
             }
         };
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,24 +19,30 @@ package org.apache.camel.component.dropbox;
 import org.apache.camel.Consumer;
 import org.apache.camel.Endpoint;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.dropbox.integration.DropboxTestSupport;
 import org.apache.camel.component.dropbox.integration.consumer.DropboxScheduledPollGetConsumer;
-import org.junit.Assert;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-public class DropboxConsumerTest extends DropboxTestSupport {
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-    public DropboxConsumerTest() throws Exception {
-    }
+public class DropboxConsumerTest extends CamelTestSupport {
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("dropbox://get?accessToken={{accessToken}}&clientIdentifier={{clientIdentifier}}&remotePath=/path").to("mock:test1");
-                
-                from("dropbox://get?accessToken={{accessToken}}&clientIdentifier={{clientIdentifier}}&remotePath=/path with spaces/file").to("mock:test2");
+            public void configure() {
+                from("dropbox://get?accessToken=accessToken" +
+                     "&expireIn=1000" +
+                     "&refreshToken=refreshToken" +
+                     "&apiKey=apiKey&apiSecret=apiSecret" +
+                     "&remotePath=/path").to("mock:test1");
+
+                from("dropbox://get?accessToken=accessToken" +
+                     "&expireIn=1000" +
+                     "&refreshToken=refreshToken" +
+                     "&apiKey=apiKey&apiSecret=apiSecret" +
+                     "&remotePath=/path with spaces/file").to("mock:test2");
             }
         };
     }
@@ -44,22 +50,31 @@ public class DropboxConsumerTest extends DropboxTestSupport {
     @Test
     public void shouldCreateGetConsumer() throws Exception {
         // Given
-        Endpoint dropboxEndpoint1 = context.getEndpoint("dropbox://get?accessToken={{accessToken}}&clientIdentifier={{clientIdentifier}}&remotePath=/path");
+        Endpoint dropboxEndpoint1 = context.getEndpoint("dropbox://get?accessToken=accessToken" +
+                                                        "&expireIn=1000" +
+                                                        "&refreshToken=refreshToken" +
+                                                        "&apiKey=apiKey&apiSecret=apiSecret" +
+                                                        "&remotePath=/path");
 
         // When
         Consumer consumer1 = dropboxEndpoint1.createConsumer(null);
 
         // Then
-        Assert.assertTrue(consumer1 instanceof DropboxScheduledPollGetConsumer);
-        
+        assertTrue(consumer1 instanceof DropboxScheduledPollGetConsumer);
+
         // Given
-        Endpoint dropboxEndpoint2 = context.getEndpoint("dropbox://get?accessToken={{accessToken}}&clientIdentifier={{clientIdentifier}}&remotePath=/path with spaces/file");
+        Endpoint dropboxEndpoint2
+                = context.getEndpoint("dropbox://get?accessToken=accessToken" +
+                                      "&expireIn=1000" +
+                                      "&refreshToken=refreshToken" +
+                                      "&apiKey=apiKey&apiSecret=apiSecret" +
+                                      "&remotePath=/path with spaces/file");
 
         // When
         Consumer consumer2 = dropboxEndpoint2.createConsumer(null);
 
         // Then
-        Assert.assertTrue(consumer2 instanceof DropboxScheduledPollGetConsumer);
+        assertTrue(consumer2 instanceof DropboxScheduledPollGetConsumer);
     }
 
 }

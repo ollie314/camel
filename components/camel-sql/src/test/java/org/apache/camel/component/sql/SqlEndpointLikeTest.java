@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,17 +18,13 @@ package org.apache.camel.component.sql;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.impl.JndiRegistry;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.After;
-import org.junit.Test;
+import org.apache.camel.spi.Registry;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 
-/**
- * @version 
- */
 public class SqlEndpointLikeTest extends CamelTestSupport {
 
     private EmbeddedDatabase db;
@@ -40,33 +36,34 @@ public class SqlEndpointLikeTest extends CamelTestSupport {
 
         template.sendBody("direct:start", "");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry jndi = super.createRegistry();
+    protected void bindToRegistry(Registry registry) throws Exception {
         // this is the database we create with some initial data for our unit test
         db = new EmbeddedDatabaseBuilder()
-                .setType(EmbeddedDatabaseType.DERBY).addScript("sql/createAndPopulateDatabase.sql").build();
-        jndi.bind("jdbc/myDataSource", db);
-        return jndi;
-    }
-
-    @After
-    public void tearDown() throws Exception {
-        super.tearDown();
-        db.shutdown();
+                .setName(getClass().getSimpleName())
+                .setType(EmbeddedDatabaseType.H2)
+                .addScript("sql/createAndPopulateDatabase.sql").build();
+        registry.bind("jdbc/myDataSource", db);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    public void doPostTearDown() throws Exception {
+        if (db != null) {
+            db.shutdown();
+        }
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .to("sql:select * from projects where license like 'A%25'?dataSource=#jdbc/myDataSource")
-                    .split(body())
-                    .to("mock:result");
+                        .to("sql:select * from projects where license like 'A%25'?dataSource=#jdbc/myDataSource")
+                        .split(body())
+                        .to("mock:result");
             }
         };
     }

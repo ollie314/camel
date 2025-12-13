@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,51 +18,45 @@ package org.apache.camel.processor.jpa;
 
 import java.util.List;
 
-import javax.persistence.EntityManager;
-import javax.persistence.EntityManagerFactory;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
 
-import org.apache.camel.CamelContext;
 import org.apache.camel.examples.SendEmail;
-import org.apache.camel.spring.SpringCamelContext;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.After;
-import org.junit.Before;
-import org.springframework.context.ApplicationContext;
+import org.apache.camel.test.spring.junit5.CamelSpringTestSupport;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.context.support.AbstractApplicationContext;
 import org.springframework.context.support.ClassPathXmlApplicationContext;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/**
- * @version 
- */
-public abstract class AbstractJpaTest extends CamelTestSupport {
-    protected ApplicationContext applicationContext;
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+public abstract class AbstractJpaTest extends CamelSpringTestSupport {
     protected TransactionTemplate transactionTemplate;
     protected EntityManager entityManager;
 
-    @Before
-    public void setUp() throws Exception {
-        super.setUp();
+    @BeforeEach
+    public void setupEntityManager() {
         EntityManagerFactory entityManagerFactory = applicationContext.getBean("entityManagerFactory",
-                                                                               EntityManagerFactory.class);
+                EntityManagerFactory.class);
         transactionTemplate = applicationContext.getBean("transactionTemplate", TransactionTemplate.class);
         entityManager = entityManagerFactory.createEntityManager();
         cleanupRepository();
     }
 
-    @After
-    public void tearDown() throws Exception {
-        super.tearDown();
+    @AfterEach
+    public void cleanupEntityManager() {
         if (entityManager != null) {
             entityManager.close();
         }
     }
 
     @Override
-    protected CamelContext createCamelContext() throws Exception {
-        applicationContext = new ClassPathXmlApplicationContext(routeXml());
-        return SpringCamelContext.springCamelContext(applicationContext);
+    protected AbstractApplicationContext createApplicationContext() {
+        return new ClassPathXmlApplicationContext(routeXml());
     }
 
     protected void cleanupRepository() {
@@ -79,14 +73,29 @@ public abstract class AbstractJpaTest extends CamelTestSupport {
         });
     }
 
-    protected void assertEntityInDB(int size) throws Exception {
-        List<?> list = entityManager.createQuery(selectAllString()).getResultList();
-        assertEquals(size, list.size());
-
-        assertIsInstanceOf(SendEmail.class, list.get(0));
+    protected void assertEntityInDB(int size) {
+        assertEntityInDB(size, SendEmail.class);
     }
-    
+
+    protected void assertEntityInDB(int size, Class<?> entityType) {
+        List<?> results = entityManager.createQuery("select o from " + entityType.getName() + " o").getResultList();
+        assertEquals(size, results.size());
+
+        assertIsInstanceOf(entityType, results.get(0));
+    }
+
+    protected void saveEntityInDB(final Object entity) {
+        transactionTemplate.execute(new TransactionCallback<Object>() {
+            public Object doInTransaction(TransactionStatus status) {
+                entityManager.joinTransaction();
+                entityManager.persist(entity);
+                entityManager.flush();
+                return null;
+            }
+        });
+    }
+
     protected abstract String routeXml();
-    
+
     protected abstract String selectAllString();
 }

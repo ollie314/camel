@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,10 +16,11 @@
  */
 package org.apache.camel.component.mina;
 
-import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * To unit test CAMEL-364.
@@ -29,27 +30,27 @@ public class MinaTcpWithIoOutProcessorExceptionTest extends BaseMinaTest {
     @Test
     public void testExceptionThrownInProcessor() {
         String body = "Hello World";
-        Object result = template.requestBody("mina:tcp://localhost:{{port}}?textline=true&sync=true", body);
+        Object result
+                = template.requestBody(String.format("mina:tcp://localhost:%1$s?textline=true&sync=true", getPort()), body);
         // The exception should be passed to the client
-        assertNotNull("the result should not be null", result);
-        assertEquals("result is IllegalArgumentException", result, "java.lang.IllegalArgumentException: Forced exception");
+        assertNotNull(result, "the result should not be null");
+        assertEquals("java.lang.IllegalArgumentException: Forced exception", result, "result is IllegalArgumentException");
     }
 
+    @Override
     protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
+
             public void configure() {
                 // use no delay for fast unit testing
                 errorHandler(defaultErrorHandler().maximumRedeliveries(2));
 
-                from("mina:tcp://localhost:{{port}}?textline=true&sync=true").process(new Processor() {
-                    public void process(Exchange e) {
-                        assertEquals("Hello World", e.getIn().getBody(String.class));
-                        // simulate a problem processing the input to see if we can handle it properly
-                        throw new IllegalArgumentException("Forced exception");
-                    }
+                fromF("mina:tcp://localhost:%1$s?textline=true&sync=true", getPort()).process(e -> {
+                    assertEquals("Hello World", e.getIn().getBody(String.class));
+                    // simulate a problem processing the input to see if we can handle it properly
+                    throw new IllegalArgumentException("Forced exception");
                 });
             }
         };
     }
-
 }

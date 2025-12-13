@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,27 +24,31 @@ import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.test.AvailablePortFinder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 public class JettySimulateFailoverRoundRobinTest extends CamelTestSupport {
 
-    private static int port1 = AvailablePortFinder.getNextAvailable(23041);
-    private static int port2 = AvailablePortFinder.getNextAvailable(23042);
-    private static int port3 = AvailablePortFinder.getNextAvailable(23043);
-    private static int port4 = AvailablePortFinder.getNextAvailable(23044);
+    private static int port1 = AvailablePortFinder.getNextAvailable();
+    private static int port2 = AvailablePortFinder.getNextAvailable();
+    private static int port3 = AvailablePortFinder.getNextAvailable();
+    private static int port4 = AvailablePortFinder.getNextAvailable();
 
     private String bad = "jetty:http://localhost:" + port1 + "/bad";
     private String bad2 = "jetty:http://localhost:" + port2 + "/bad2";
     private String good = "jetty:http://localhost:" + port3 + "/good";
     private String good2 = "jetty:http://localhost:" + port4 + "/good2";
+    private String hbad = "http://localhost:" + port1 + "/bad";
+    private String hbad2 = "http://localhost:" + port2 + "/bad2";
+    private String hgood = "http://localhost:" + port3 + "/good";
+    private String hgood2 = "http://localhost:" + port4 + "/good2";
 
     @Test
-    public void testJettySimulateFailoverRoundRobin() throws Exception {
+    void testJettySimulateFailoverRoundRobin() throws Exception {
         getMockEndpoint("mock:bad").expectedMessageCount(1);
         getMockEndpoint("mock:bad2").expectedMessageCount(1);
         getMockEndpoint("mock:good").expectedMessageCount(1);
@@ -53,11 +57,11 @@ public class JettySimulateFailoverRoundRobinTest extends CamelTestSupport {
         String reply = template.requestBody("direct:start", null, String.class);
         assertEquals("Good", reply);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // reset mocks and send a message again to see that round robin
         // continue where it should
-        resetMocks();
+        MockEndpoint.resetMocks(context);
 
         getMockEndpoint("mock:bad").expectedMessageCount(0);
         getMockEndpoint("mock:bad2").expectedMessageCount(0);
@@ -69,46 +73,34 @@ public class JettySimulateFailoverRoundRobinTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .process(new MyFailoverLoadBalancer(template, bad, bad2, good, good2));
+                        .process(new MyFailoverLoadBalancer(template, hbad, hbad2, hgood, hgood2));
 
                 from(bad)
-                    .to("mock:bad")
-                    .process(new Processor() {
-                        public void process(Exchange exchange) throws Exception {
+                        .to("mock:bad")
+                        .process(exchange -> {
                             exchange.getIn().setHeader(Exchange.HTTP_RESPONSE_CODE, 500);
                             exchange.getIn().setBody("Something bad happened");
-                        }
-                    });
+                        });
 
                 from(bad2)
-                    .to("mock:bad2")
-                    .process(new Processor() {
-                        public void process(Exchange exchange) throws Exception {
+                        .to("mock:bad2")
+                        .process(exchange -> {
                             exchange.getIn().setHeader(Exchange.HTTP_RESPONSE_CODE, 404);
                             exchange.getIn().setBody("Not found");
-                        }
-                    });
+                        });
 
                 from(good)
-                    .to("mock:good")
-                    .process(new Processor() {
-                        public void process(Exchange exchange) throws Exception {
-                            exchange.getIn().setBody("Good");
-                        }
-                    });
+                        .to("mock:good")
+                        .process(exchange -> exchange.getIn().setBody("Good"));
 
                 from(good2)
-                    .to("mock:good2")
-                    .process(new Processor() {
-                        public void process(Exchange exchange) throws Exception {
-                            exchange.getIn().setBody("Also good");
-                        }
-                    });
+                        .to("mock:good2")
+                        .process(exchange -> exchange.getIn().setBody("Also good"));
             }
         };
     }
@@ -124,10 +116,11 @@ public class JettySimulateFailoverRoundRobinTest extends CamelTestSupport {
 
         public MyFailoverLoadBalancer(ProducerTemplate template, String... endpoints) {
             this.template = template;
-            this.endpoints = new ArrayList<String>(Arrays.asList(endpoints));
+            this.endpoints = new ArrayList<>(Arrays.asList(endpoints));
         }
 
-        public void process(Exchange exchange) throws Exception {
+        @Override
+        public void process(Exchange exchange) {
             boolean done = false;
             while (!done) {
                 // pick endpoint
@@ -154,7 +147,7 @@ public class JettySimulateFailoverRoundRobinTest extends CamelTestSupport {
         private void prepareExchangeForFailover(Exchange exchange) {
             exchange.setException(null);
 
-            exchange.setProperty(Exchange.ERRORHANDLER_HANDLED, null);
+            exchange.getExchangeExtension().setErrorHandlerHandled(null);
             exchange.setProperty(Exchange.FAILURE_HANDLED, null);
             exchange.setProperty(Exchange.EXCEPTION_CAUGHT, null);
             exchange.getIn().removeHeader(Exchange.REDELIVERED);

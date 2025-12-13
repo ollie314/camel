@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,9 @@ package org.apache.camel.component.mybatis;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class MyBatisSelectOneWithOutputHeaderTest extends MyBatisTestSupport {
 
@@ -35,21 +37,21 @@ public class MyBatisSelectOneWithOutputHeaderTest extends MyBatisTestSupport {
 
         template.sendBody("direct:start", TEST_ACCOUNT_ID);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         Account account = mock.getReceivedExchanges().get(0).getIn().getHeader(TEST_CASE_HEADER_NAME, Account.class);
         assertEquals("Claus", account.getFirstName());
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: e1
                 from("direct:start")
-                    .to("mybatis:selectAccountById?statementType=SelectOne&outputHeader=" + TEST_CASE_HEADER_NAME)
-                    .to("mock:result");
+                        .to("mybatis:selectAccountById?statementType=SelectOne&outputHeader=" + TEST_CASE_HEADER_NAME)
+                        .to("mock:result");
                 // END SNIPPET: e1
             }
         };

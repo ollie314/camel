@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,11 +22,12 @@ import java.util.Queue;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.ExchangePattern;
+import org.apache.camel.ExchangePropertyKey;
 import org.apache.camel.Message;
 import org.apache.camel.Processor;
 import org.apache.camel.RollbackExchangeException;
 import org.apache.camel.ShutdownRunningTask;
-import org.apache.camel.impl.ScheduledBatchPollingConsumer;
+import org.apache.camel.support.ScheduledBatchPollingConsumer;
 import org.apache.camel.util.CastUtils;
 import org.apache.camel.util.ObjectHelper;
 import org.slf4j.Logger;
@@ -37,8 +38,6 @@ import org.slf4j.LoggerFactory;
  */
 public class MyBatisConsumer extends ScheduledBatchPollingConsumer {
 
-    private static final Logger LOG = LoggerFactory.getLogger(MyBatisConsumer.class);
-
     static final class DataHolder {
         Exchange exchange;
         Object data;
@@ -46,6 +45,8 @@ public class MyBatisConsumer extends ScheduledBatchPollingConsumer {
         DataHolder() {
         }
     }
+
+    private static final Logger LOG = LoggerFactory.getLogger(MyBatisConsumer.class);
 
     protected volatile ShutdownRunningTask shutdownRunningTask;
     protected volatile int pendingExchanges;
@@ -58,6 +59,7 @@ public class MyBatisConsumer extends ScheduledBatchPollingConsumer {
         super(endpoint, processor);
     }
 
+    @Override
     public MyBatisEndpoint getEndpoint() {
         return (MyBatisEndpoint) super.getEndpoint();
     }
@@ -76,8 +78,11 @@ public class MyBatisConsumer extends ScheduledBatchPollingConsumer {
         LOG.trace("Polling: {}", endpoint);
         List<?> data = endpoint.getProcessingStrategy().poll(this, getEndpoint());
 
+        // okay we have some response from MyBatis so lets mark the consumer as ready
+        forceConsumerAsReady();
+
         // create a list of exchange objects with the data
-        Queue<DataHolder> answer = new LinkedList<DataHolder>();
+        Queue<DataHolder> answer = new LinkedList<>();
         if (useIterator) {
             for (Object item : data) {
                 Exchange exchange = createExchange(item);
@@ -100,6 +105,7 @@ public class MyBatisConsumer extends ScheduledBatchPollingConsumer {
         return processBatch(CastUtils.cast(answer));
     }
 
+    @Override
     public int processBatch(Queue<Object> exchanges) throws Exception {
         final MyBatisEndpoint endpoint = getEndpoint();
 
@@ -107,7 +113,8 @@ public class MyBatisConsumer extends ScheduledBatchPollingConsumer {
 
         // limit if needed
         if (maxMessagesPerPoll > 0 && total > maxMessagesPerPoll) {
-            LOG.debug("Limiting to maximum messages to poll " + maxMessagesPerPoll + " as there were " + total + " messages in this poll.");
+            LOG.debug("Limiting to maximum messages to poll {} as there were {} messages in this poll.",
+                    maxMessagesPerPoll, total);
             total = maxMessagesPerPoll;
         }
 
@@ -118,18 +125,17 @@ public class MyBatisConsumer extends ScheduledBatchPollingConsumer {
             Object data = holder.data;
 
             // add current index and total as properties
-            exchange.setProperty(Exchange.BATCH_INDEX, index);
-            exchange.setProperty(Exchange.BATCH_SIZE, total);
-            exchange.setProperty(Exchange.BATCH_COMPLETE, index == total - 1);
+            exchange.setProperty(ExchangePropertyKey.BATCH_INDEX, index);
+            exchange.setProperty(ExchangePropertyKey.BATCH_SIZE, total);
+            exchange.setProperty(ExchangePropertyKey.BATCH_COMPLETE, index == total - 1);
 
             // update pending number of exchanges
             pendingExchanges = total - index - 1;
 
-            // process the current exchange
-            LOG.debug("Processing exchange: {} with properties: {}", exchange, exchange.getProperties());
-            getProcessor().process(exchange);
-
+            Exception cause = null;
             try {
+                getProcessor().process(exchange);
+
                 if (onConsume != null) {
                     endpoint.getProcessingStrategy().commit(endpoint, exchange, data, onConsume);
                 }
@@ -139,12 +145,15 @@ public class MyBatisConsumer extends ScheduledBatchPollingConsumer {
 
             if (getEndpoint().isTransacted() && exchange.isFailed()) {
                 // break out as we are transacted and should rollback
-                Exception cause = exchange.getException();
-                if (cause != null) {
-                    throw cause;
-                } else {
-                    throw new RollbackExchangeException("Rollback transaction due error processing exchange", exchange);
+                cause = exchange.getException();
+                if (cause == null) {
+                    cause = new RollbackExchangeException("Rollback transaction due error processing exchange", null);
                 }
+            }
+            releaseExchange(exchange, false);
+
+            if (cause != null) {
+                throw cause;
             }
         }
 
@@ -153,7 +162,8 @@ public class MyBatisConsumer extends ScheduledBatchPollingConsumer {
 
     private Exchange createExchange(Object data) {
         final MyBatisEndpoint endpoint = getEndpoint();
-        final Exchange exchange = endpoint.createExchange(ExchangePattern.InOnly);
+        final Exchange exchange = createExchange(false);
+        exchange.setPattern(ExchangePattern.InOnly);
         final String outputHeader = getEndpoint().getOutputHeader();
 
         Message msg = exchange.getIn();
@@ -168,16 +178,14 @@ public class MyBatisConsumer extends ScheduledBatchPollingConsumer {
     }
 
     /**
-     * Gets the statement(s) to run after successful processing.
-     * Use comma to separate multiple statements.
+     * Gets the statement(s) to run after successful processing. Use comma to separate multiple statements.
      */
     public String getOnConsume() {
         return onConsume;
     }
 
     /**
-     * Sets the statement to run after successful processing.
-     * Use comma to separate multiple statements.
+     * Sets the statement to run after successful processing. Use comma to separate multiple statements.
      */
     public void setOnConsume(String onConsume) {
         this.onConsume = onConsume;
@@ -191,8 +199,7 @@ public class MyBatisConsumer extends ScheduledBatchPollingConsumer {
     }
 
     /**
-     * Sets how resultset should be delivered to route.
-     * Indicates delivery as either a list or individual object.
+     * Sets how resultset should be delivered to route. Indicates delivery as either a list or individual object.
      * defaults to true.
      */
     public void setUseIterator(boolean useIterator) {
@@ -207,8 +214,8 @@ public class MyBatisConsumer extends ScheduledBatchPollingConsumer {
     }
 
     /**
-     * Sets whether empty resultset should be allowed to be sent to the next hop.
-     * defaults to false. So the empty resultset will be filtered out.
+     * Sets whether empty resultset should be allowed to be sent to the next hop. defaults to false. So the empty
+     * resultset will be filtered out.
      */
     public void setRouteEmptyResultSet(boolean routeEmptyResultSet) {
         this.routeEmptyResultSet = routeEmptyResultSet;

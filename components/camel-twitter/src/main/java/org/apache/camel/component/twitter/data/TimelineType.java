@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,11 +19,16 @@ package org.apache.camel.component.twitter.data;
 import org.apache.camel.component.twitter.TwitterHelper;
 
 public enum TimelineType {
-    PUBLIC, HOME, USER, MENTIONS, RETWEETSOFME, UNKNOWN;
+    PUBLIC,
+    HOME,
+    USER,
+    MENTIONS,
+    LIST,
+    UNKNOWN;
 
     private static final TimelineType[] VALUES = values();
 
-    public static TimelineType fromUri(String uri) {
+    public static TimelineType fromString(String uri) {
         return TwitterHelper.enumFromString(VALUES, uri, TimelineType.UNKNOWN);
     }
 }

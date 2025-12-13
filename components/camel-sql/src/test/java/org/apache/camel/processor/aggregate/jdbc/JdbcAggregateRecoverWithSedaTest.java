@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,13 +22,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
 
 public class JdbcAggregateRecoverWithSedaTest extends AbstractJdbcAggregationTestSupport {
 
-    private static AtomicInteger counter = new AtomicInteger(0);
+    private static AtomicInteger counter = new AtomicInteger();
 
+    @Override
     void configureJdbcAggregationRepository() {
+        super.configureJdbcAggregationRepository();
+
         // enable recovery
         repo.setUseRecovery(true);
         // check faster
@@ -51,14 +55,16 @@ public class JdbcAggregateRecoverWithSedaTest extends AbstractJdbcAggregationTes
         template.sendBodyAndHeader("direct:start", "D", "id", 123);
         template.sendBodyAndHeader("direct:start", "E", "id", 123);
 
-        assertMockEndpointsSatisfied(30, TimeUnit.SECONDS);
+        MockEndpoint.assertIsSatisfied(context, 30, TimeUnit.SECONDS);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
+                configureJdbcAggregationRepository();
+
                 from("direct:start")
                         .aggregate(header("id"), new MyAggregationStrategy())
                         .completionSize(5).aggregationRepository(repo)
@@ -71,9 +77,9 @@ public class JdbcAggregateRecoverWithSedaTest extends AbstractJdbcAggregationTes
                 // which confirms the exchange when its complete.
                 from("seda:foo")
                         .delay(1000)
-                                // simulate errors the first two times
+                        // simulate errors the first two times
                         .process(new Processor() {
-                            public void process(Exchange exchange) throws Exception {
+                            public void process(Exchange exchange) {
                                 int count = counter.incrementAndGet();
                                 if (count <= 2) {
                                     throw new IllegalArgumentException("Damn");

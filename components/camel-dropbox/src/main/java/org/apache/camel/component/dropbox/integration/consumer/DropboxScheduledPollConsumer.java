@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,17 +19,16 @@ package org.apache.camel.component.dropbox.integration.consumer;
 import org.apache.camel.Processor;
 import org.apache.camel.component.dropbox.DropboxConfiguration;
 import org.apache.camel.component.dropbox.DropboxEndpoint;
-import org.apache.camel.impl.ScheduledPollConsumer;
+import org.apache.camel.support.ScheduledPollConsumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
 public abstract class DropboxScheduledPollConsumer extends ScheduledPollConsumer {
     protected static final transient Logger LOG = LoggerFactory.getLogger(DropboxScheduledPollConsumer.class);
-    protected DropboxEndpoint endpoint;
-    protected DropboxConfiguration configuration;
+    protected final DropboxEndpoint endpoint;
+    protected final DropboxConfiguration configuration;
 
-    public DropboxScheduledPollConsumer(DropboxEndpoint endpoint, Processor processor, DropboxConfiguration configuration) {
+    protected DropboxScheduledPollConsumer(DropboxEndpoint endpoint, Processor processor, DropboxConfiguration configuration) {
         super(endpoint, processor);
         this.endpoint = endpoint;
         this.configuration = configuration;
@@ -39,9 +38,8 @@ public abstract class DropboxScheduledPollConsumer extends ScheduledPollConsumer
     protected abstract int poll() throws Exception;
 
     /**
-     * Lifecycle method invoked when the consumer has created.
-     * Internally create or reuse a connection to the low level dropbox client
-     * @throws Exception
+     * Lifecycle method invoked when the consumer has created. Internally create or reuse a connection to the low level
+     * dropbox client
      */
     @Override
     protected void doStart() throws Exception {
@@ -49,23 +47,21 @@ public abstract class DropboxScheduledPollConsumer extends ScheduledPollConsumer
             //create dropbox client
             configuration.createClient();
 
-            LOG.info("consumer dropbox client created");
+            LOG.debug("Consumer Dropbox client created");
         }
 
         super.doStart();
     }
 
     /**
-     * Lifecycle method invoked when the consumer has destroyed.
-     * Erase the reference to the dropbox low level client
-     * @throws Exception
+     * Lifecycle method invoked when the consumer has destroyed. Erase the reference to the dropbox low level client
      */
     @Override
     protected void doStop() throws Exception {
         if (configuration.getClient() == null) {
             configuration.setClient(null);
 
-            LOG.info("consumer dropbox client deleted");
+            LOG.debug("Consumer Dropbox client deleted");
         }
         super.doStop();
     }

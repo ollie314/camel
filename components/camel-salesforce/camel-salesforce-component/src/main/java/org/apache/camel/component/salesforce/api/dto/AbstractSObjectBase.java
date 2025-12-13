@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,12 +16,17 @@
  */
 package org.apache.camel.component.salesforce.api.dto;
 
+import java.time.LocalDate;
 import java.time.ZonedDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
+import com.fasterxml.jackson.annotation.JsonFilter;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-//CHECKSTYLE:OFF
-public class AbstractSObjectBase extends AbstractDTOBase {
+@JsonFilter("fieldsToNull")
+public abstract class AbstractSObjectBase extends AbstractDTOBase {
 
     // WARNING: these fields have case sensitive names,
     // the field name MUST match the field name used by Salesforce
@@ -36,19 +41,30 @@ public class AbstractSObjectBase extends AbstractDTOBase {
     private ZonedDateTime LastModifiedDate;
     private String LastModifiedById;
     private ZonedDateTime SystemModstamp;
-    private ZonedDateTime LastActivityDate;
+    private LocalDate LastActivityDate;
     private ZonedDateTime LastViewedDate;
     private ZonedDateTime LastReferencedDate;
 
+    private Set<String> fieldsToNull = new HashSet<>();
+
+    public AbstractSObjectBase() {
+        attributes = new Attributes();
+    }
+
     /**
      * Utility method to clear all system {@link AbstractSObjectBase} fields.
-     * <p>Useful when reusing a DTO for a new record, or for update/upsert.</p>
-     * <p>This method does not clear {@code Name} to allow updating it, so it must be explicitly set to {@code null} if needed.</p>
+     * <p>
+     * Useful when reusing a DTO for a new record, or for update/upsert.
+     * </p>
+     * <p>
+     * This method does not clear {@code Name} to allow updating it, so it must be explicitly set to {@code null} if
+     * needed.
+     * </p>
      */
     public final void clearBaseFields() {
+        //
         attributes = null;
         Id = null;
-        OwnerId = null;
         IsDeleted = null;
         CreatedDate = null;
         CreatedById = null;
@@ -56,12 +72,16 @@ public class AbstractSObjectBase extends AbstractDTOBase {
         LastModifiedById = null;
         SystemModstamp = null;
         LastActivityDate = null;
+        LastViewedDate = null;
+        LastReferencedDate = null;
     }
 
+    @JsonProperty("attributes")
     public Attributes getAttributes() {
         return attributes;
     }
 
+    @JsonProperty("attributes")
     public void setAttributes(Attributes attributes) {
         this.attributes = attributes;
     }
@@ -157,12 +177,12 @@ public class AbstractSObjectBase extends AbstractDTOBase {
     }
 
     @JsonProperty("LastActivityDate")
-    public ZonedDateTime getLastActivityDate() {
+    public LocalDate getLastActivityDate() {
         return LastActivityDate;
     }
 
     @JsonProperty("LastActivityDate")
-    public void setLastActivityDate(ZonedDateTime lastActivityDate) {
+    public void setLastActivityDate(LocalDate lastActivityDate) {
         this.LastActivityDate = lastActivityDate;
     }
 
@@ -185,5 +205,15 @@ public class AbstractSObjectBase extends AbstractDTOBase {
     public void setLastReferencedDate(ZonedDateTime lastReferencedDate) {
         LastReferencedDate = lastReferencedDate;
     }
+
+    @JsonIgnore
+    public Set<String> getFieldsToNull() {
+        return fieldsToNull;
+    }
+
+    @JsonIgnore
+    public void setFieldsToNull(Set<String> fieldsToNull) {
+        this.fieldsToNull = fieldsToNull;
+    }
+
 }
-//CHECKSTYLE:ON

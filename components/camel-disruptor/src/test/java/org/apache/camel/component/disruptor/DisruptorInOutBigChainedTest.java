@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,15 +17,15 @@
 package org.apache.camel.component.disruptor;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version
- */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 public class DisruptorInOutBigChainedTest extends CamelTestSupport {
     @Test
-    public void testInOutBigDisruptorChained() throws Exception {
+    void testInOutBigDisruptorChained() throws Exception {
         getMockEndpoint("mock:a").expectedBodiesReceived("start");
         getMockEndpoint("mock:b").expectedBodiesReceived("start-a");
         getMockEndpoint("mock:c").expectedBodiesReceived("start-a-b");
@@ -38,14 +38,14 @@ public class DisruptorInOutBigChainedTest extends CamelTestSupport {
         final String reply = template.requestBody("disruptor:a", "start", String.class);
         assertEquals("start-a-b-c-d-e-f-g-h", reply);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("disruptor:a").to("mock:a").transform(simple("${body}-a")).to("disruptor:b");
 
                 from("disruptor:b").to("mock:b").transform(simple("${body}-b")).to("disruptor:c");

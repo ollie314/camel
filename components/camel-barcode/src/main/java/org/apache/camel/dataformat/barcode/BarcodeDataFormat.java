@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,6 +21,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.EnumMap;
 import java.util.Map;
+
 import javax.imageio.ImageIO;
 
 import com.google.zxing.BarcodeFormat;
@@ -39,24 +40,28 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
 import org.apache.camel.Exchange;
 import org.apache.camel.spi.DataFormat;
 import org.apache.camel.spi.DataFormatName;
-import org.apache.camel.support.ServiceSupport;
-import org.apache.camel.util.ExchangeHelper;
+import org.apache.camel.spi.annotations.Dataformat;
+import org.apache.camel.support.ExchangeHelper;
+import org.apache.camel.support.service.ServiceSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * {@link DataFormat} to create (encode) and
- * read (decode) barcodes. For more info about
- * the available barcodes have a look at:<br/><br/>
+ * {@link DataFormat} to create (encode) and read (decode) barcodes. For more info about the available barcodes have a
+ * look at:<br/>
+ * <br/>
  * <p/>
  * https://github.com/zxing/zxing
  */
+@Dataformat("barcode")
 public class BarcodeDataFormat extends ServiceSupport implements DataFormat, DataFormatName {
 
-    /**
-     * Logger.
-     */
     private static final Logger LOG = LoggerFactory.getLogger(BarcodeDataFormat.class);
+
+    private BarcodeFormat barcodeFormat;
+    private BarcodeImageType imageType;
+    private Integer width;
+    private Integer height;
 
     /**
      * The bean for the default parameters.
@@ -66,63 +71,50 @@ public class BarcodeDataFormat extends ServiceSupport implements DataFormat, Dat
     /**
      * The encoding hint map, used for writing a barcode.
      */
-    private final Map<EncodeHintType, Object> writerHintMap = new EnumMap<EncodeHintType, Object>(EncodeHintType.class);
+    private final Map<EncodeHintType, Object> writerHintMap = new EnumMap<>(EncodeHintType.class);
 
     /**
      * The decoding hint map, used for reading a barcode.
      */
-    private final Map<DecodeHintType, Object> readerHintMap = new EnumMap<DecodeHintType, Object>(DecodeHintType.class);
-
+    private final Map<DecodeHintType, Object> readerHintMap = new EnumMap<>(DecodeHintType.class);
 
     /**
      * Create instance with default parameters.
      */
     public BarcodeDataFormat() {
-        this.setDefaultParameters();
-        this.optimizeHints();
     }
 
     /**
-     * Create instance with custom {@link BarcodeFormat}. The other
-     * values are default.
+     * Create instance with custom {@link BarcodeFormat}. The other values are default.
      *
      * @param format the barcode format
      */
     public BarcodeDataFormat(final BarcodeFormat format) {
-        this.setDefaultParameters();
-        this.params.setFormat(format);
-        this.optimizeHints();
+        setBarcodeFormat(format);
     }
 
     /**
-     * Create instance with custom height and width. The other
-     * values are default.
+     * Create instance with custom height and width. The other values are default.
      *
      * @param height the image height
      * @param width  the image width
      */
     public BarcodeDataFormat(final int width, final int height) {
-        this.setDefaultParameters();
-        this.params.setHeight(height);
-        this.params.setWidth(width);
-        this.optimizeHints();
+        setWidth(width);
+        setHeight(height);
     }
 
     /**
-     * Create instance with custom {@link BarcodeImageType}. The other
-     * values are default.
+     * Create instance with custom {@link BarcodeImageType}. The other values are default.
      *
      * @param type the type (format) of the image. e.g. PNG
      */
     public BarcodeDataFormat(final BarcodeImageType type) {
-        this.setDefaultParameters();
-        this.params.setType(type);
-        this.optimizeHints();
+        setImageType(type);
     }
 
     /**
-     * Create instance with custom height, width and image type. The other
-     * values are default.
+     * Create instance with custom height, width and image type. The other values are default.
      *
      * @param height the image height
      * @param width  the image width
@@ -130,12 +122,10 @@ public class BarcodeDataFormat extends ServiceSupport implements DataFormat, Dat
      * @param format the barcode format
      */
     public BarcodeDataFormat(final int width, final int height, final BarcodeImageType type, final BarcodeFormat format) {
-        this.setDefaultParameters();
-        this.params.setHeight(height);
-        this.params.setWidth(width);
-        this.params.setType(type);
-        this.params.setFormat(format);
-        this.optimizeHints();
+        setWidth(width);
+        setHeight(height);
+        setImageType(type);
+        setBarcodeFormat(format);
     }
 
     @Override
@@ -157,13 +147,6 @@ public class BarcodeDataFormat extends ServiceSupport implements DataFormat, Dat
     @Override
     public Object unmarshal(final Exchange exchange, final InputStream stream) throws Exception {
         return this.readImage(exchange, stream);
-    }
-
-    /**
-     * Sets the default parameters.
-     */
-    protected final void setDefaultParameters() {
-        this.params = new BarcodeParameters();
     }
 
     /**
@@ -205,7 +188,7 @@ public class BarcodeDataFormat extends ServiceSupport implements DataFormat, Dat
         // set values
         final String type = this.params.getType().toString();
 
-        // create code image  
+        // create code image
         final BitMatrix matrix = writer.encode(
                 payload,
                 this.params.getFormat(),
@@ -231,6 +214,12 @@ public class BarcodeDataFormat extends ServiceSupport implements DataFormat, Dat
         // write the found barcode format into the header
         exchange.getOut().setHeader(Barcode.BARCODE_FORMAT, result.getBarcodeFormat());
 
+        if (result.getResultMetadata() != null) {
+            result.getResultMetadata().forEach((k, v) -> {
+                exchange.getOut().setHeader(k.toString(), v);
+            });
+        }
+
         return result.getText();
     }
 
@@ -239,7 +228,7 @@ public class BarcodeDataFormat extends ServiceSupport implements DataFormat, Dat
      */
     public final void addToHintMap(final EncodeHintType hintType, final Object value) {
         this.writerHintMap.put(hintType, value);
-        LOG.info(String.format("Added '%s' with value '%s' to writer hint map.", hintType.toString(), value.toString()));
+        LOG.info("Added '{}' with value '{}' to writer hint map.", hintType, value);
     }
 
     /**
@@ -255,9 +244,9 @@ public class BarcodeDataFormat extends ServiceSupport implements DataFormat, Dat
     public final void removeFromHintMap(final EncodeHintType hintType) {
         if (this.writerHintMap.containsKey(hintType)) {
             this.writerHintMap.remove(hintType);
-            LOG.info(String.format("Removed '%s' from writer hint map.", hintType.toString()));
+            LOG.info("Removed '{}' from writer hint map.", hintType);
         } else {
-            LOG.warn(String.format("Could not find encode hint type '%s' in writer hint map.", hintType.toString()));
+            LOG.warn("Could not find encode hint type '{}' in writer hint map.", hintType);
         }
     }
 
@@ -267,9 +256,9 @@ public class BarcodeDataFormat extends ServiceSupport implements DataFormat, Dat
     public final void removeFromHintMap(final DecodeHintType hintType) {
         if (this.readerHintMap.containsKey(hintType)) {
             this.readerHintMap.remove(hintType);
-            LOG.info(String.format("Removed '%s' from reader hint map.", hintType.toString()));
+            LOG.info("Removed '{}' from reader hint map.", hintType);
         } else {
-            LOG.warn(String.format("Could not find decode hint type '%s' in reader hint map.", hintType.toString()));
+            LOG.warn("Could not find decode hint type '{}' in reader hint map.", hintType);
         }
     }
 
@@ -294,28 +283,54 @@ public class BarcodeDataFormat extends ServiceSupport implements DataFormat, Dat
         return readerHintMap;
     }
 
-    // these set method is used for BarcodeDataFormat XML DSL
-    public void setBarcodeImageType(BarcodeImageType type) {
-        this.params.setType(type);
-        this.optimizeHints();
+    public BarcodeFormat getBarcodeFormat() {
+        return barcodeFormat;
     }
 
-    public void setBarcodeFormat(BarcodeFormat format) {
-        this.params.setFormat(format);
-        this.optimizeHints();
+    public void setBarcodeFormat(BarcodeFormat barcodeFormat) {
+        this.barcodeFormat = barcodeFormat;
+    }
+
+    public BarcodeImageType getImageType() {
+        return imageType;
+    }
+
+    public void setImageType(BarcodeImageType imageType) {
+        this.imageType = imageType;
+    }
+
+    public Integer getWidth() {
+        return width;
     }
 
     public void setWidth(Integer width) {
-        this.params.setWidth(width);
+        this.width = width;
+    }
+
+    public Integer getHeight() {
+        return height;
     }
 
     public void setHeight(Integer height) {
-        this.params.setHeight(height);
+        this.height = height;
     }
 
     @Override
     protected void doStart() throws Exception {
-        // noop
+        this.params = new BarcodeParameters();
+        if (barcodeFormat != null) {
+            this.params.setFormat(barcodeFormat);
+        }
+        if (imageType != null) {
+            this.params.setType(imageType);
+        }
+        if (width != null) {
+            this.params.setWidth(width);
+        }
+        if (height != null) {
+            this.params.setHeight(height);
+        }
+        this.optimizeHints();
     }
 
     @Override

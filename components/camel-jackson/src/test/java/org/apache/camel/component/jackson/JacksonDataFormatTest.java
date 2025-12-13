@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,12 +22,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 
 import org.apache.camel.impl.DefaultCamelContext;
-import org.apache.camel.impl.DefaultExchange;
-import org.junit.Test;
+import org.apache.camel.support.DefaultExchange;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class JacksonDataFormatTest {
+
     @Test
     public void testString() throws Exception {
         testJson("\"A string\"", "A string");
@@ -41,15 +42,14 @@ public class JacksonDataFormatTest {
     @Test
     public void testList() throws Exception {
         testJson("[{\"value\":123}]", new ArrayList<>(Collections.singletonList(Collections.singletonMap("value", 123))));
-
     }
 
     private void testJson(String json, Object expected) throws Exception {
         Object unmarshalled;
-        JacksonDataFormat gsonDataFormat = new JacksonDataFormat();
-        gsonDataFormat.doStart();
+        JacksonDataFormat jacksonDataFormat = new JacksonDataFormat();
+        jacksonDataFormat.doStart();
         try (InputStream in = new ByteArrayInputStream(json.getBytes())) {
-            unmarshalled = gsonDataFormat.unmarshal(new DefaultExchange(new DefaultCamelContext()), in);
+            unmarshalled = jacksonDataFormat.unmarshal(new DefaultExchange(new DefaultCamelContext()), in);
         }
 
         assertEquals(expected, unmarshalled);

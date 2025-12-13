@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,85 +17,94 @@
 package org.apache.camel.component.jms.issues;
 
 import java.util.concurrent.Future;
-import javax.jms.ConnectionFactory;
 
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
 import org.apache.camel.Exchange;
 import org.apache.camel.ExchangePattern;
-import org.apache.camel.Processor;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.jms.CamelJmsTestHelper;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.jms.AbstractJMSTest;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/**
- * @version 
- */
-public class JmsInOutIssueTest extends CamelTestSupport {
+public class JmsInOutIssueTest extends AbstractJMSTest {
+
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
-    public void testInOutWithRequestBody() throws Exception {
-        String reply = template.requestBody("activemq:queue:in", "Hello World", String.class);
+    public void testInOutWithRequestBody() {
+        String reply = template.requestBody("activemq:queue:inJmsInOutIssueTest", "Hello World", String.class);
         assertEquals("Bye World", reply);
     }
 
     @Test
-    public void testInOutTwoTimes() throws Exception {
-        String reply = template.requestBody("activemq:queue:in", "Hello World", String.class);
+    public void testInOutTwoTimes() {
+        String reply = template.requestBody("activemq:queue:inJmsInOutIssueTest", "Hello World", String.class);
         assertEquals("Bye World", reply);
 
-        reply = template.requestBody("activemq:queue:in", "Hello Camel", String.class);
+        reply = template.requestBody("activemq:queue:inJmsInOutIssueTest", "Hello Camel", String.class);
         assertEquals("Bye World", reply);
     }
 
     @Test
     public void testInOutWithAsyncRequestBody() throws Exception {
-        Future<String> reply = template.asyncRequestBody("activemq:queue:in", "Hello World", String.class);
+        Future<String> reply = template.asyncRequestBody("activemq:queue:inJmsInOutIssueTest", "Hello World", String.class);
         assertEquals("Bye World", reply.get());
     }
 
     @Test
-    public void testInOutWithSendExchange() throws Exception {
-        Exchange out = template.send("activemq:queue:in", ExchangePattern.InOut, new Processor() {
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setBody("Hello World");
-            }
-        });
+    public void testInOutWithSendExchange() {
+        Exchange out = template.send("activemq:queue:inJmsInOutIssueTest", ExchangePattern.InOut,
+                exchange -> exchange.getIn().setBody("Hello World"));
 
-        assertEquals("Bye World", out.getOut().getBody());
+        assertEquals("Bye World", out.getMessage().getBody());
     }
 
     @Test
     public void testInOutWithAsyncSendExchange() throws Exception {
-        Future<Exchange> out = template.asyncSend("activemq:queue:in", new Processor() {
-            public void process(Exchange exchange) throws Exception {
-                exchange.setPattern(ExchangePattern.InOut);
-                exchange.getIn().setBody("Hello World");
-            }
+        Future<Exchange> out = template.asyncSend("activemq:queue:inJmsInOutIssueTest", exchange -> {
+            exchange.setPattern(ExchangePattern.InOut);
+            exchange.getIn().setBody("Hello World");
         });
 
-        assertEquals("Bye World", out.get().getOut().getBody());
+        assertEquals("Bye World", out.get().getMessage().getBody());
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-        return camelContext;
+    @Override
+    protected String getComponentName() {
+        return "activemq";
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("activemq:queue:in").process(new Processor() {
-                    public void process(Exchange exchange) throws Exception {
-                        exchange.getOut().setBody("Bye World");
-                    }
-                });
+            public void configure() {
+                from("activemq:queue:inJmsInOutIssueTest").process(exchange -> exchange.getMessage().setBody("Bye World"));
             }
         };
     }
 
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
+    }
 }

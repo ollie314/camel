@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,9 +22,9 @@ import org.apache.camel.Produce;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.test.junit5.CamelTestSupport;
 import org.apache.camel.util.StopWatch;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
 /**
@@ -32,10 +32,10 @@ import org.slf4j.LoggerFactory;
  */
 public class MustacheComponentTest extends CamelTestSupport {
 
-    @EndpointInject(uri = "mock:endSimple")
+    @EndpointInject("mock:endSimple")
     protected MockEndpoint endSimpleMock;
 
-    @Produce(uri = "direct:startSimple")
+    @Produce("direct:startSimple")
     protected ProducerTemplate startSimpleProducerTemplate;
 
     /**
@@ -45,11 +45,11 @@ public class MustacheComponentTest extends CamelTestSupport {
     public void testMustache() throws Exception {
         // Prepare
         endSimpleMock.expectedMessageCount(1);
-        endSimpleMock.expectedBodiesReceived("Message with body 'The Body' and some header 'Some Header'");
+        endSimpleMock.expectedBodiesReceived("\nMessage with body 'The Body' and some header 'Some Header'");
         // Act
         startSimpleProducerTemplate.sendBodyAndHeader("The Body", "someHeader", "Some Header");
         // Verify
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     /**
@@ -66,7 +66,7 @@ public class MustacheComponentTest extends CamelTestSupport {
         // Act
         startSimpleProducerTemplate.send(exchange);
         // Verify
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     /**
@@ -84,7 +84,7 @@ public class MustacheComponentTest extends CamelTestSupport {
         // Act
         startSimpleProducerTemplate.send(exchange);
         // Verify
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -99,7 +99,7 @@ public class MustacheComponentTest extends CamelTestSupport {
         // Act
         startSimpleProducerTemplate.send(exchange);
         // Verify
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -114,7 +114,7 @@ public class MustacheComponentTest extends CamelTestSupport {
         // Act
         startSimpleProducerTemplate.send(exchange);
         // Verify
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     /**
@@ -128,15 +128,19 @@ public class MustacheComponentTest extends CamelTestSupport {
         for (int i = 0; i < messageCount; i++) {
             startSimpleProducerTemplate.sendBodyAndHeader("The Body", "someHeader", "Some Header");
         }
-        assertMockEndpointsSatisfied();
-        LoggerFactory.getLogger(getClass()).info("Mustache performance: " + stopwatch.stop() + "ms for " + messageCount + " messages");
+        MockEndpoint.assertIsSatisfied(context);
+        LoggerFactory.getLogger(getClass())
+                .info("Mustache performance: " + stopwatch.taken() + "ms for " + messageCount + " messages");
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
             public void configure() {
+                MustacheComponent mc = context.getComponent("mustache", MustacheComponent.class);
+                mc.setAllowTemplateFromHeader(true);
+
                 from("direct:startSimple")
                         .to("mustache://simple.mustache")
                         .to("mock:endSimple");

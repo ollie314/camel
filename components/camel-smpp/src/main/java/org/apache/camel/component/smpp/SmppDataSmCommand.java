@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,6 +22,7 @@ import java.util.Map;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
+import org.apache.camel.support.ExchangeHelper;
 import org.jsmpp.bean.DataCodings;
 import org.jsmpp.bean.DataSm;
 import org.jsmpp.bean.ESMClass;
@@ -76,7 +77,7 @@ public class SmppDataSmCommand extends AbstractSmppCommand {
                     exchange.getExchangeId(), result.getMessageId());
         }
 
-        Message message = getResponseMessage(exchange);
+        Message message = ExchangeHelper.getResultMessage(exchange);
         message.setHeader(SmppConstants.ID, result.getMessageId());
         message.setHeader(SmppConstants.OPTIONAL_PARAMETERS, createOptionalParameterByName(result.getOptionalParameters()));
         message.setHeader(SmppConstants.OPTIONAL_PARAMETER, createOptionalParameterByCode(result.getOptionalParameters()));
@@ -87,7 +88,7 @@ public class SmppDataSmCommand extends AbstractSmppCommand {
             return null;
         }
 
-        Map<String, String> optParams = new HashMap<String, String>();
+        Map<String, String> optParams = new HashMap<>();
         for (OptionalParameter optionalParameter : optionalParameters) {
 
             String value = null;
@@ -115,18 +116,21 @@ public class SmppDataSmCommand extends AbstractSmppCommand {
             return null;
         }
 
-        Map<java.lang.Short, Object> optParams = new HashMap<java.lang.Short, Object>();
+        Map<java.lang.Short, Object> optParams = new HashMap<>();
         for (OptionalParameter optPara : optionalParameters) {
             if (COctetString.class.isInstance(optPara)) {
                 optParams.put(java.lang.Short.valueOf(optPara.tag), ((COctetString) optPara).getValueAsString());
             } else if (org.jsmpp.bean.OptionalParameter.OctetString.class.isInstance(optPara)) {
                 optParams.put(java.lang.Short.valueOf(optPara.tag), ((OctetString) optPara).getValue());
             } else if (org.jsmpp.bean.OptionalParameter.Byte.class.isInstance(optPara)) {
-                optParams.put(java.lang.Short.valueOf(optPara.tag), java.lang.Byte.valueOf(((org.jsmpp.bean.OptionalParameter.Byte) optPara).getValue()));
+                optParams.put(java.lang.Short.valueOf(optPara.tag),
+                        java.lang.Byte.valueOf(((org.jsmpp.bean.OptionalParameter.Byte) optPara).getValue()));
             } else if (org.jsmpp.bean.OptionalParameter.Short.class.isInstance(optPara)) {
-                optParams.put(java.lang.Short.valueOf(optPara.tag), java.lang.Short.valueOf(((org.jsmpp.bean.OptionalParameter.Short) optPara).getValue()));
+                optParams.put(java.lang.Short.valueOf(optPara.tag),
+                        java.lang.Short.valueOf(((org.jsmpp.bean.OptionalParameter.Short) optPara).getValue()));
             } else if (org.jsmpp.bean.OptionalParameter.Int.class.isInstance(optPara)) {
-                optParams.put(java.lang.Short.valueOf(optPara.tag), Integer.valueOf(((org.jsmpp.bean.OptionalParameter.Int) optPara).getValue()));
+                optParams.put(java.lang.Short.valueOf(optPara.tag),
+                        Integer.valueOf(((org.jsmpp.bean.OptionalParameter.Int) optPara).getValue()));
             } else if (Null.class.isInstance(optPara)) {
                 optParams.put(java.lang.Short.valueOf(optPara.tag), null);
             }
@@ -135,7 +139,7 @@ public class SmppDataSmCommand extends AbstractSmppCommand {
         return optParams;
     }
 
-    @SuppressWarnings({"unchecked"})
+    @SuppressWarnings({ "unchecked" })
     protected DataSm createDataSm(Exchange exchange) {
         Message in = exchange.getIn();
         DataSm dataSm = new DataSm();
@@ -199,12 +203,12 @@ public class SmppDataSmCommand extends AbstractSmppCommand {
         Map<java.lang.Short, Object> optinalParamater = in.getHeader(SmppConstants.OPTIONAL_PARAMETER, Map.class);
         if (optinalParamater != null) {
             List<OptionalParameter> optParams = createOptionalParametersByCode(optinalParamater);
-            dataSm.setOptionalParameters(optParams.toArray(new OptionalParameter[optParams.size()]));
+            dataSm.setOptionalParameters(optParams.toArray(new OptionalParameter[0]));
         } else {
             Map<String, String> optinalParamaters = in.getHeader(SmppConstants.OPTIONAL_PARAMETERS, Map.class);
             if (optinalParamaters != null) {
                 List<OptionalParameter> optParams = createOptionalParametersByName(optinalParamaters);
-                dataSm.setOptionalParameters(optParams.toArray(new OptionalParameter[optParams.size()]));
+                dataSm.setOptionalParameters(optParams.toArray(new OptionalParameter[0]));
             } else {
                 dataSm.setOptionalParameters();
             }

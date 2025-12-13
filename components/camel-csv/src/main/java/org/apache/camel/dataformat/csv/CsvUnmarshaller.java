@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,6 +26,7 @@ import java.util.Iterator;
 import java.util.List;
 
 import org.apache.camel.Exchange;
+import org.apache.camel.support.ExchangeHelper;
 import org.apache.camel.util.IOHelper;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
@@ -36,16 +37,22 @@ import org.apache.commons.csv.CSVRecord;
  */
 abstract class CsvUnmarshaller {
     protected final CSVFormat format;
+    protected final CsvDataFormat dataFormat;
     protected final CsvRecordConverter<?> converter;
 
     private CsvUnmarshaller(CSVFormat format, CsvDataFormat dataFormat) {
         this.format = format;
+        this.dataFormat = dataFormat;
         this.converter = extractConverter(dataFormat);
     }
 
     public static CsvUnmarshaller create(CSVFormat format, CsvDataFormat dataFormat) {
+        // If we want to capture the header record, thus the header must be either fixed or automatic
+        if (dataFormat.isCaptureHeaderRecord() && format.getHeader() == null) {
+            format = format.withHeader();
+        }
         // If we want to use maps, thus the header must be either fixed or automatic
-        if (dataFormat.isUseMaps() && format.getHeader() == null) {
+        if ((dataFormat.isUseMaps() || dataFormat.isUseOrderedMaps()) && format.getHeader() == null) {
             format = format.withHeader();
         }
         // If we want to skip the header record it must automatic otherwise it's not working
@@ -62,16 +69,18 @@ abstract class CsvUnmarshaller {
     /**
      * Unmarshal the CSV
      *
-     * @param exchange    Exchange (used for accessing type converter)
-     * @param inputStream Input CSV stream
-     * @return Unmarshalled CSV
-     * @throws IOException if the stream cannot be read properly
+     * @param  exchange  Exchange (used for accessing type converter)
+     * @param  body      the input
+     * @return           Unmarshalled CSV
+     * @throws Exception if error during unmarshalling
      */
-    public abstract Object unmarshal(Exchange exchange, InputStream inputStream) throws IOException;
+    public abstract Object unmarshal(Exchange exchange, Object body) throws Exception;
 
     private static CsvRecordConverter<?> extractConverter(CsvDataFormat dataFormat) {
         if (dataFormat.getRecordConverter() != null) {
             return dataFormat.getRecordConverter();
+        } else if (dataFormat.isUseOrderedMaps()) {
+            return CsvRecordConverters.orderedMapConverter();
         } else if (dataFormat.isUseMaps()) {
             return CsvRecordConverters.mapConverter();
         } else {
@@ -89,9 +98,20 @@ abstract class CsvUnmarshaller {
             super(format, dataFormat);
         }
 
-        public Object unmarshal(Exchange exchange, InputStream inputStream) throws IOException {
-            CSVParser parser = new CSVParser(new InputStreamReader(inputStream, IOHelper.getCharsetName(exchange)), format);
+        @Override
+        public Object unmarshal(Exchange exchange, Object body) throws Exception {
+            Reader reader = exchange.getContext().getTypeConverter().tryConvertTo(Reader.class, exchange, body);
+            if (reader == null) {
+                // fallback to input stream
+                InputStream is = exchange.getContext().getTypeConverter().mandatoryConvertTo(InputStream.class, exchange, body);
+                reader = new InputStreamReader(is, ExchangeHelper.getCharsetName(exchange));
+            }
+            CSVParser parser
+                    = new CSVParser(reader, format);
             try {
+                if (dataFormat.isCaptureHeaderRecord()) {
+                    exchange.getMessage().setHeader(CsvConstants.HEADER_RECORD, parser.getHeaderNames());
+                }
                 return asList(parser.iterator(), converter);
             } finally {
                 IOHelper.close(parser);
@@ -99,7 +119,7 @@ abstract class CsvUnmarshaller {
         }
 
         private <T> List<T> asList(Iterator<CSVRecord> iterator, CsvRecordConverter<T> converter) {
-            List<T> answer = new ArrayList<T>();
+            List<T> answer = new ArrayList<>();
             while (iterator.hasNext()) {
                 answer.add(converter.convertRecord(iterator.next()));
             }
@@ -118,14 +138,18 @@ abstract class CsvUnmarshaller {
         }
 
         @Override
-        public Object unmarshal(Exchange exchange, InputStream inputStream) throws IOException {
-            Reader reader = null;
+        public Object unmarshal(Exchange exchange, Object body) throws Exception {
+            Reader reader = exchange.getContext().getTypeConverter().tryConvertTo(Reader.class, exchange, body);
+            if (reader == null) {
+                // fallback to input stream
+                InputStream is = exchange.getContext().getTypeConverter().mandatoryConvertTo(InputStream.class, exchange, body);
+                reader = new InputStreamReader(is, ExchangeHelper.getCharsetName(exchange));
+            }
             try {
-                reader = new InputStreamReader(inputStream, IOHelper.getCharsetName(exchange));
                 CSVParser parser = new CSVParser(reader, format);
-                CsvIterator answer = new CsvIterator(parser, converter);
-                // add to UoW so we can close the iterator so it can release any resources
-                exchange.addOnCompletion(new CsvUnmarshalOnCompletion(answer));
+                CsvIterator<?> answer = new CsvIterator<>(parser, converter);
+                // add to UoW, so we can close the iterator, so it can release any resources
+                exchange.getExchangeExtension().addOnCompletion(new CsvUnmarshalOnCompletion(answer));
                 return answer;
             } catch (Exception e) {
                 IOHelper.close(reader);

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,13 +19,13 @@ package org.apache.camel.component.ironmq;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.math.BigInteger;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Random;
 import java.util.UUID;
 
 import io.iron.ironmq.Client;
@@ -38,15 +38,15 @@ import io.iron.ironmq.Messages;
 import io.iron.ironmq.Queue;
 
 public class MockQueue extends Queue {
-    private Map<String, Message> messages = new LinkedHashMap<String, Message>();
+    private Map<String, Message> messages = new LinkedHashMap<>();
 
     public MockQueue(Client client, String name) {
         super(client, name);
     }
 
     @Override
-    public String push(String msg, long delay) throws IOException {
-        String randint = new BigInteger(24 * 8, new Random()).toString(16);
+    public String push(String msg, long delay) {
+        String randint = new BigInteger(24 * 8, new SecureRandom()).toString(16);
         Message message = new Message();
         message.setBody(msg);
         message.setDelay(delay);
@@ -57,12 +57,12 @@ public class MockQueue extends Queue {
     }
 
     @Override
-    public Ids pushMessages(String[] msg, long delay) throws IOException {
+    public Ids pushMessages(String[] msg, long delay) {
         for (String messageName : msg) {
             Message message = new Message();
             message.setBody(messageName);
             message.setDelay(delay);
-            String randint = new BigInteger(24 * 8, new Random()).toString(16);
+            String randint = new BigInteger(24 * 8, new SecureRandom()).toString(16);
             message.setId(randint);
             message.setReservationId(UUID.randomUUID().toString());
             messages.put(randint, message);
@@ -71,7 +71,7 @@ public class MockQueue extends Queue {
         try {
             Constructor<Ids> constructor = Ids.class.getDeclaredConstructor(Messages.class);
             constructor.setAccessible(true);
-            Messages messageList = new Messages(new ArrayList<Message>(messages.values()));
+            Messages messageList = new Messages(new ArrayList<>(messages.values()));
             ids = constructor.newInstance(messageList);
         } catch (Exception e) {
         }
@@ -90,8 +90,8 @@ public class MockQueue extends Queue {
     @Override
     public void deleteMessages(Messages messages) throws IOException {
         MessageOptions[] messageOptions = messages.toMessageOptions();
-        for (int i = 0; i < messageOptions.length; i++) {
-            deleteMessage(messageOptions[i].getId(), messageOptions[i].getReservationId());
+        for (MessageOptions messageOption : messageOptions) {
+            deleteMessage(messageOption.getId(), messageOption.getReservationId());
         }
     }
 
@@ -123,7 +123,7 @@ public class MockQueue extends Queue {
 
             Iterator<Entry<String, Message>> iterator = messages.entrySet().iterator();
             int i = 0;
-            List<Message> list = new ArrayList<Message>();
+            List<Message> list = new ArrayList<>();
             while (iterator.hasNext() && i < numberOfMessages) {
                 Entry<String, Message> next = iterator.next();
                 list.add(next.getValue());

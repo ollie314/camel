@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,20 +18,13 @@ package org.apache.camel.component.salesforce.api.dto;
 
 import java.util.List;
 
-import com.thoughtworks.xstream.annotations.XStreamImplicit;
-
 public class SObjectDescription extends SObject {
 
-    @XStreamImplicit
     private List<ActionOverride> actionOverrides;
-    @XStreamImplicit
     private List<SObjectField> fields;
     private SObjectDescriptionUrls urls;
-    @XStreamImplicit
     private List<ChildRelationShip> childRelationships;
-    @XStreamImplicit
     private List<RecordTypeInfo> recordTypeInfos;
-    @XStreamImplicit
     private List<NamedLayoutInfo> namedLayoutInfos;
 
     public List<ActionOverride> getActionOverrides() {
@@ -50,6 +43,7 @@ public class SObjectDescription extends SObject {
         this.fields = fields;
     }
 
+    @Override
     public SObjectDescriptionUrls getUrls() {
         return urls;
     }
@@ -80,5 +74,21 @@ public class SObjectDescription extends SObject {
 
     public void setNamedLayoutInfos(List<NamedLayoutInfo> namedLayoutInfos) {
         this.namedLayoutInfos = namedLayoutInfos;
+    }
+
+    /**
+     * Removes some of the less used properties from this object. Useful to reduce serialized form or for code
+     * generation that relies on reflection.
+     */
+    public SObjectDescription prune() {
+        final SObjectDescription pruned = new SObjectDescription();
+        pruned.setName(getName());
+        pruned.setLabel(getLabel());
+        pruned.setLabelPlural(getLabelPlural());
+        pruned.fields = fields;
+        pruned.urls = urls;
+        pruned.setChildRelationships(childRelationships);
+
+        return pruned;
     }
 }

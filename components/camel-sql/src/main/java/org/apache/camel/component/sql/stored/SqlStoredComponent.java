@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,53 +17,55 @@
 package org.apache.camel.component.sql.stored;
 
 import java.util.Map;
+
 import javax.sql.DataSource;
 
-import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
-import org.apache.camel.impl.UriEndpointComponent;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.spi.annotations.Component;
+import org.apache.camel.support.DefaultComponent;
+import org.apache.camel.support.PropertyBindingSupport;
+import org.apache.camel.util.PropertiesHelper;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-public class SqlStoredComponent extends UriEndpointComponent {
+@Component("sql-stored")
+public class SqlStoredComponent extends DefaultComponent {
+
+    @Metadata(autowired = true)
     private DataSource dataSource;
-
-    public SqlStoredComponent() {
-        super(SqlStoredEndpoint.class);
-    }
-
-    public SqlStoredComponent(Class<? extends Endpoint> endpointClass) {
-        super(endpointClass);
-    }
-
-    public SqlStoredComponent(CamelContext context) {
-        super(context, SqlStoredEndpoint.class);
-    }
-
-    public SqlStoredComponent(CamelContext context, Class<? extends Endpoint> endpointClass) {
-        super(context, endpointClass);
-    }
+    @Metadata(label = "advanced",
+              description = "Whether to detect the network address location of the JMS broker on startup."
+                            + " This information is gathered via reflection on the ConnectionFactory, and is vendor specific."
+                            + " This option can be used to turn this off.",
+              defaultValue = "true")
+    private boolean serviceLocationEnabled = true;
 
     @Override
     protected Endpoint createEndpoint(String uri, String template, Map<String, Object> parameters) throws Exception {
-        DataSource target = null;
+        SqlStoredEndpoint endpoint = new SqlStoredEndpoint(uri, this);
+        endpoint.setServiceLocationEnabled(serviceLocationEnabled);
+        endpoint.setTemplate(template);
+        setProperties(endpoint, parameters);
 
-        // endpoint options overrule component configured datasource
-        DataSource ds = resolveAndRemoveReferenceParameter(parameters, "dataSource", DataSource.class);
-        if (ds != null) {
-            target = ds;
+        // endpoint configured data source takes precedence
+        DataSource ds = dataSource;
+        if (endpoint.getDataSource() != null) {
+            ds = endpoint.getDataSource();
         }
-        if (target == null) {
-            // fallback and use component
-            target = dataSource;
-        }
-        if (target == null) {
+        if (ds == null) {
             throw new IllegalArgumentException("DataSource must be configured");
         }
 
-        JdbcTemplate jdbcTemplate = new JdbcTemplate(target);
+        // create template
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(ds);
+        Map<String, Object> templateOptions = PropertiesHelper.extractProperties(parameters, "template.");
+        PropertyBindingSupport.bindProperties(getCamelContext(), jdbcTemplate, templateOptions);
 
-        SqlStoredEndpoint endpoint = new SqlStoredEndpoint(uri, this, jdbcTemplate);
-        endpoint.setTemplate(template);
+        // set template on endpoint
+        endpoint.setJdbcTemplate(jdbcTemplate);
+        endpoint.setDataSource(ds);
+        endpoint.setTemplateOptions(templateOptions);
+
         return endpoint;
     }
 
@@ -77,4 +79,17 @@ public class SqlStoredComponent extends UriEndpointComponent {
     public void setDataSource(DataSource dataSource) {
         this.dataSource = dataSource;
     }
+
+    public boolean isServiceLocationEnabled() {
+        return serviceLocationEnabled;
+    }
+
+    /**
+     * Whether to detect the network address location of the JMS broker on startup. This information is gathered via
+     * reflection on the ConnectionFactory, and is vendor specific. This option can be used to turn this off.
+     */
+    public void setServiceLocationEnabled(boolean serviceLocationEnabled) {
+        this.serviceLocationEnabled = serviceLocationEnabled;
+    }
+
 }

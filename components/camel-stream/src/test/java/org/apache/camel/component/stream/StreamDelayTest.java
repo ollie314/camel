@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,8 +17,11 @@
 package org.apache.camel.component.stream;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.apache.camel.util.StopWatch;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit test for delay option.
@@ -26,13 +29,14 @@ import org.junit.Test;
 public class StreamDelayTest extends CamelTestSupport {
 
     @Test
-    public void testStringContent() throws Exception {
-        long start = System.currentTimeMillis();
+    public void testStringContent() {
+        StopWatch watch = new StopWatch();
         template.sendBody("direct:in", "Hello Text World\n");
-        long delta = System.currentTimeMillis() - start;
-        assertTrue("Delay should be around 2 sec: " + delta, delta > 1900 && delta < 3000);
+        long duration = watch.taken();
+        assertTrue(duration > 1900 && duration < 3000, "Delay should be around 2 sec: " + duration);
     }
 
+    @Override
     protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {

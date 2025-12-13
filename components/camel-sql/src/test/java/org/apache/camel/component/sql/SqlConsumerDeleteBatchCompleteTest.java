@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,16 +16,18 @@
  */
 package org.apache.camel.component.sql;
 
+import java.util.concurrent.TimeUnit;
+
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+
+import static org.awaitility.Awaitility.await;
 
 /**
  *
@@ -35,21 +37,22 @@ public class SqlConsumerDeleteBatchCompleteTest extends CamelTestSupport {
     private EmbeddedDatabase db;
     private JdbcTemplate jdbcTemplate;
 
-    @Before
-    public void setUp() throws Exception {
+    @Override
+    public void doPreSetup() throws Exception {
         db = new EmbeddedDatabaseBuilder()
-            .setType(EmbeddedDatabaseType.DERBY).addScript("sql/createAndPopulateDatabase.sql").build();
+                .setName(getClass().getSimpleName())
+                .setType(EmbeddedDatabaseType.H2)
+                .addScript("sql/createAndPopulateDatabase.sql").build();
 
         jdbcTemplate = new JdbcTemplate(db);
-
-        super.setUp();
     }
 
-    @After
-    public void tearDown() throws Exception {
-        super.tearDown();
+    @Override
+    public void doPostTearDown() throws Exception {
 
-        db.shutdown();
+        if (db != null) {
+            db.shutdown();
+        }
     }
 
     @Test
@@ -57,29 +60,22 @@ public class SqlConsumerDeleteBatchCompleteTest extends CamelTestSupport {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMessageCount(3);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
-        // some servers may be a bit slow for this
-        for (int i = 0; i < 5; i++) {
-            // give it a little tine to delete
-            Thread.sleep(1000);
-            int rows = jdbcTemplate.queryForObject("select count(*) from projects", Integer.class);
-            if (rows == 0) {
-                break;
-            }
-        }
-        assertEquals("Should have deleted all 3 rows", new Integer(0), jdbcTemplate.queryForObject("select count(*) from projects", Integer.class));
+        await("Should have deleted all 3 rows")
+                .timeout(1, TimeUnit.SECONDS)
+                .until(() -> jdbcTemplate.queryForObject("select count(*) from projects", Integer.class) == 0);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 getContext().getComponent("sql", SqlComponent.class).setDataSource(db);
 
-                from("sql:select * from projects order by id?consumer.onConsumeBatchComplete=delete from projects")
-                    .to("mock:result");
+                from("sql:select * from projects order by id?initialDelay=0&delay=50&consumer.onConsumeBatchComplete=delete from projects")
+                        .to("mock:result");
             }
         };
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,13 +20,15 @@ import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class NettyHttpGetWithParamTest extends BaseNettyTest {
 
-    private String serverUri = "netty-http:http://localhost:" + getPort() + "/myservice";
-    private MyParamsProcessor processor = new MyParamsProcessor();
+    private final String serverUri = "netty-http:http://localhost:" + getPort() + "/myservice";
+    private final MyParamsProcessor processor = new MyParamsProcessor();
 
     @Test
     public void testHttpGetWithParamsViaURI() throws Exception {
@@ -37,11 +39,10 @@ public class NettyHttpGetWithParamTest extends BaseNettyTest {
 
         template.requestBody(serverUri + "?one=uno&two=dos", (Object) null);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
-    @Ignore("HTTP_QUERY not supported")
     public void testHttpGetWithParamsViaHeader() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedBodiesReceived("Bye World");
@@ -50,28 +51,30 @@ public class NettyHttpGetWithParamTest extends BaseNettyTest {
 
         template.requestBodyAndHeader(serverUri, null, Exchange.HTTP_QUERY, "one=uno&two=dos");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 from(serverUri).process(processor).to("mock:result");
             }
         };
     }
 
     private static class MyParamsProcessor implements Processor {
-        public void process(Exchange exchange) throws Exception {
+        @Override
+        public void process(Exchange exchange) {
             NettyHttpMessage message = exchange.getIn(NettyHttpMessage.class);
             assertNotNull(message.getHttpRequest());
 
-            String uri = message.getHttpRequest().getUri();
+            String uri = message.getHttpRequest().uri();
             assertTrue(uri.endsWith("one=uno&two=dos"));
 
-            exchange.getOut().setBody("Bye World");
-            exchange.getOut().setHeader("one", "eins");
-            exchange.getOut().setHeader("two", "zwei");
+            exchange.getMessage().setBody("Bye World");
+            exchange.getMessage().setHeader("one", "eins");
+            exchange.getMessage().setHeader("two", "zwei");
         }
     }
 

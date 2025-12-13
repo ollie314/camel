@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,11 +18,8 @@ package org.apache.camel.component.mina;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
 public class MinaFileUdpTest extends BaseMinaTest {
 
     @Test
@@ -31,17 +28,19 @@ public class MinaFileUdpTest extends BaseMinaTest {
         endpoint.expectedMessageCount(1);
         endpoint.message(0).body().startsWith("Hello World");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
+    @Override
     protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
+
             public void configure() {
                 // lets setup a server
-                from("mina:udp://localhost:{{port}}?sync=false&textline=true").to("mock:results");
+                fromF("mina:udp://localhost:%1$s?sync=false&textline=true", getPort()).to("mock:results");
 
-                from("file:src/test/data?noop=true").
-                        to("mina:udp://localhost:{{port}}?sync=false&textline=true");
+                from("file:src/test/data?noop=true")
+                        .toF("mina:udp://localhost:%1$s?sync=false&textline=true", getPort());
             }
         };
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -15,12 +15,11 @@
  * limitations under the License.
  */
 @XmlSchema(
-    xmlns = { 
-        @XmlNs(prefix = "order", namespaceURI = "http://www.camel.apache.org/jaxb/example/order/1"),
-        @XmlNs(prefix = "address", namespaceURI = "http://www.camel.apache.org/jaxb/example/address/1")
-        }
-)
+           xmlns = {
+                   @XmlNs(prefix = "order", namespaceURI = "http://www.camel.apache.org/jaxb/example/order/1"),
+                   @XmlNs(prefix = "address", namespaceURI = "http://www.camel.apache.org/jaxb/example/address/1")
+           })
 package org.apache.camel.example;
 
-import javax.xml.bind.annotation.XmlNs;
-import javax.xml.bind.annotation.XmlSchema;
+import jakarta.xml.bind.annotation.XmlNs;
+import jakarta.xml.bind.annotation.XmlSchema;

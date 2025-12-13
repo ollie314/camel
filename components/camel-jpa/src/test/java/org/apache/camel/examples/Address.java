@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,16 +16,13 @@
  */
 package org.apache.camel.examples;
 
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.Id;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
 
-/**
- * @version 
- */
 @Entity
 public class Address {
-    
+
     @Id
     @GeneratedValue
     private Long id;
@@ -47,7 +44,7 @@ public class Address {
     public void setAddressLine1(String addressLine1) {
         this.addressLine1 = addressLine1;
     }
-    
+
     public String getAddressLine2() {
         return addressLine2;
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,45 +17,47 @@
 package org.apache.camel.component.mail;
 
 import java.util.Properties;
-import javax.mail.MessagingException;
-import javax.mail.Session;
-import javax.mail.internet.MimeMessage;
 
-import org.apache.camel.impl.JndiRegistry;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import jakarta.mail.Session;
+import jakarta.mail.internet.MimeMessage;
 
-/**
- * @version 
- */
+import org.apache.camel.BindToRegistry;
+import org.apache.camel.component.mail.Mailbox.MailboxUser;
+import org.apache.camel.component.mail.Mailbox.Protocol;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 public class MailCustomMailSenderTest extends CamelTestSupport {
+    private static final MailboxUser claus = Mailbox.getOrCreateUser("claus", "secret");
 
     private static boolean sent;
 
-    @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry jndi = super.createRegistry();
-        jndi.bind("mySender", new MySender());
-        return jndi;
-    }
+    @BindToRegistry("mySender")
+    private MySender sender = new MySender();
 
     @Test
-    public void testSendWithCustomMailSender() throws Exception {
-        sendBody("smtp://claus@localhost?javaMailSender=#mySender", "Hello World");
+    public void testSendWithCustomMailSender() {
+        sendBody(claus.uriPrefix(Protocol.smtp) + "&javaMailSender=#mySender", "Hello World");
 
-        assertTrue("Should have used custom mail sender", sent);
+        assertTrue(sent, "Should have used custom mail sender");
     }
 
     private static class MySender implements JavaMailSender {
 
         @Override
-        public void send(MimeMessage mimeMessage) throws MessagingException {
+        public void send(MimeMessage mimeMessage) {
             sent = true;
         }
 
         @Override
         public Properties getJavaMailProperties() {
             return null;
+        }
+
+        @Override
+        public void addAdditionalJavaMailProperty(String key, String value) {
         }
 
         @Override
@@ -113,6 +115,15 @@ public class MailCustomMailSenderTest extends CamelTestSupport {
 
         @Override
         public Session getSession() {
+            return null;
+        }
+
+        @Override
+        public void setAuthenticator(MailAuthenticator authenticator) {
+        }
+
+        @Override
+        public MailAuthenticator getAuthenticator() {
             return null;
         }
     }

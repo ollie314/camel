@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,24 +21,21 @@ import java.util.Locale;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.dataformat.bindy.model.padding.Unity;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version
- */
 public class BindyPatternLocaleTest extends CamelTestSupport {
     private Locale origLocale;
 
-    @Before
+    @BeforeEach
     public void setLanguage() {
         origLocale = Locale.getDefault();
         Locale.setDefault(Locale.US);
     }
 
-    @After
+    @AfterEach
     public void restoreLanguage() {
         Locale.setDefault(origLocale);
     }
@@ -54,9 +51,9 @@ public class BindyPatternLocaleTest extends CamelTestSupport {
         unity.setReceiver(10f);
         template.sendBody("direct:marshal", unity);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testMarshalling2() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:marshal");
@@ -68,9 +65,9 @@ public class BindyPatternLocaleTest extends CamelTestSupport {
         unity.setReceiver(1f);
         template.sendBody("direct:marshal", unity);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testMarshalling3() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:marshal");
@@ -82,14 +79,14 @@ public class BindyPatternLocaleTest extends CamelTestSupport {
         unity.setReceiver(0f);
         template.sendBody("direct:marshal", unity);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 BindyCsvDataFormat bindy = new BindyCsvDataFormat(Unity.class);
 
                 // As recommended, when we use @Datafield Pattern we must

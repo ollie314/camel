@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,10 @@ package org.apache.camel.component.salesforce.api.dto;
 
 public class Attributes extends AbstractDTOBase {
 
+    private String referenceId;
+
     private String type;
+
     private String url;
 
     public String getType() {
@@ -35,5 +38,18 @@ public class Attributes extends AbstractDTOBase {
 
     public void setUrl(String url) {
         this.url = url;
+    }
+
+    public String getReferenceId() {
+        return referenceId;
+    }
+
+    public void setReferenceId(String referenceId) {
+        this.referenceId = referenceId;
+    }
+
+    @Override
+    public String toString() {
+        return "Attribute<type: " + type + ", referenceId: " + referenceId + ">";
     }
 }

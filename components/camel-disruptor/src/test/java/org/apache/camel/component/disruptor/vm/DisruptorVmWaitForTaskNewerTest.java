@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,44 +20,48 @@ import org.apache.camel.Exchange;
 import org.apache.camel.ExchangePattern;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.vm.AbstractVmTestSupport;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version
- */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 public class DisruptorVmWaitForTaskNewerTest extends AbstractVmTestSupport {
 
-    public void testInOut() throws Exception {
+    @Test
+    void testInOut() throws Exception {
         getMockEndpoint("mock:result").expectedBodiesReceived("Bye World");
 
         String out = template2.requestBody("direct:start", "Hello World", String.class);
         // we do not wait for the response so we just get our own input back
         assertEquals("Hello World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
-    public void testInOnly() throws Exception {
+    @Test
+    void testInOnly() throws Exception {
         getMockEndpoint("mock:result").expectedBodiesReceived("Bye World");
 
         Exchange out = template2.send("direct:start", new Processor() {
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setBody("Hello World");
                 exchange.setPattern(ExchangePattern.InOnly);
             }
         });
         // we do not wait for the response so we just get our own input back
         assertEquals("Hello World", out.getIn().getBody());
-        assertNull(out.getOut().getBody());
 
-        assertMockEndpointsSatisfied();
+        // Should return the in message as no reply is expected
+        assertEquals("Hello World", out.getMessage().getBody());
+
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("disruptor-vm:foo?waitForTaskToComplete=Never").transform(constant("Bye World"))
                         .to("mock:result");
             }
@@ -65,10 +69,10 @@ public class DisruptorVmWaitForTaskNewerTest extends AbstractVmTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilderForSecondContext() throws Exception {
+    protected RouteBuilder createRouteBuilderForSecondContext() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start").to("disruptor-vm:foo?waitForTaskToComplete=Never");
             }
         };

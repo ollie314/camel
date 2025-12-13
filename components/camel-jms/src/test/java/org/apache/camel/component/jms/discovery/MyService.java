@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,18 +20,15 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * @version 
- */
 public class MyService {
-    private String name;
+    private final String name;
 
     public MyService(String name) {
         this.name = name;
     }
 
     public Map<String, Object> status() {
-        Map<String, Object> answer = new HashMap<String, Object>();
+        Map<String, Object> answer = new HashMap<>();
         answer.put("name", name);
         answer.put("time", new Date().getTime());
         return answer;

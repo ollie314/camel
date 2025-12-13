@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,11 +16,8 @@
  */
 package org.apache.camel.component.jms;
 
-import org.apache.camel.impl.DefaultHeaderFilterStrategy;
+import org.apache.camel.support.DefaultHeaderFilterStrategy;
 
-/**
- * @version 
- */
 public class JmsHeaderFilterStrategy extends DefaultHeaderFilterStrategy {
 
     public JmsHeaderFilterStrategy() {
@@ -28,6 +25,8 @@ public class JmsHeaderFilterStrategy extends DefaultHeaderFilterStrategy {
     }
 
     public JmsHeaderFilterStrategy(boolean includeAllJMSXProperties) {
+        setOutFilterStartsWith(DefaultHeaderFilterStrategy.CAMEL_FILTER_STARTS_WITH);
+        setInFilterStartsWith(DefaultHeaderFilterStrategy.CAMEL_FILTER_STARTS_WITH);
         if (!includeAllJMSXProperties) {
             initialize();
         }
@@ -36,7 +35,7 @@ public class JmsHeaderFilterStrategy extends DefaultHeaderFilterStrategy {
     protected void initialize() {
         // ignore provider specified JMS extension headers see page 39 of JMS 1.1 specification
         // added "JMSXRecvTimestamp" as a workaround for an Oracle bug/typo in AqjmsMessage
-        getOutFilter().add("JMSXUserID");
+        getOutFilter().add(JmsConstants.JMS_HEADER_XUSER_ID);
         getOutFilter().add("JMSXAppID");
         getOutFilter().add("JMSXDeliveryCount");
         getOutFilter().add("JMSXProducerTXID");

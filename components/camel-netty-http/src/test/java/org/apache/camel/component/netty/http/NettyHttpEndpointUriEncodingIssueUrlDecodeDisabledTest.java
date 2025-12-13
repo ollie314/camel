@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,15 +16,15 @@
  */
 package org.apache.camel.component.netty.http;
 
-import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class NettyHttpEndpointUriEncodingIssueUrlDecodeDisabledTest extends BaseNettyTest {
 
     @Test
-    public void testEndpointUriWithDanishCharEncodingIssue() throws Exception {
+    public void testEndpointUriWithDanishCharEncodingIssue() {
         String uri = "netty-http:http://localhost:{{port}}/myapp/mytest?columns=claus,s\u00F8ren&username=apiuser";
         String out = template.requestBody(uri, null, String.class);
 
@@ -32,15 +32,13 @@ public class NettyHttpEndpointUriEncodingIssueUrlDecodeDisabledTest extends Base
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("netty-http:http://localhost:{{port}}/myapp/mytest?urlDecodeHeaders=false").process(new Processor() {
-                    public void process(Exchange exchange) throws Exception {
-                        String columns = exchange.getIn().getHeader("columns", String.class);
-                        exchange.getOut().setBody("We got " + columns + " columns");
-                    }
+            public void configure() {
+                from("netty-http:http://localhost:{{port}}/myapp/mytest?urlDecodeHeaders=false").process(exchange -> {
+                    String columns = exchange.getIn().getHeader("columns", String.class);
+                    exchange.getMessage().setBody("We got " + columns + " columns");
                 });
             }
         };

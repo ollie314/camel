@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,14 +16,16 @@
  */
 package org.apache.camel.routepolicy.quartz;
 
-import org.apache.camel.test.spring.CamelSpringTestSupport;
-import org.junit.Test;
+import java.util.concurrent.TimeUnit;
+
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.spring.junit5.CamelSpringTestSupport;
+import org.junit.jupiter.api.Test;
 import org.springframework.context.support.AbstractApplicationContext;
 import org.springframework.context.support.ClassPathXmlApplicationContext;
 
-/**
- * @version 
- */
+import static org.apache.camel.test.junit5.TestSupport.executeSlowly;
+
 public class SpringMultiplePoliciesOnRouteTest extends CamelSpringTestSupport {
     private String url = "seda:foo?concurrentConsumers=20";
     private int size = 100;
@@ -34,17 +36,14 @@ public class SpringMultiplePoliciesOnRouteTest extends CamelSpringTestSupport {
         // when we get graceful shutdown support we can prevent this
         getMockEndpoint("mock:success").expectedMinimumMessageCount(size - 10);
 
-        for (int i = 0; i < size; i++) {
-            template.sendBody(url, "Message " + i);
-            Thread.sleep(3);
-        }
+        executeSlowly(size, 3, TimeUnit.MILLISECONDS, (i) -> template.sendBody(url, "Message " + i));
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
     protected AbstractApplicationContext createApplicationContext() {
         return new ClassPathXmlApplicationContext("org/apache/camel/routepolicy/quartz/MultiplePolicies.xml");
     }
-    
+
 }

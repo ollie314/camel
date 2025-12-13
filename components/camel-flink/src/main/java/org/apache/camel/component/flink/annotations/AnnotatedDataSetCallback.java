@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,14 +23,21 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.apache.camel.CamelContext;
+import org.apache.camel.RuntimeCamelException;
 import org.apache.flink.api.java.DataSet;
 
+import static org.apache.camel.support.ObjectHelper.invokeMethodSafe;
 import static org.apache.camel.util.ObjectHelper.findMethodsWithAnnotation;
 
 /**
  * Provides facade for working with annotated DataSet callbacks i.e. POJO classes with an appropriate annotations on
  * selected methods.
+ *
+ * @deprecated The DataSet API is deprecated since Flink 1.12. Use the DataStream API with bounded streams instead. See
+ *             the Flink migration guide for details on migrating from DataSet to DataStream API. This class will be
+ *             maintained for backward compatibility but may be removed in future versions.
  */
+@Deprecated(since = "4.16.0")
 public class AnnotatedDataSetCallback implements org.apache.camel.component.flink.DataSetCallback {
 
     private final Object objectWithCallback;
@@ -43,7 +50,7 @@ public class AnnotatedDataSetCallback implements org.apache.camel.component.flin
         this.objectWithCallback = objectWithCallback;
         this.camelContext = camelContext;
         this.dataSetCallbacks = findMethodsWithAnnotation(objectWithCallback.getClass(), DataSetCallback.class);
-        if (dataSetCallbacks.size() == 0) {
+        if (dataSetCallbacks.isEmpty()) {
             throw new UnsupportedOperationException("Can't find methods annotated with @DataSetCallback");
         }
     }
@@ -63,17 +70,18 @@ public class AnnotatedDataSetCallback implements org.apache.camel.component.flin
             }
 
             Method callbackMethod = dataSetCallbacks.get(0);
-            callbackMethod.setAccessible(true);
 
             if (camelContext != null) {
                 for (int i = 1; i < arguments.size(); i++) {
-                    arguments.set(i, camelContext.getTypeConverter().convertTo(callbackMethod.getParameterTypes()[i], arguments.get(i)));
+                    arguments.set(i,
+                            camelContext.getTypeConverter().convertTo(callbackMethod.getParameterTypes()[i], arguments.get(i)));
                 }
             }
 
-            return callbackMethod.invoke(objectWithCallback, arguments.toArray(new Object[arguments.size()]));
+            Object[] args = arguments.toArray(new Object[0]);
+            return invokeMethodSafe(callbackMethod, objectWithCallback, args);
         } catch (IllegalAccessException | InvocationTargetException e) {
-            throw new RuntimeException(e);
+            throw new RuntimeCamelException(e);
         }
     }
 }

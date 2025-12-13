@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -34,11 +34,11 @@ public class ODataPathSegmentImpl implements PathSegment {
     public ODataPathSegmentImpl(final String path, final Map<String, List<String>> matrixParameters) {
         this.path = path;
 
-        Map<String, List<String>> unmodifiableMap = new HashMap<String, List<String>>();
+        Map<String, List<String>> unmodifiableMap = new HashMap<>();
         if (matrixParameters != null) {
-            for (String key : matrixParameters.keySet()) {
-                List<String> values = Collections.unmodifiableList(matrixParameters.get(key));
-                unmodifiableMap.put(key, values);
+            for (Map.Entry<String, List<String>> entry : matrixParameters.entrySet()) {
+                List<String> values = Collections.unmodifiableList(entry.getValue());
+                unmodifiableMap.put(entry.getKey(), values);
             }
         }
 

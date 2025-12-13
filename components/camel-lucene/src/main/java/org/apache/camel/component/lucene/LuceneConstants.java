@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,8 +16,19 @@
  */
 package org.apache.camel.component.lucene;
 
-import org.apache.lucene.util.Version;
+import org.apache.camel.spi.Metadata;
 
-public interface LuceneConstants {
-    Version LUCENE_VERSION = Version.LUCENE_5_4_1;
+public final class LuceneConstants {
+
+    @Metadata(description = "The Lucene Query to performed on the index. The query may include\n" +
+                            "wildcards and phrases.",
+              javaType = "String")
+    public static final String HEADER_QUERY = "QUERY";
+    @Metadata(description = "Set this header to true to include the actual Lucene\n" +
+                            "documentation when returning hit information.",
+              javaType = "String")
+    public static final String HEADER_RETURN_LUCENE_DOCS = "RETURN_LUCENE_DOCS";
+
+    private LuceneConstants() {
+    }
 }

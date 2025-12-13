@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,15 +21,15 @@ import java.nio.channels.ClosedChannelException;
 import org.apache.camel.CamelExchangeException;
 import org.apache.camel.Exchange;
 import org.apache.camel.LoggingLevel;
+import org.apache.camel.spi.CamelLogger;
 import org.apache.camel.spi.ExceptionHandler;
-import org.apache.camel.util.CamelLogger;
 import org.apache.camel.util.ObjectHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class NettyConsumerExceptionHandler implements ExceptionHandler {
 
-    private static final Logger LOG = LoggerFactory.getLogger(NettyConsumer.class);
+    private static final Logger LOG = LoggerFactory.getLogger(NettyConsumerExceptionHandler.class);
     private final CamelLogger logger;
     private final LoggingLevel closedLoggingLevel;
 
@@ -58,7 +58,7 @@ public class NettyConsumerExceptionHandler implements ExceptionHandler {
             } else {
                 logger.log(msg, exception);
             }
-        } catch (Throwable e) {
+        } catch (Exception e) {
             // the logging exception handler must not cause new exceptions to occur
         }
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,15 +18,14 @@ package org.apache.camel.component.mail;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 
-import javax.mail.Message;
-import javax.mail.MessagingException;
-import javax.mail.internet.InternetAddress;
+import jakarta.mail.Message;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.InternetAddress;
 
-import com.sun.mail.imap.SortTerm;
+import org.eclipse.angus.mail.imap.SortTerm;
 
 /**
  * Utility class for sorting of mail messages
@@ -40,9 +39,8 @@ public final class MailSorter {
 
     /**
      * Sort the messages. This emulates sorting the messages on the server if the server doesn't have the sorting
-     * capability. See RFC 5256
-     * Does not support complex sorting like in the RFC (with Base Subject or other similar stuff), just simple
-     * comparisons.
+     * capability. See RFC 5256 Does not support complex sorting like in the RFC (with Base Subject or other similar
+     * stuff), just simple comparisons.
      *
      * @param messages Messages to sort. Are sorted in place
      * @param sortTerm Sort term
@@ -55,12 +53,12 @@ public final class MailSorter {
     /**
      * Compute the potentially descending sort terms from the input list
      *
-     * @param sortTerm Input list
-     * @return Sort terms list including if the respective sort should be sorted in descending order
+     * @param  sortTerm Input list
+     * @return          Sort terms list including if the respective sort should be sorted in descending order
      */
     private static List<SortTermWithDescending> getSortTermsWithDescending(SortTerm[] sortTerm) {
         // List of reversable sort terms. If the boolean is true the respective sort term is descending
-        final List<SortTermWithDescending> sortTermsWithDescending = new ArrayList<SortTermWithDescending>(sortTerm.length);
+        final List<SortTermWithDescending> sortTermsWithDescending = new ArrayList<>(sortTerm.length);
         // Descending next item in input because the last item was a "descending"
         boolean descendingNext = false;
         for (SortTerm term : sortTerm) {
@@ -80,30 +78,28 @@ public final class MailSorter {
     /**
      * Sort messages using the list of properties
      *
-     * @param messages             Messages to sort. Are sorted in place
-     * @param sortTermsWithDescending Sort terms list including if the respective sort should be sorted in descending order
+     * @param messages                Messages to sort. Are sorted in place
+     * @param sortTermsWithDescending Sort terms list including if the respective sort should be sorted in descending
+     *                                order
      */
     private static void sortMessages(Message[] messages, final List<SortTermWithDescending> sortTermsWithDescending) {
-        Arrays.sort(messages, new Comparator<Message>() {
-            @Override
-            public int compare(Message m1, Message m2) {
-                try {
-                    for (SortTermWithDescending reversableTerm : sortTermsWithDescending) {
-                        int comparison = compareMessageProperty(m1, m2, reversableTerm.getTerm());
-                        // Descending
-                        if (reversableTerm.isDescending()) {
-                            comparison = -comparison;
-                        }
-                        // Abort on first non-equal
-                        if (comparison != 0) {
-                            return comparison;
-                        }
+        Arrays.sort(messages, (Message m1, Message m2) -> {
+            try {
+                for (SortTermWithDescending reversableTerm : sortTermsWithDescending) {
+                    int comparison = compareMessageProperty(m1, m2, reversableTerm.getTerm());
+                    // Descending
+                    if (reversableTerm.isDescending()) {
+                        comparison = -comparison;
                     }
-                    // Equal
-                    return 0;
-                } catch (MessagingException e) {
-                    throw new IllegalArgumentException(e);
+                    // Abort on first non-equal
+                    if (comparison != 0) {
+                        return comparison;
+                    }
                 }
+                // Equal
+                return 0;
+            } catch (MessagingException e) {
+                throw new IllegalArgumentException(e);
             }
         });
     }
@@ -111,11 +107,11 @@ public final class MailSorter {
     /**
      * Compare the value of the property of the two messages.
      *
-     * @param msg1     Message 1
-     * @param msg2     Message 2
-     * @param property Property to compare
-     * @return msg1.property.compareTo(msg2.property)
-     * @throws javax.mail.MessagingException If message data could not be read.
+     * @param  msg1                            Message 1
+     * @param  msg2                            Message 2
+     * @param  property                        Property to compare
+     * @return                                 msg1.property.compareTo(msg2.property)
+     * @throws jakarta.mail.MessagingException If message data could not be read.
      */
     private static int compareMessageProperty(Message msg1, Message msg2, SortTerm property) throws MessagingException {
         if (property.equals(SortTerm.TO)) {

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,25 +17,28 @@
 package org.apache.camel.component.rss;
 
 import java.util.Arrays;
-import java.util.Date;
 
-import com.sun.syndication.feed.synd.SyndFeed;
+import com.rometools.rome.feed.synd.SyndEntry;
+import com.rometools.rome.feed.synd.SyndFeed;
+import org.apache.camel.Category;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
 import org.apache.camel.component.feed.FeedComponent;
 import org.apache.camel.component.feed.FeedEndpoint;
 import org.apache.camel.component.feed.FeedPollingConsumer;
+import org.apache.camel.spi.EndpointServiceLocation;
 import org.apache.camel.spi.UriEndpoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The rss component is used for consuming RSS feeds.
+ * Poll RSS feeds.
  */
-@UriEndpoint(scheme = "rss", extendsScheme = "atom", title = "RSS",
-        syntax = "rss:feedUri", consumerOnly = true, consumerClass = RssEntryPollingConsumer.class, label = "rss", lenientProperties = true)
-public class RssEndpoint extends FeedEndpoint {
+@UriEndpoint(firstVersion = "2.0.0", scheme = "rss", extendsScheme = "atom", title = "RSS",
+             syntax = "rss:feedUri", consumerOnly = true, category = { Category.DOCUMENT }, lenientProperties = true,
+             headersClass = RssConstants.class)
+public class RssEndpoint extends FeedEndpoint implements EndpointServiceLocation {
     protected static final Logger LOG = LoggerFactory.getLogger(RssEndpoint.class);
 
     public RssEndpoint() {
@@ -44,7 +47,17 @@ public class RssEndpoint extends FeedEndpoint {
     public RssEndpoint(String endpointUri, FeedComponent component, String feedUri) {
         super(endpointUri, component, feedUri);
     }
-    
+
+    @Override
+    public String getServiceUrl() {
+        return feedUri;
+    }
+
+    @Override
+    public String getServiceProtocol() {
+        return "rss";
+    }
+
     @Override
     public Producer createProducer() throws Exception {
         throw new UnsupportedOperationException("RssProducer is not implemented");
@@ -62,24 +75,25 @@ public class RssEndpoint extends FeedEndpoint {
         Exchange exchange = createExchangeWithFeedHeader(feed, RssConstants.RSS_FEED);
         SyndFeed newFeed;
         try {
-            newFeed = (SyndFeed)((SyndFeed) feed).clone();
-            newFeed.setEntries(Arrays.asList(entry));
+            newFeed = (SyndFeed) ((SyndFeed) feed).clone();
+            newFeed.setEntries(Arrays.asList((SyndEntry) entry));
         } catch (CloneNotSupportedException e) {
             LOG.debug("Could not create a new feed. This exception will be ignored.", e);
             newFeed = null;
-        }        
+        }
         exchange.getIn().setBody(newFeed);
         return exchange;
     }
 
     @Override
-    protected FeedPollingConsumer createEntryPollingConsumer(FeedEndpoint feedEndpoint, Processor processor,
-                                                             boolean filter, Date lastUpdate, boolean throttleEntries) throws Exception {
-        RssEntryPollingConsumer answer = new RssEntryPollingConsumer(this, processor, filter, lastUpdate, throttleEntries);
+    protected FeedPollingConsumer createEntryPollingConsumer(
+            FeedEndpoint feedEndpoint, Processor processor, boolean throttleEntries)
+            throws Exception {
+        RssEntryPollingConsumer answer = new RssEntryPollingConsumer(this, processor, throttleEntries);
         configureConsumer(answer);
         return answer;
-    }  
-    
+    }
+
     @Override
     protected FeedPollingConsumer createPollingConsumer(FeedEndpoint feedEndpoint, Processor processor) throws Exception {
         RssPollingConsumer answer = new RssPollingConsumer(this, processor);

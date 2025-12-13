@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,16 +17,17 @@
 package org.apache.camel.dataformat.bindy;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+
 import org.apache.camel.CamelContext;
 import org.apache.camel.CamelContextAware;
 import org.apache.camel.dataformat.bindy.annotation.FormatFactories;
@@ -37,7 +38,8 @@ import org.apache.camel.dataformat.bindy.format.factories.FormatFactoryInterface
 import org.apache.camel.spi.DataFormat;
 import org.apache.camel.spi.DataFormatName;
 import org.apache.camel.spi.Registry;
-import org.apache.camel.support.ServiceSupport;
+import org.apache.camel.support.service.ServiceSupport;
+import org.apache.camel.util.ReflectionHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,8 +49,10 @@ public abstract class BindyAbstractDataFormat extends ServiceSupport implements 
     private BindyAbstractFactory modelFactory;
     private Class<?> classType;
     private CamelContext camelContext;
+    private boolean unwrapSingleInstance = true;
+    private boolean allowEmptyStream;
 
-    public BindyAbstractDataFormat() {
+    protected BindyAbstractDataFormat() {
     }
 
     protected BindyAbstractDataFormat(Class<?> classType) {
@@ -71,6 +75,22 @@ public abstract class BindyAbstractDataFormat extends ServiceSupport implements 
         this.locale = locale;
     }
 
+    public boolean isUnwrapSingleInstance() {
+        return unwrapSingleInstance;
+    }
+
+    public void setUnwrapSingleInstance(boolean unwrapSingleInstance) {
+        this.unwrapSingleInstance = unwrapSingleInstance;
+    }
+
+    public boolean isAllowEmptyStream() {
+        return allowEmptyStream;
+    }
+
+    public void setAllowEmptyStream(boolean allowEmptyStream) {
+        this.allowEmptyStream = allowEmptyStream;
+    }
+
     public BindyAbstractFactory getFactory() throws Exception {
         if (modelFactory == null) {
             FormatFactory formatFactory = createFormatFactory();
@@ -81,16 +101,18 @@ public abstract class BindyAbstractDataFormat extends ServiceSupport implements 
         return modelFactory;
     }
 
-    private void registerAdditionalConverter(FormatFactory formatFactory) throws IllegalAccessException, InstantiationException {
+    private void registerAdditionalConverter(FormatFactory formatFactory)
+            throws IllegalAccessException, InstantiationException, NoSuchMethodException, InvocationTargetException {
         Function<Class<?>, FormatFactories> g = aClass -> aClass.getAnnotation(FormatFactories.class);
-        Function<FormatFactories, List<Class<? extends FormatFactoryInterface>>> h = formatFactories -> Arrays.asList(formatFactories.value());
+        Function<FormatFactories, List<Class<? extends FormatFactoryInterface>>> h
+                = formatFactories -> Arrays.asList(formatFactories.value());
         List<Class<? extends FormatFactoryInterface>> array = Optional
                 .ofNullable(classType)
                 .map(g)
                 .map(h)
                 .orElse(Collections.emptyList());
         for (Class<? extends FormatFactoryInterface> l : array) {
-            formatFactory.getFactoryRegistry().register(l.newInstance());
+            formatFactory.getFactoryRegistry().register(l.getDeclaredConstructor().newInstance());
         }
     }
 
@@ -132,22 +154,18 @@ public abstract class BindyAbstractDataFormat extends ServiceSupport implements 
         this.modelFactory = modelFactory;
     }
 
-    protected Map<String, Object> createLinkedFieldsModel(Object model) throws IllegalAccessException {
+    protected Map<String, Object> createLinkedFieldsModel(Object model) {
         Map<String, Object> row = new HashMap<>();
         createLinkedFieldsModel(model, row);
         return row;
     }
 
-    protected void createLinkedFieldsModel(Object model, Map<String, Object> row) throws IllegalAccessException {
+    protected void createLinkedFieldsModel(Object model, Map<String, Object> row) {
         for (Field field : model.getClass().getDeclaredFields()) {
             Link linkField = field.getAnnotation(Link.class);
             if (linkField != null) {
-                boolean accessible = field.isAccessible();
-                field.setAccessible(true);
-                if (!row.containsKey(field.getType().getName())) {
-                    row.put(field.getType().getName(), field.get(model));
-                }
-                field.setAccessible(accessible);
+                row.putIfAbsent(field.getType().getName(),
+                        ReflectionHelper.getField(field, model));
             }
         }
     }
@@ -164,8 +182,8 @@ public abstract class BindyAbstractDataFormat extends ServiceSupport implements 
                     answer.add(data);
                 }
             }
-            // if there is only 1 then dont return a list
-            if (answer.size() == 1) {
+            // if there is only 1 then don't return a list
+            if (isUnwrapSingleInstance() && answer.size() == 1) {
                 return answer.get(0);
             } else {
                 return answer;

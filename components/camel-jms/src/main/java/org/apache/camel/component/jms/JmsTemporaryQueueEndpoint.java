@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,60 +16,57 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Session;
-import javax.jms.TemporaryQueue;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Session;
+import jakarta.jms.TemporaryQueue;
 
 /**
- * A <a href="http://activemq.apache.org/jms.html">JMS Endpoint</a>
- * for working with a {@link TemporaryQueue}
+ * A <a href="http://activemq.apache.org/jms.html">JMS Endpoint</a> for working with a {@link TemporaryQueue}
  * <p/>
  * <b>Important:</b> Need to be really careful to always use the same Connection otherwise the destination goes stale
- *
- * @version 
  */
 public class JmsTemporaryQueueEndpoint extends JmsQueueEndpoint implements DestinationEndpoint {
     private Destination jmsDestination;
 
     public JmsTemporaryQueueEndpoint(String uri, JmsComponent component, String destination, JmsConfiguration configuration) {
         super(uri, component, destination, configuration);
-        setDestinationType("temp:queue");
+        setDestinationType("temp-queue");
     }
 
-    public JmsTemporaryQueueEndpoint(String uri, JmsComponent component, String destination, JmsConfiguration configuration, QueueBrowseStrategy queueBrowseStrategy) {
+    public JmsTemporaryQueueEndpoint(String uri, JmsComponent component, String destination, JmsConfiguration configuration,
+                                     QueueBrowseStrategy queueBrowseStrategy) {
         super(uri, component, destination, configuration, queueBrowseStrategy);
-        setDestinationType("temp:queue");
+        setDestinationType("temp-queue");
     }
 
     public JmsTemporaryQueueEndpoint(String endpointUri, String destination) {
         super(endpointUri, destination);
-        setDestinationType("temp:queue");
+        setDestinationType("temp-queue");
     }
-
-    public JmsTemporaryQueueEndpoint(TemporaryQueue jmsDestination) throws JMSException {
-        super("jms:temp:queue:" + jmsDestination.getQueueName(), null);
-        setDestinationType("temp:queue");
-        this.jmsDestination = jmsDestination;
-        setDestination(jmsDestination);
-    }
-
 
     /**
-     * This endpoint is a singleton so that the temporary destination instances are shared across all
-     * producers and consumers of the same endpoint URI
+     * This endpoint is a singleton so that the temporary destination instances are shared across all producers and
+     * consumers of the same endpoint URI
      *
      * @return true
      */
+    @Override
     public boolean isSingleton() {
         return true;
     }
-    
-    public synchronized Destination getJmsDestination(Session session) throws JMSException {
-        if (jmsDestination == null) {
-            jmsDestination = createJmsDestination(session);
+
+    @Override
+    public Destination getJmsDestination(Session session) throws JMSException {
+        lock.lock();
+        try {
+            if (jmsDestination == null) {
+                jmsDestination = createJmsDestination(session);
+            }
+            return jmsDestination;
+        } finally {
+            lock.unlock();
         }
-        return jmsDestination;
     }
 
     protected Destination createJmsDestination(Session session) throws JMSException {

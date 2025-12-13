@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,20 +22,24 @@ import java.util.Map;
 import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * Is used as base class for testing the jdbc component.
- * <p><b>Don't</b> add new test methods; it's likely to break the sub-classes.
- * <p>Sub-classes should override {@link #testJdbcRoutes()} unless they create routes that
- * are semantically equivalent to what this class creates.
- * @version 
+ * <p>
+ * <b>Don't</b> add new test methods; it's likely to break the sub-classes.
+ * <p>
+ * Sub-classes should override {@link #testJdbcRoutes()} unless they create routes that are semantically equivalent to
+ * what this class creates.
  */
 public class JdbcRouteTest extends AbstractJdbcTestSupport {
 
     @SuppressWarnings("unchecked")
     @Test
-    public void testJdbcRoutes() throws Exception {
+    public void testJdbcRoutes() {
         // START SNIPPET: invoke
         // first we create our exchange using the endpoint
         Endpoint endpoint = context.getEndpoint("direct:hello");
@@ -48,8 +52,7 @@ public class JdbcRouteTest extends AbstractJdbcTestSupport {
 
         // assertions of the response
         assertNotNull(out);
-        assertNotNull(out.getOut());
-        List<Map<String, Object>> data = out.getOut().getBody(List.class);
+        List<Map<String, Object>> data = out.getMessage().getBody(List.class);
         assertNotNull(data);
         assertEquals(3, data.size());
         Map<String, Object> row = data.get(0);
@@ -62,11 +65,11 @@ public class JdbcRouteTest extends AbstractJdbcTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             // START SNIPPET: route
             // lets add simple route
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:hello").to("jdbc:testdb?readSize=100");
             }
             // END SNIPPET: route

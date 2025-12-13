@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,12 +16,15 @@
  */
 package org.apache.camel.component.netty;
 
-import org.apache.camel.impl.DefaultExchange;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.DynamicChannelBuffer;
-import org.junit.Before;
-import org.junit.Test;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.PooledByteBufAllocator;
+import org.apache.camel.support.DefaultExchange;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * Utility test to verify netty type converter.
@@ -31,15 +34,20 @@ public class NettyConverterTest extends CamelTestSupport {
     /**
      * Test payload to send.
      */
-    private  static final String PAYLOAD = "Test Message";
+    private static final String PAYLOAD = "Test Message";
 
-    private ChannelBuffer buf;
+    private ByteBuf buf;
 
-    @Before
+    @BeforeEach
     public void startUp() {
         byte[] bytes = PAYLOAD.getBytes();
-        buf = new DynamicChannelBuffer(bytes.length);
+        buf = PooledByteBufAllocator.DEFAULT.buffer(bytes.length);
         buf.writeBytes(bytes);
+    }
+
+    @Override
+    public void doPostTearDown() {
+        buf.release();
     }
 
     @Test
@@ -48,7 +56,6 @@ public class NettyConverterTest extends CamelTestSupport {
         assertNotNull(result);
         assertEquals(PAYLOAD, result);
     }
-
 
     @Test
     public void testConversionWithoutExchange() {

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,8 +20,11 @@ import java.util.List;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class JacksonMarshalUnmarshalListTest extends CamelTestSupport {
 
@@ -34,7 +37,7 @@ public class JacksonMarshalUnmarshalListTest extends CamelTestSupport {
         String json = "<list><pojo name=\"Camel\"/><pojo name=\"World\"/></list>";
         template.sendBody("direct:backPojo", json);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         List list = mock.getReceivedExchanges().get(0).getIn().getBody(List.class);
         assertNotNull(list);
@@ -55,7 +58,7 @@ public class JacksonMarshalUnmarshalListTest extends CamelTestSupport {
         String json = "<list><pojo name=\"Camel\"/></list>";
         template.sendBody("direct:backPojo", json);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         List list = mock.getReceivedExchanges().get(0).getIn().getBody(List.class);
         assertNotNull(list);
@@ -66,11 +69,11 @@ public class JacksonMarshalUnmarshalListTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
 
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 JacksonXMLDataFormat format = new JacksonXMLDataFormat(TestPojo.class);
                 format.useList();
 

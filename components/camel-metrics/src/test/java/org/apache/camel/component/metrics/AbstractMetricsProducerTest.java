@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,24 +19,26 @@ package org.apache.camel.component.metrics;
 import com.codahale.metrics.MetricRegistry;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
-import org.apache.camel.impl.DefaultMessage;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.apache.camel.impl.DefaultCamelContext;
+import org.apache.camel.support.DefaultMessage;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.apache.camel.component.metrics.AbstractMetricsProducer.HEADER_PATTERN;
 import static org.apache.camel.component.metrics.MetricsConstants.HEADER_HISTOGRAM_VALUE;
 import static org.apache.camel.component.metrics.MetricsConstants.HEADER_METRIC_NAME;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThat;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class AbstractMetricsProducerTest {
 
     public static final String METRIC_NAME = "a metric";
@@ -59,24 +61,25 @@ public class AbstractMetricsProducerTest {
 
     private InOrder inOrder;
 
-    @Before
-    public void setUp() throws Exception {
+    @BeforeEach
+    public void setUp() {
         okProducer = new AbstractMetricsProducer(endpoint) {
             @Override
-            protected void doProcess(Exchange exchange, MetricsEndpoint endpoint, MetricRegistry registry, String metricsName) throws Exception {
+            protected void doProcess(Exchange exchange, MetricsEndpoint endpoint, MetricRegistry registry, String metricsName) {
             }
         };
         failProducer = new AbstractMetricsProducer(endpoint) {
 
             @Override
-            protected void doProcess(Exchange exchange, MetricsEndpoint endpoint, MetricRegistry registry, String metricsName) throws Exception {
+            protected void doProcess(Exchange exchange, MetricsEndpoint endpoint, MetricRegistry registry, String metricsName)
+                    throws Exception {
                 throw new Exception("Muchos problemos");
             }
         };
         inOrder = Mockito.inOrder(endpoint, exchange, in, registry);
-        when(exchange.getIn()).thenReturn(in);
-        when(endpoint.getMetricsName()).thenReturn(METRIC_NAME);
-        when(endpoint.getRegistry()).thenReturn(registry);
+        lenient().when(exchange.getIn()).thenReturn(in);
+        lenient().when(endpoint.getMetricsName()).thenReturn(METRIC_NAME);
+        lenient().when(endpoint.getRegistry()).thenReturn(registry);
     }
 
     @Test
@@ -106,7 +109,7 @@ public class AbstractMetricsProducerTest {
     }
 
     @Test
-    public void testGetMetricsName() throws Exception {
+    public void testGetMetricsName() {
         when(in.getHeader(HEADER_METRIC_NAME, String.class)).thenReturn("A");
         assertThat(okProducer.getMetricsName(in, "value"), is("A"));
         inOrder.verify(in, times(1)).getHeader(HEADER_METRIC_NAME, String.class);
@@ -114,7 +117,7 @@ public class AbstractMetricsProducerTest {
     }
 
     @Test
-    public void testGetMetricsNameNotSet() throws Exception {
+    public void testGetMetricsNameNotSet() {
         when(in.getHeader(HEADER_METRIC_NAME, String.class)).thenReturn(null);
         assertThat(okProducer.getMetricsName(in, "name"), is("name"));
         inOrder.verify(in, times(1)).getHeader(HEADER_METRIC_NAME, String.class);
@@ -122,7 +125,7 @@ public class AbstractMetricsProducerTest {
     }
 
     @Test
-    public void testGetStringHeader() throws Exception {
+    public void testGetStringHeader() {
         when(in.getHeader(HEADER_METRIC_NAME, String.class)).thenReturn("A");
         assertThat(okProducer.getStringHeader(in, HEADER_METRIC_NAME, "value"), is("A"));
         inOrder.verify(in, times(1)).getHeader(HEADER_METRIC_NAME, String.class);
@@ -130,7 +133,7 @@ public class AbstractMetricsProducerTest {
     }
 
     @Test
-    public void testGetStringHeaderWithNullValue() throws Exception {
+    public void testGetStringHeaderWithNullValue() {
         when(in.getHeader(HEADER_METRIC_NAME, String.class)).thenReturn(null);
         assertThat(okProducer.getStringHeader(in, HEADER_METRIC_NAME, "value"), is("value"));
         inOrder.verify(in, times(1)).getHeader(HEADER_METRIC_NAME, String.class);
@@ -138,7 +141,7 @@ public class AbstractMetricsProducerTest {
     }
 
     @Test
-    public void testGetStringHeaderWithWhiteSpaces() throws Exception {
+    public void testGetStringHeaderWithWhiteSpaces() {
         when(in.getHeader(HEADER_METRIC_NAME, String.class)).thenReturn(" ");
         assertThat(okProducer.getStringHeader(in, HEADER_METRIC_NAME, "value"), is("value"));
         inOrder.verify(in, times(1)).getHeader(HEADER_METRIC_NAME, String.class);
@@ -146,7 +149,7 @@ public class AbstractMetricsProducerTest {
     }
 
     @Test
-    public void testGetStringHeaderWithEmptySrting() throws Exception {
+    public void testGetStringHeaderWithEmptySrting() {
         when(in.getHeader(HEADER_METRIC_NAME, String.class)).thenReturn("");
         assertThat(okProducer.getStringHeader(in, HEADER_METRIC_NAME, "value"), is("value"));
         inOrder.verify(in, times(1)).getHeader(HEADER_METRIC_NAME, String.class);
@@ -154,7 +157,7 @@ public class AbstractMetricsProducerTest {
     }
 
     @Test
-    public void testGetLongHeader() throws Exception {
+    public void testGetLongHeader() {
         when(in.getHeader(HEADER_HISTOGRAM_VALUE, 19L, Long.class)).thenReturn(201L);
         assertThat(okProducer.getLongHeader(in, HEADER_HISTOGRAM_VALUE, 19L), is(201L));
         inOrder.verify(in, times(1)).getHeader(HEADER_HISTOGRAM_VALUE, 19L, Long.class);
@@ -162,7 +165,7 @@ public class AbstractMetricsProducerTest {
     }
 
     @Test
-    public void testClearMetricsHeaders() throws Exception {
+    public void testClearMetricsHeaders() {
         when(in.removeHeaders(HEADER_PATTERN)).thenReturn(true);
         assertThat(okProducer.clearMetricsHeaders(in), is(true));
         inOrder.verify(in, times(1)).removeHeaders(HEADER_PATTERN);
@@ -170,8 +173,8 @@ public class AbstractMetricsProducerTest {
     }
 
     @Test
-    public void testClearRealHeaders() throws Exception {
-        Message msg = new DefaultMessage();
+    public void testClearRealHeaders() {
+        Message msg = new DefaultMessage(new DefaultCamelContext());
         Object val = new Object();
         msg.setHeader(HEADER_HISTOGRAM_VALUE, 109L);
         msg.setHeader(HEADER_METRIC_NAME, "the metric");

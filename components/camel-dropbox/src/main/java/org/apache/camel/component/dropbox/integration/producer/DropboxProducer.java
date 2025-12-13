@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,18 +18,18 @@ package org.apache.camel.component.dropbox.integration.producer;
 
 import org.apache.camel.component.dropbox.DropboxConfiguration;
 import org.apache.camel.component.dropbox.DropboxEndpoint;
-import org.apache.camel.impl.DefaultProducer;
+import org.apache.camel.support.DefaultProducer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public abstract class DropboxProducer extends DefaultProducer {
 
-    private static final transient Logger LOG = LoggerFactory.getLogger(DropboxProducer.class);
+    private static final Logger LOG = LoggerFactory.getLogger(DropboxProducer.class);
 
-    protected DropboxEndpoint endpoint;
-    protected DropboxConfiguration configuration;
+    protected final DropboxEndpoint endpoint;
+    protected final DropboxConfiguration configuration;
 
-    public DropboxProducer(DropboxEndpoint endpoint, DropboxConfiguration configuration) {
+    protected DropboxProducer(DropboxEndpoint endpoint, DropboxConfiguration configuration) {
         super(endpoint);
         this.endpoint = endpoint;
         this.configuration = configuration;
@@ -41,7 +41,7 @@ public abstract class DropboxProducer extends DefaultProducer {
             //create dropbox client
             configuration.createClient();
 
-            LOG.info("producer dropbox client created");
+            LOG.debug("Producer Dropbox client created");
         }
 
         super.doStart();
@@ -52,7 +52,7 @@ public abstract class DropboxProducer extends DefaultProducer {
         if (configuration.getClient() == null) {
             configuration.setClient(null);
 
-            LOG.info("producer dropbox client deleted");
+            LOG.debug("Producer Dropbox client deleted");
         }
         super.doStop();
     }

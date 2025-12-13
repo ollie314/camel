@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -29,7 +29,7 @@ public class MyPersonService {
         person.setFirstName("Homer");
         person.setLastName("Simpson");
 
-        exchange.getOut().setBody(person);
+        exchange.getMessage().setBody(person);
     }
 
     public void sendPerson(Exchange exchange) {

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -25,9 +25,6 @@ import java.util.Set;
 public class ExternalBomConflictCheckSet {
 
     private Set<ExternalBomConflictCheck> boms = new HashSet<>();
-
-    public ExternalBomConflictCheckSet() {
-    }
 
     public Set<ExternalBomConflictCheck> getBoms() {
         return boms;

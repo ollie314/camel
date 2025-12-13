@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,20 +17,22 @@
 package org.apache.camel.component.ignite.events;
 
 import java.lang.reflect.Field;
-import java.net.URI;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
 import org.apache.camel.component.ignite.AbstractIgniteEndpoint;
 import org.apache.camel.component.ignite.ClusterGroupExpression;
-import org.apache.camel.component.ignite.IgniteComponent;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
+import org.apache.camel.spi.UriPath;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteEvents;
 import org.apache.ignite.cluster.ClusterGroup;
@@ -38,29 +40,34 @@ import org.apache.ignite.events.EventType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.camel.component.ignite.IgniteConstants.SCHEME_EVENTS;
+
 /**
- * Ignite Events endpoint. Only supports consumers.
+ * <a href="https://apacheignite.readme.io/docs/events">Receive events</a> from an Ignite cluster by creating a local
+ * event listener.
+ *
+ * This endpoint only supports consumers. The Exchanges created by this consumer put the received Event object into the
+ * body of the IN message.
  */
-@UriEndpoint(scheme = "ignite:events", title = "Ignite Events", syntax = "ignite:events:[endpointId]", label = "nosql,cache,compute,messaging,data", 
-    consumerOnly = true, consumerClass = IgniteEventsConsumer.class)
+@UriEndpoint(firstVersion = "2.17.0", scheme = SCHEME_EVENTS, title = "Ignite Events", syntax = "ignite-events:endpointId",
+             category = { Category.MESSAGING, Category.CACHE, Category.CLUSTERING },
+             consumerOnly = true)
 public class IgniteEventsEndpoint extends AbstractIgniteEndpoint {
 
     private static final Logger LOG = LoggerFactory.getLogger(IgniteEventsEndpoint.class);
 
-    @UriParam
-    private Set<Integer> events;
+    @UriPath
+    private String endpointId;
 
-    @UriParam
+    @UriParam(label = "consumer", defaultValue = "EVTS_ALL")
+    private String events = "EVTS_ALL";
+
+    @UriParam(label = "consumer")
     private ClusterGroupExpression clusterGroupExpression;
 
-    public IgniteEventsEndpoint(String uri, URI remainingUri, Map<String, Object> parameters, IgniteComponent igniteComponent) {
+    public IgniteEventsEndpoint(String uri, String remaining, Map<String, Object> parameters,
+                                IgniteEventsComponent igniteComponent) {
         super(uri, igniteComponent);
-
-        // Initialize subscribed event types with ALL.
-        events = new HashSet<>();
-        for (Integer eventType : EventType.EVTS_ALL) {
-            events.add(eventType);
-        }
     }
 
     @Override
@@ -71,74 +78,93 @@ public class IgniteEventsEndpoint extends AbstractIgniteEndpoint {
     @Override
     public Consumer createConsumer(Processor processor) throws Exception {
         // Initialize the Consumer.
-        IgniteEvents events = createIgniteEvents();
-        IgniteEventsConsumer consumer = new IgniteEventsConsumer(this, processor, events);
+        IgniteEvents igniteEvents = createIgniteEvents();
+        IgniteEventsConsumer consumer = new IgniteEventsConsumer(this, processor, igniteEvents);
         configureConsumer(consumer);
 
-        LOG.info("Created Ignite Events consumer for event types: {}.", events);
+        LOG.info("Created Ignite Events consumer for event types: {}.", igniteEvents);
 
         return consumer;
     }
 
     private IgniteEvents createIgniteEvents() {
         Ignite ignite = ignite();
-        IgniteEvents events;
+        IgniteEvents igniteEvents;
         if (clusterGroupExpression == null) {
             LOG.info("Ignite Events endpoint for event types {} using no Cluster Group.", this.events);
-            events = ignite.events();
+            igniteEvents = ignite.events();
         } else {
             ClusterGroup group = clusterGroupExpression.getClusterGroup(ignite);
             LOG.info("Ignite Events endpoint for event types {} using Cluster Group: {}.", this.events, group);
-            events = ignite.events(group);
+            igniteEvents = ignite.events(group);
         }
-        return events;
+        return igniteEvents;
+    }
+
+    /**
+     * Gets the endpoint ID (not used).
+     */
+    public String getEndpointId() {
+        return endpointId;
+    }
+
+    /**
+     * The endpoint ID (not used).
+     */
+    public void setEndpointId(String endpointId) {
+        this.endpointId = endpointId;
     }
 
     /**
      * Gets the event types to subscribe to.
-     * 
-     * @return
      */
-    public Set<Integer> getEvents() {
+    public String getEvents() {
         return events;
     }
 
     /**
-     * Sets the event types to subscribe to as a {@link Set}.
-     * 
-     * @param events
+     * The event types to subscribe to as a comma-separated string of event constants as defined in {@link EventType}.
+     * For example: EVT_CACHE_ENTRY_CREATED,EVT_CACHE_OBJECT_REMOVED,EVT_IGFS_DIR_CREATED.
      */
-    public void setEvents(Set<Integer> events) {
+    public void setEvents(String events) {
         this.events = events;
     }
 
-    /**
-     * Sets the event types to subscribe to as a comma-separated string of event constants as defined in {@link EventType}.
-     * <p>
-     * For example: EVT_CACHE_ENTRY_CREATED,EVT_CACHE_OBJECT_REMOVED,EVT_IGFS_DIR_CREATED.
-     * 
-     * @param events
-     */
-    public void setEvents(String events) {
-        this.events = new HashSet<>();
-        Set<String> requestedEvents = new HashSet<>(Arrays.asList(events.toUpperCase().split(",")));
-        Field[] fields = EventType.class.getDeclaredFields();
-        for (Field field : fields) {
-            if (!requestedEvents.contains(field.getName())) {
-                continue;
+    public List<Integer> getEventsAsIds() {
+        List<Integer> answer = new ArrayList<>();
+
+        if (events.equals("EVTS_ALL")) {
+            for (Integer eventType : EventType.EVTS_ALL) {
+                answer.add(eventType);
             }
-            try {
-                this.events.add(field.getInt(null));
-            } catch (Exception e) {
-                throw new IllegalArgumentException("Problem while resolving event type. See stacktrace.", e);
+        } else {
+            Set<String> requestedEvents = new HashSet<>(Arrays.asList(events.toUpperCase().split(",")));
+            Field[] fields = EventType.class.getDeclaredFields();
+            for (Field field : fields) {
+                if (!requestedEvents.contains(field.getName())) {
+                    continue;
+                }
+                try {
+                    answer.add(field.getInt(null));
+                } catch (Exception e) {
+                    throw new IllegalArgumentException("Problem while resolving event type. See stacktrace.", e);
+                }
             }
         }
+
+        return answer;
     }
 
+    /**
+     * Gets the cluster group expression.
+     */
     public ClusterGroupExpression getClusterGroupExpression() {
         return clusterGroupExpression;
     }
 
+    /**
+     * The cluster group expression.
+     */
     public void setClusterGroupExpression(ClusterGroupExpression clusterGroupExpression) {
         this.clusterGroupExpression = clusterGroupExpression;
     }

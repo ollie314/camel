@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,20 +22,21 @@ import java.util.List;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
+import static org.apache.camel.test.junit5.TestSupport.createDirectory;
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 public class StreamGroupLinesTest extends CamelTestSupport {
+
+    public static final String LS = System.lineSeparator();
 
     private FileOutputStream fos;
 
     @Override
-    @Before
-    public void setUp() throws Exception {
+    public void doPreSetup() throws Exception {
         deleteDirectory("target/stream");
         createDirectory("target/stream");
 
@@ -51,8 +52,6 @@ public class StreamGroupLinesTest extends CamelTestSupport {
         fos.write("F\n".getBytes());
 
         fos.close();
-
-        super.setUp();
     }
 
     @Test
@@ -65,7 +64,7 @@ public class StreamGroupLinesTest extends CamelTestSupport {
         mock.message(1).header(StreamConstants.STREAM_INDEX).isEqualTo(1);
         mock.message(1).header(StreamConstants.STREAM_COMPLETE).isEqualTo(true);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         List<?> list = mock.getExchanges().get(0).getIn().getBody(List.class);
         assertEquals(3, list.size());
@@ -81,10 +80,10 @@ public class StreamGroupLinesTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("stream:file?fileName=target/stream/streamfile.txt&groupLines=3").to("mock:result");
             }
         };

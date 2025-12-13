@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,6 +20,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.file.Files;
 import java.util.UUID;
 
 import org.apache.camel.Exchange;
@@ -29,22 +30,28 @@ import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.impl.DefaultCamelContext;
 import org.apache.commons.exec.OS;
 import org.apache.commons.io.FileUtils;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * Test to duplicate issues with Camel's exec command in Java 8 on Unix
- * This issue appears to be caused by a race condition, so this test does not always fail
+ * Test to duplicate issues with Camel's exec command in Java 8 on Unix This issue appears to be caused by a race
+ * condition, so this test does not always fail
  */
-public class ExecJava8IssueTest extends Assert {
+public class ExecJava8IssueTest {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ExecJava8IssueTest.class);
 
     private File tempDir;
     private final String tempDirName = name();
     private final String tempFileName = name();
 
-    @Before
+    @BeforeEach
     public void setUp() {
         tempDir = new File("target", tempDirName);
         if (!(tempDir.mkdir())) {
@@ -52,7 +59,7 @@ public class ExecJava8IssueTest extends Assert {
         }
     }
 
-    @After
+    @AfterEach
     public void tearDown() throws Exception {
         FileUtils.deleteDirectory(tempDir);
     }
@@ -61,13 +68,13 @@ public class ExecJava8IssueTest extends Assert {
     public void test() throws Exception {
 
         if (!OS.isFamilyUnix()) {
-            System.err.println("The test 'CamelExecTest' does not support the following OS : " + System.getProperty("os.name"));
+            LOG.warn("The test 'CamelExecTest' does not support the following OS : {}", System.getProperty("os.name"));
             return;
         }
 
         String tempFilePath = tempDir.getAbsolutePath() + "/" + tempFileName;
 
-        final File script = File.createTempFile("script", ".sh", tempDir);
+        final File script = Files.createTempFile(tempDir.toPath(), "script", ".sh").toFile();
 
         writeScript(script);
 
@@ -76,13 +83,13 @@ public class ExecJava8IssueTest extends Assert {
         DefaultCamelContext context = new DefaultCamelContext();
         context.addRoutes(new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:source")
                         .to("file:" + tempDir.getAbsolutePath() + "?fileName=" + tempFileName)
                         .to("exec:" + exec)
                         .process(new Processor() {
                             @Override
-                            public void process(Exchange exchange) throws Exception {
+                            public void process(Exchange exchange) {
                                 String output = exchange.getIn().getBody(String.class);
                                 assertEquals("hello world\n", output);
                             }
@@ -103,11 +110,11 @@ public class ExecJava8IssueTest extends Assert {
      * Creates a script which will append " world" to a file
      */
     private void writeScript(File script) throws IOException {
-        try (FileWriter fw = new FileWriter(script); 
-            PrintWriter pw = new PrintWriter(fw);) {
+        try (FileWriter fw = new FileWriter(script);
+             PrintWriter pw = new PrintWriter(fw);) {
             String s = "echo \" world\" >> $1";
             pw.print(s);
-        } 
+        }
     }
 
     /**

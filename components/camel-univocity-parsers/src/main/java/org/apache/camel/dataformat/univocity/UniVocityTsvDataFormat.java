@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,72 +23,46 @@ import com.univocity.parsers.tsv.TsvParser;
 import com.univocity.parsers.tsv.TsvParserSettings;
 import com.univocity.parsers.tsv.TsvWriter;
 import com.univocity.parsers.tsv.TsvWriterSettings;
+import org.apache.camel.spi.annotations.Dataformat;
 
 /**
  * This class is the data format that uses the TSV uniVocity parser.
  */
-public class UniVocityTsvDataFormat extends AbstractUniVocityDataFormat<TsvFormat, TsvWriterSettings, TsvWriter, TsvParserSettings, TsvParser, UniVocityTsvDataFormat> {
-    protected Character escapeChar;
+@Dataformat("univocityTsv")
+public class UniVocityTsvDataFormat
+        extends
+        AbstractUniVocityDataFormat<TsvFormat, TsvWriterSettings, TsvWriter, TsvParserSettings, TsvParser, UniVocityTsvDataFormat> {
 
-    /**
-     * Gets the escape character symbol.
-     * If {@code null} then the default format value is used.
-     *
-     * @return the escape character symbol
-     * @see com.univocity.parsers.tsv.TsvFormat#getEscapeChar()
-     */
+    private Character escapeChar;
+
     public Character getEscapeChar() {
         return escapeChar;
     }
 
-    /**
-     * Sets the escape character symbol.
-     * If {@code null} then the default settings value is used.
-     *
-     * @param escapeChar the escape character symbol
-     * @return current data format instance, fluent API
-     * @see com.univocity.parsers.tsv.TsvFormat#setEscapeChar(char)
-     */
-    public UniVocityTsvDataFormat setEscapeChar(Character escapeChar) {
+    public void setEscapeChar(Character escapeChar) {
         this.escapeChar = escapeChar;
-        return this;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     protected TsvWriterSettings createWriterSettings() {
         return new TsvWriterSettings();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     protected TsvWriter createWriter(Writer writer, TsvWriterSettings settings) {
         return new TsvWriter(writer, settings);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     protected TsvParserSettings createParserSettings() {
         return new TsvParserSettings();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     protected TsvParser createParser(TsvParserSettings settings) {
         return new TsvParser(settings);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     protected void configureFormat(TsvFormat format) {
         super.configureFormat(format);
@@ -100,6 +74,6 @@ public class UniVocityTsvDataFormat extends AbstractUniVocityDataFormat<TsvForma
 
     @Override
     public String getDataFormatName() {
-        return "univocity-tsv";
+        return "univocityTsv";
     }
 }

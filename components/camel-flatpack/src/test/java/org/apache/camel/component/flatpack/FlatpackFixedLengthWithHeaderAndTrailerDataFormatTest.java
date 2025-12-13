@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,8 +23,10 @@ import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.converter.IOConverter;
 import org.apache.camel.dataformat.flatpack.FlatpackDataFormat;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Unit test for fixed length DataFormat.
@@ -43,7 +45,7 @@ public class FlatpackFixedLengthWithHeaderAndTrailerDataFormatTest extends Camel
         String data = IOConverter.toString(new File("src/test/data/headerandtrailer/PEOPLE-HeaderAndTrailer.txt"), null);
 
         template.sendBody("direct:unmarshal", data);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         DataSetList list = mock.getExchanges().get(0).getIn().getBody(DataSetList.class);
         assertEquals(6, list.size());
@@ -63,23 +65,23 @@ public class FlatpackFixedLengthWithHeaderAndTrailerDataFormatTest extends Camel
         assertEquals("SUCCESS", trailer.get("STATUS"));
     }
 
-    public void testMarshalWithDefinition() throws Exception {
+    public void testMarshalWithDefinition() {
         // TODO: header and trailer not supported for FlatpackWriter
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 FlatpackDataFormat df = new FlatpackDataFormat();
                 df.setDefinition("PEOPLE-HeaderAndTrailer.pzmap.xml");
                 df.setFixed(true);
 
                 from("direct:unmarshal")
-                    .setHeader("MyFirstHeader", constant("1"))
-                    .unmarshal(df)
-                    .setHeader("MySecondHeader", constant("2"))
-                    .to("mock:unmarshal");
+                        .setHeader("MyFirstHeader", constant("1"))
+                        .unmarshal(df)
+                        .setHeader("MySecondHeader", constant("2"))
+                        .to("mock:unmarshal");
 
                 // with the definition
                 from("direct:marshal").marshal(df).convertBodyTo(String.class).to("mock:marshal");

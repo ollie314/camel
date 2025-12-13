@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,59 +16,73 @@
  */
 package org.apache.camel.component.pgevent;
 
-import java.io.InvalidClassException;
 import java.sql.DriverManager;
-import java.util.Properties;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+
 import javax.sql.DataSource;
 
 import com.impossibl.postgres.api.jdbc.PGConnection;
-import com.impossibl.postgres.jdbc.PGDataSource;
+import com.impossibl.postgres.jdbc.PGDriver;
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
-import org.apache.camel.impl.DefaultEndpoint;
+import org.apache.camel.spi.ClassResolver;
+import org.apache.camel.spi.EndpointServiceLocation;
 import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriPath;
-import org.apache.camel.util.URISupport;
+import org.apache.camel.support.DefaultEndpoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The pgevent component allows for producing/consuming  PostgreSQL events related to the LISTEN/NOTIFY commands.
- *
+ * Send and receive PostgreSQL events via LISTEN and NOTIFY commands.
+ * <p/>
  * This requires using PostgreSQL 8.3 or newer.
  */
-@UriEndpoint(scheme = "pgevent", title = "PostgresSQL Event", syntax = "pgevent:host:port/database/channel", consumerClass = PgEventConsumer.class, label = "database,sql")
-public class PgEventEndpoint extends DefaultEndpoint {
+@UriEndpoint(firstVersion = "2.15.0", scheme = "pgevent", title = "PostgresSQL Event",
+             syntax = "pgevent:host:port/database/channel",
+             category = { Category.DATABASE }, headersClass = PgEventConstants.class)
+public class PgEventEndpoint extends DefaultEndpoint implements EndpointServiceLocation {
+
     private static final Logger LOG = LoggerFactory.getLogger(PgEventEndpoint.class);
 
-    private static final String FORMAT1 = "^pgevent://([^:]*):(\\d+)/(\\w+)/(\\w+).*$";
-    private static final String FORMAT2 = "^pgevent://([^:]+)/(\\w+)/(\\w+).*$";
-    private static final String FORMAT3 = "^pgevent:///(\\w+)/(\\w+).*$";
-    private static final String FORMAT4 = "^pgevent:(\\w+)/(\\w+)/(\\w+).*$";
+    private static final String FORMAT1 = "^pgevent://([^:]*):(\\d+)/(.+)/(\\w+).*$";
+    private static final String FORMAT2 = "^pgevent://([^:]+)/(.+)/(\\w+).*$";
+    private static final String FORMAT3 = "^pgevent:///(.+)/(\\w+).*$";
+    private static final String FORMAT4 = "^pgevent:(.+)/(\\w+)/(\\w+).*$";
 
     @UriPath(defaultValue = "localhost")
     private String host = "localhost";
     @UriPath(defaultValue = "5432")
     private Integer port = 5432;
-    @UriPath @Metadata(required = "true")
+    @UriPath
+    @Metadata(required = true)
     private String database;
-    @UriPath @Metadata(required = "true")
+    @UriPath
+    @Metadata(required = true)
     private String channel;
-    @UriParam(defaultValue = "postgres")
+    @UriParam(defaultValue = "postgres", label = "security", secret = true)
     private String user = "postgres";
-    @UriParam
+    @UriParam(label = "security", secret = true)
     private String pass;
-    @UriParam
+    @UriParam(label = "advanced")
     private DataSource datasource;
+    @UriParam(label = "consumer,advanced", defaultValue = "5000")
+    private int reconnectDelay = 5000;
+    @UriParam(label = "consumer,advanced")
+    private ExecutorService workerPool;
+    @UriParam(label = "consumer,advanced", defaultValue = "1")
+    private int workerPoolCoreSize = 1;
+    @UriParam(label = "consumer,advanced", defaultValue = "10")
+    private int workerPoolMaxSize = 10;
 
     private final String uri;
 
-    private PGConnection dbConnection;
-
-    public PgEventEndpoint(String uri, PgEventComponent component)  {
+    public PgEventEndpoint(String uri, PgEventComponent component) {
         super(uri, component);
         this.uri = uri;
         parseUri();
@@ -81,16 +95,38 @@ public class PgEventEndpoint extends DefaultEndpoint {
         parseUri();
     }
 
+    @Override
+    public String getServiceUrl() {
+        if (host != null) {
+            return host + ":" + port;
+        }
+        return null;
+    }
+
+    @Override
+    public Map<String, String> getServiceMetadata() {
+        if (user != null) {
+            return Map.of("username", user);
+        }
+        return null;
+    }
+
+    @Override
+    public String getServiceProtocol() {
+        return "jdbc";
+    }
+
     public final PGConnection initJdbc() throws Exception {
         PGConnection conn;
-        Properties props = new Properties();
-        props.putAll(URISupport.parseQuery(uri));
         if (this.getDatasource() != null) {
-            conn = (PGConnection) this.getDatasource().getConnection();
+            conn = PgEventHelper.toPGConnection(this.getDatasource().getConnection());
         } else {
             // ensure we can load the class
-            getCamelContext().getClassResolver().resolveMandatoryClass("com.impossibl.postgres.jdbc.PGDriver");
-            conn = (PGConnection) DriverManager.getConnection("jdbc:pgsql://" + this.getHost() + ":" + this.getPort() + "/" + this.getDatabase(), this.getUser(), this.getPass());
+            ClassResolver classResolver = getCamelContext().getClassResolver();
+            classResolver.resolveMandatoryClass(PGDriver.class.getName(), PgEventComponent.class.getClassLoader());
+            conn = (PGConnection) DriverManager.getConnection(
+                    "jdbc:pgsql://" + this.getHost() + ":" + this.getPort() + "/" + this.getDatabase(), this.getUser(),
+                    this.getPass());
         }
         return conn;
     }
@@ -101,30 +137,30 @@ public class PgEventEndpoint extends DefaultEndpoint {
      * @throws IllegalArgumentException if there is an error in the parameters
      */
     protected final void parseUri() throws IllegalArgumentException {
-        LOG.info("URI: " + uri);
+        LOG.debug("URI: {}", uri);
         if (uri.matches(FORMAT1)) {
-            LOG.info("FORMAT1");
+            LOG.trace("FORMAT1");
             String[] parts = uri.replaceFirst(FORMAT1, "$1:$2:$3:$4").split(":");
             host = parts[0];
             port = Integer.parseInt(parts[1]);
             database = parts[2];
             channel = parts[3];
         } else if (uri.matches(FORMAT2)) {
-            LOG.info("FORMAT2");
+            LOG.trace("FORMAT2");
             String[] parts = uri.replaceFirst(FORMAT2, "$1:$2:$3").split(":");
             host = parts[0];
             port = 5432;
             database = parts[1];
             channel = parts[2];
         } else if (uri.matches(FORMAT3)) {
-            LOG.info("FORMAT3");
+            LOG.trace("FORMAT3");
             String[] parts = uri.replaceFirst(FORMAT3, "$1:$2").split(":");
             host = "localhost";
             port = 5432;
             database = parts[0];
             channel = parts[1];
         } else if (uri.matches(FORMAT4)) {
-            LOG.info("FORMAT4");
+            LOG.trace("FORMAT4");
             String[] parts = uri.replaceFirst(FORMAT4, "$1:$2").split(":");
             database = parts[0];
             channel = parts[1];
@@ -139,22 +175,15 @@ public class PgEventEndpoint extends DefaultEndpoint {
         return new PgEventProducer(this);
     }
 
-    private void validateInputs() throws InvalidClassException, IllegalArgumentException {
-        if (getChannel() == null || getChannel().length() == 0) {
+    private void validateInputs() throws IllegalArgumentException {
+        if (getChannel() == null || getChannel().isEmpty()) {
             throw new IllegalArgumentException("A required parameter was not set when creating this Endpoint (channel)");
         }
-        if (datasource != null) {
-            LOG.debug("******Datasource detected*****");
-            if (!PGDataSource.class.isInstance(datasource)) {
-                throw new InvalidClassException("The datasource passed to the "
-                        + "pgevent component is NOT a PGDataSource class from the"
-                        + "pgjdbc-ng library. See: https://github.com/impossibl/pgjdbc-ng");
-            }
-        } else {
-            if (user == null) {
-                throw new IllegalArgumentException("A required parameter was "
-                        + "not set when creating this Endpoint (pgUser or pgDataSource)");
-            }
+
+        if (datasource == null && user == null) {
+            throw new IllegalArgumentException(
+                    "A required parameter was "
+                                               + "not set when creating this Endpoint (pgUser or pgDataSource)");
         }
     }
 
@@ -166,9 +195,9 @@ public class PgEventEndpoint extends DefaultEndpoint {
         return consumer;
     }
 
-    @Override
-    public boolean isSingleton() {
-        return true;
+    ExecutorService createWorkerPool(Object source) {
+        return getCamelContext().getExecutorServiceManager().newThreadPool(source,
+                "PgEventConsumer[" + channel + "]", workerPoolCoreSize, workerPoolMaxSize);
     }
 
     public String getHost() {
@@ -198,7 +227,8 @@ public class PgEventEndpoint extends DefaultEndpoint {
     }
 
     /**
-     * The database name
+     * The database name. The database name can take any characters because it is sent as a quoted identifier. It is
+     * part of the endpoint URI, so diacritical marks and non-Latin letters have to be URL encoded.
      */
     public void setDatabase(String database) {
         this.database = database;
@@ -246,5 +276,50 @@ public class PgEventEndpoint extends DefaultEndpoint {
      */
     public void setDatasource(DataSource datasource) {
         this.datasource = datasource;
+    }
+
+    public int getReconnectDelay() {
+        return reconnectDelay;
+    }
+
+    /**
+     * When the consumer unexpected lose connection to the database, then this specifies the interval (millis) between
+     * re-connection attempts to establish a new connection.
+     */
+    public void setReconnectDelay(int reconnectDelay) {
+        this.reconnectDelay = reconnectDelay;
+    }
+
+    public ExecutorService getWorkerPool() {
+        return workerPool;
+    }
+
+    /**
+     * To use a custom worker pool for processing the events from the database.
+     */
+    public void setWorkerPool(ExecutorService workerPool) {
+        this.workerPool = workerPool;
+    }
+
+    public int getWorkerPoolCoreSize() {
+        return workerPoolCoreSize;
+    }
+
+    /**
+     * Number of core threads in the worker pool for processing the events from the database.
+     */
+    public void setWorkerPoolCoreSize(int workerPoolCoreSize) {
+        this.workerPoolCoreSize = workerPoolCoreSize;
+    }
+
+    public int getWorkerPoolMaxSize() {
+        return workerPoolMaxSize;
+    }
+
+    /**
+     * Maximum number of threads in the worker pool for processing the events from the database.
+     */
+    public void setWorkerPoolMaxSize(int workerPoolMaxSize) {
+        this.workerPoolMaxSize = workerPoolMaxSize;
     }
 }

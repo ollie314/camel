@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,16 +22,19 @@ import org.apache.camel.ExchangePattern;
 import org.apache.camel.Processor;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.spring.CamelSpringTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.spring.junit5.CamelSpringTestSupport;
+import org.junit.jupiter.api.Test;
 import org.springframework.context.support.ClassPathXmlApplicationContext;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class IronMQComponentSpringTest extends CamelSpringTestSupport {
 
-    @EndpointInject(uri = "direct:start")
+    @EndpointInject("direct:start")
     private ProducerTemplate template;
 
-    @EndpointInject(uri = "mock:result")
+    @EndpointInject("mock:result")
     private MockEndpoint result;
 
     @Test
@@ -39,12 +42,12 @@ public class IronMQComponentSpringTest extends CamelSpringTestSupport {
         result.expectedMessageCount(1);
 
         Exchange exchange = template.send("direct:start", ExchangePattern.InOnly, new Processor() {
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setBody("This is my message text.");
             }
         });
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         Exchange resultExchange = result.getExchanges().get(0);
         assertEquals("This is my message text.", resultExchange.getIn().getBody());
@@ -58,18 +61,18 @@ public class IronMQComponentSpringTest extends CamelSpringTestSupport {
         result.expectedMessageCount(1);
 
         Exchange exchange = template.send("direct:start", ExchangePattern.InOut, new Processor() {
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setBody("This is my message text.");
             }
         });
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         Exchange resultExchange = result.getExchanges().get(0);
         assertEquals("This is my message text.", resultExchange.getIn().getBody());
         assertNotNull(resultExchange.getIn().getHeader(IronMQConstants.MESSAGE_ID));
 
-        assertNotNull(exchange.getOut().getHeader(IronMQConstants.MESSAGE_ID));
+        assertNotNull(exchange.getMessage().getHeader(IronMQConstants.MESSAGE_ID));
     }
 
     @Override

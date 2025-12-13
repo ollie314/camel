@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,69 +21,74 @@ import java.io.FileInputStream;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.test.junit5.CamelTestSupport;
 import org.apache.camel.util.IOHelper;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-public class TarAggregationStrategyTest extends CamelTestSupport {
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+class TarAggregationStrategyTest extends CamelTestSupport {
 
     private static final int EXPECTED_NO_FILES = 3;
 
     private TarAggregationStrategy tar = new TarAggregationStrategy();
 
-    @Override
-    public void setUp() throws Exception {
+    @BeforeEach
+    public void cleanOutputDirectories() {
         tar.setParentDir("target/temp");
         deleteDirectory("target/temp");
         deleteDirectory("target/out");
-        super.setUp();
     }
 
     @Test
-    public void testSplitter() throws Exception {
+    void testSplitter() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:aggregateToTarEntry");
         mock.expectedMessageCount(1);
         mock.expectedHeaderReceived("foo", "bar");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
-        Thread.sleep(500);
+        await("Should be a file in target/out directory").until(() -> {
+            File[] files = new File("target/out").listFiles();
+            return files != null && files.length > 0;
+        });
 
         File[] files = new File("target/out").listFiles();
-        assertTrue(files != null);
-        assertTrue("Should be a file in target/out directory", files.length > 0);
-
         File resultFile = files[0];
 
         TarArchiveInputStream tin = new TarArchiveInputStream(new FileInputStream(resultFile));
         try {
             int fileCount = 0;
-            for (TarArchiveEntry te = tin.getNextTarEntry(); te != null; te = tin.getNextTarEntry()) {
+            for (TarArchiveEntry te = tin.getNextEntry(); te != null; te = tin.getNextEntry()) {
                 fileCount = fileCount + 1;
             }
-            assertEquals("Tar file should contains " + TarAggregationStrategyTest.EXPECTED_NO_FILES + " files", TarAggregationStrategyTest.EXPECTED_NO_FILES, fileCount);
+            assertEquals(TarAggregationStrategyTest.EXPECTED_NO_FILES, fileCount,
+                    "Tar file should contains " + TarAggregationStrategyTest.EXPECTED_NO_FILES + " files");
         } finally {
             IOHelper.close(tin);
         }
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // Untar file and Split it according to FileEntry
-                from("file:src/test/resources/org/apache/camel/aggregate/tarfile/data?consumer.delay=1000&noop=true")
-                    .setHeader("foo", constant("bar"))
-                    .aggregate(tar)
+                from("file:src/test/resources/org/apache/camel/aggregate/tarfile/data?delay=1000&noop=true")
+                        .setHeader("foo", constant("bar"))
+                        .aggregate(tar)
                         .constant(true)
                         .completionFromBatchConsumer()
                         .eagerCheckCompletion()
-                    .to("file:target/out")
-                    .to("mock:aggregateToTarEntry")
-                    .log("Done processing tar file: ${header.CamelFileName}");
+                        .to("file:target/out")
+                        .to("mock:aggregateToTarEntry")
+                        .log("Done processing tar file: ${header.CamelFileName}");
             }
         };
 

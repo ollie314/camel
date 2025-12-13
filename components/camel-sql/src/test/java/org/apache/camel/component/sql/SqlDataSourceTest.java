@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,32 +19,32 @@ package org.apache.camel.component.sql;
 import java.util.List;
 import java.util.Map;
 
-
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.impl.JndiRegistry;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.After;
-import org.junit.Test;
+import org.apache.camel.spi.Registry;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class SqlDataSourceTest extends CamelTestSupport {
 
     private EmbeddedDatabase db;
 
     @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry jndi = super.createRegistry();
+    protected void bindToRegistry(Registry registry) throws Exception {
 
         // this is the database we create with some initial data for our unit test
         db = new EmbeddedDatabaseBuilder()
-            .setType(EmbeddedDatabaseType.DERBY).addScript("sql/createAndPopulateDatabase.sql").build();
+                .setName(getClass().getSimpleName())
+                .setType(EmbeddedDatabaseType.H2)
+                .addScript("sql/createAndPopulateDatabase.sql").build();
 
-        jndi.bind("dataSource", db);
-
-        return jndi;
+        registry.bind("dataSource", db);
     }
 
     @Test
@@ -66,20 +66,21 @@ public class SqlDataSourceTest extends CamelTestSupport {
         assertEquals("Linux", row.get("PROJECT"));
     }
 
-    @After
-    public void tearDown() throws Exception {
-        super.tearDown();
+    @Override
+    public void doPostTearDown() throws Exception {
 
-        db.shutdown();
+        if (db != null) {
+            db.shutdown();
+        }
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
                 from("direct:simple")
-                    .to("sql:select * from projects where license = # order by id?dataSource=#dataSource")
-                    .to("mock:result");
+                        .to("sql:select * from projects where license = # order by id?dataSource=#dataSource")
+                        .to("mock:result");
             }
         };
     }

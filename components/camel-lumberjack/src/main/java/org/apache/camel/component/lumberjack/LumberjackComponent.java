@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,23 +19,29 @@ package org.apache.camel.component.lumberjack;
 import java.util.Map;
 
 import org.apache.camel.Endpoint;
-import org.apache.camel.impl.UriEndpointComponent;
-import org.apache.camel.util.jsse.SSLContextParameters;
+import org.apache.camel.SSLContextParametersAware;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.spi.annotations.Component;
+import org.apache.camel.support.DefaultComponent;
+import org.apache.camel.support.jsse.SSLContextParameters;
 
 /**
  * The class is the Camel component for the Lumberjack server
  */
-public class LumberjackComponent extends UriEndpointComponent {
+@Component("lumberjack")
+public class LumberjackComponent extends DefaultComponent implements SSLContextParametersAware {
     static final int DEFAULT_PORT = 5044;
 
+    @Metadata(label = "security")
     private SSLContextParameters sslContextParameters;
+    @Metadata(label = "security", defaultValue = "false")
+    private boolean useGlobalSslContextParameters;
 
     public LumberjackComponent() {
         this(LumberjackEndpoint.class);
     }
 
     protected LumberjackComponent(Class<? extends LumberjackEndpoint> endpointClass) {
-        super(endpointClass);
     }
 
     @Override
@@ -53,8 +59,13 @@ public class LumberjackComponent extends UriEndpointComponent {
         }
 
         // Create the endpoint
-        Endpoint answer = new LumberjackEndpoint(uri, this, host, port);
+        LumberjackEndpoint answer = new LumberjackEndpoint(uri, this, host, port);
         setProperties(answer, parameters);
+
+        if (answer.getSslContextParameters() == null) {
+            answer.setSslContextParameters(retrieveGlobalSslContextParameters());
+        }
+
         return answer;
     }
 
@@ -63,10 +74,24 @@ public class LumberjackComponent extends UriEndpointComponent {
     }
 
     /**
-     * Sets the default SSL configuration to use for all the endpoints. You can also configure it directly at
-     * the endpoint level.
+     * Sets the default SSL configuration to use for all the endpoints. You can also configure it directly at the
+     * endpoint level.
      */
     public void setSslContextParameters(SSLContextParameters sslContextParameters) {
         this.sslContextParameters = sslContextParameters;
     }
+
+    @Override
+    public boolean isUseGlobalSslContextParameters() {
+        return this.useGlobalSslContextParameters;
+    }
+
+    /**
+     * Enable usage of global SSL context parameters.
+     */
+    @Override
+    public void setUseGlobalSslContextParameters(boolean useGlobalSslContextParameters) {
+        this.useGlobalSslContextParameters = useGlobalSslContextParameters;
+    }
+
 }

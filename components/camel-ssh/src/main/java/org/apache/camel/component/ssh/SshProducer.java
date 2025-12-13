@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,34 +16,43 @@
  */
 package org.apache.camel.component.ssh;
 
+import java.util.Map;
+
 import org.apache.camel.CamelExchangeException;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
-import org.apache.camel.impl.DefaultProducer;
-import org.apache.sshd.SshClient;
+import org.apache.camel.support.DefaultProducer;
+import org.apache.sshd.client.SshClient;
+
+import static org.apache.camel.component.ssh.SshUtils.*;
 
 public class SshProducer extends DefaultProducer {
     private SshEndpoint endpoint;
-    
     private SshClient client;
 
     public SshProducer(SshEndpoint endpoint) {
         super(endpoint);
         this.endpoint = endpoint;
     }
-    
+
     @Override
     protected void doStart() throws Exception {
-        client = SshClient.setUpDefaultClient();
+        if (this.endpoint.getConfiguration() == null || this.endpoint.getConfiguration().getClientBuilder() == null) {
+            client = SshClient.setUpDefaultClient();
+        } else {
+            client = this.endpoint.getConfiguration().getClientBuilder().build(true);
+        }
+        SshConfiguration configuration = endpoint.getConfiguration();
+        configureAlgorithms(configuration, client);
         client.start();
-        
+
         super.doStart();
     }
 
     @Override
     protected void doStop() throws Exception {
         super.doStop();
-        
+
         if (client != null) {
             client.stop();
             client = null;
@@ -51,21 +60,37 @@ public class SshProducer extends DefaultProducer {
     }
 
     @Override
+    public boolean isSingleton() {
+        // SshClient is not thread-safe to be shared
+        return false;
+    }
+
+    @Override
     public void process(Exchange exchange) throws Exception {
         final Message in = exchange.getIn();
         String command = in.getMandatoryBody(String.class);
 
+        final Map<String, Object> headers = exchange.getIn().getHeaders();
+
         try {
-            SshResult result = SshHelper.sendExecCommand(command, endpoint, client);
+            String knownHostResource = endpoint.getKnownHostsResource();
+            if (knownHostResource != null) {
+                client.setServerKeyVerifier(new ResourceBasedSSHKeyVerifier(
+                        exchange.getContext(), knownHostResource,
+                        endpoint.isFailOnUnknownHost()));
+            }
+            SshResult result = SshHelper.sendExecCommand(headers, command, endpoint, client);
+
+            // propagate headers
+            exchange.getOut().getHeaders().putAll(in.getHeaders());
+
+            // store result
             exchange.getOut().setBody(result.getStdout());
-            exchange.getOut().setHeader(SshResult.EXIT_VALUE, result.getExitValue());
-            exchange.getOut().setHeader(SshResult.STDERR, result.getStderr());
+            exchange.getOut().setHeader(SshConstants.EXIT_VALUE, result.getExitValue());
+            exchange.getOut().setHeader(SshConstants.STDERR, result.getStderr());
         } catch (Exception e) {
             throw new CamelExchangeException("Cannot execute command: " + command, exchange, e);
         }
 
-        // propagate headers and attachments
-        exchange.getOut().getHeaders().putAll(in.getHeaders());
-        exchange.getOut().setAttachments(in.getAttachments());
     }
 }

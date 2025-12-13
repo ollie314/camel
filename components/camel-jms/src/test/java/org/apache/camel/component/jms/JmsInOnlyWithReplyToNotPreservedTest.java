@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,54 +16,74 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
-
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
-/**
- * @version 
- */
-public class JmsInOnlyWithReplyToNotPreservedTest extends CamelTestSupport {
+public class JmsInOnlyWithReplyToNotPreservedTest extends AbstractJMSTest {
+
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
     public void testSendInOnlyWithReplyTo() throws Exception {
-        getMockEndpoint("mock:foo").expectedBodiesReceived("World");
+        getMockEndpoint("mock:JmsInOnlyWithReplyToNotPreservedTest.Request").expectedBodiesReceived("World");
         getMockEndpoint("mock:done").expectedBodiesReceived("World");
 
-        template.sendBody("direct:start", "World");
+        template.sendBody("direct:JmsInOnlyWithReplyToNotPreservedTest", "World");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
-        // there should be no messages on the bar queue
-        Object msg = consumer.receiveBody("activemq:queue:bar", 1000);
-        assertNull("Should be no message on bar queue", msg);
-    }
-
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-        return camelContext;
+        // there should be no messages on the JmsInOnlyWithReplyToNotPreservedTest.Reply queue
+        Object msg = consumer.receiveBody("activemq:queue:JmsInOnlyWithReplyToNotPreservedTest.Reply", 1000);
+        assertNull(msg, "Should be no message on JmsInOnlyWithReplyToNotPreservedTest.Reply queue");
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected String getComponentName() {
+        return "activemq";
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("direct:start")
-                    .to("activemq:queue:foo?replyTo=queue:bar")
-                    .to("mock:done");
+            public void configure() {
+                from("direct:JmsInOnlyWithReplyToNotPreservedTest")
+                        .to("activemq:queue:JmsInOnlyWithReplyToNotPreservedTest.Request?replyTo=queue:JmsInOnlyWithReplyToNotPreservedTest.Reply")
+                        .to("mock:done");
 
-                from("activemq:queue:foo")
-                    .to("log:foo?showAll=true", "mock:foo")
-                    .transform(body().prepend("Bye "));
+                from("activemq:queue:JmsInOnlyWithReplyToNotPreservedTest.Request")
+                        .to("log:JmsInOnlyWithReplyToNotPreservedTest.Request?showAll=true",
+                                "mock:JmsInOnlyWithReplyToNotPreservedTest.Request")
+                        .transform(body().prepend("Bye "));
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
     }
 }

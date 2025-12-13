@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,15 +20,14 @@ import java.util.HashMap;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.salesforce.dto.generated.Merchandise__c;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public abstract class AbstractSalesforceTestBase extends CamelTestSupport {
 
-    @Override
-    public boolean isCreateCamelContextPerClass() {
-        // only create the context once for this class
-        return true;
-    }
+    protected final Logger log = LoggerFactory.getLogger(getClass());
+    protected SalesforceComponent component;
 
     @Override
     protected RouteBuilder createRouteBuilder() throws Exception {
@@ -38,11 +37,17 @@ public abstract class AbstractSalesforceTestBase extends CamelTestSupport {
         return doCreateRouteBuilder();
     }
 
-    protected abstract RouteBuilder doCreateRouteBuilder() throws Exception;
+    protected RouteBuilder doCreateRouteBuilder() throws Exception {
+        return new RouteBuilder() {
+            @Override
+            public void configure() throws Exception {
+            }
+        };
+    }
 
     protected void createComponent() throws Exception {
         // create the component
-        SalesforceComponent component = new SalesforceComponent();
+        component = new SalesforceComponent();
         final SalesforceEndpointConfig config = new SalesforceEndpointConfig();
         config.setApiVersion(System.getProperty("apiVersion", SalesforceEndpointConfig.DEFAULT_VERSION));
         component.setConfig(config);
@@ -50,18 +55,17 @@ public abstract class AbstractSalesforceTestBase extends CamelTestSupport {
 
         HashMap<String, Object> clientProperties = new HashMap<>();
         clientProperties.put("timeout", "60000");
-        clientProperties.put("maxRetreis", "3");
+        clientProperties.put("maxRetries", "3");
         // 4MB for RestApiIntegrationTest.testGetBlobField()
         clientProperties.put("maxContentLength", String.valueOf(4 * 1024 * 1024));
         component.setHttpClientProperties(clientProperties);
 
+        component.setHttpClientIdleTimeout(60000);
+
         // set DTO package
-        component.setPackages(new String[] {
-            Merchandise__c.class.getPackage().getName()
-        });
+        component.setPackages(Merchandise__c.class.getPackage().getName());
 
         // add it to context
         context().addComponent("salesforce", component);
     }
-
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,25 +16,25 @@
  */
 package org.apache.camel.component.undertow.rest;
 
-import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.undertow.BaseUndertowTest;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class RestUndertowProducerGetUriParameterTest extends BaseUndertowTest {
 
     @Test
-    public void testUndertowProducerGet() throws Exception {
+    public void testUndertowProducerGet() {
         String out = fluentTemplate.withHeader("id", "123").to("direct:start").request(String.class);
         assertEquals("123;Donald Duck", out);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // configure to use undertow on localhost with the given port
                 restConfiguration().component("undertow").host("localhost").port(getPort());
 
@@ -44,13 +44,13 @@ public class RestUndertowProducerGetUriParameterTest extends BaseUndertowTest {
                 // use the rest DSL to define the rest services
                 rest("/users/")
                         .get("basic/?id={id}")
-                        .route()
+                        .to("direct:basic");
+
+                from("direct:basic")
                         .to("mock:input")
-                        .process(new Processor() {
-                            public void process(Exchange exchange) throws Exception {
-                                String id = exchange.getIn().getHeader("id", String.class);
-                                exchange.getOut().setBody(id + ";Donald Duck");
-                            }
+                        .process(exchange -> {
+                            String id = exchange.getIn().getHeader("id", String.class);
+                            exchange.getMessage().setBody(id + ";Donald Duck");
                         });
             }
         };

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,11 +22,17 @@ import org.apache.camel.util.ObjectHelper;
 
 public class DefaultSplunkConfigurationFactory implements SplunkConfigurationFactory {
 
+    @Override
     public SplunkConfiguration parseMap(Map<String, Object> parameters) {
-        String username = (String)parameters.get("username");
-        String password = (String)parameters.get("password");
-        if (ObjectHelper.isEmpty(username) || ObjectHelper.isEmpty(password)) {
-            throw new IllegalArgumentException("Username and password has to be specified");
+        String username = (String) parameters.get("username");
+        String password = (String) parameters.get("password");
+        String token = (String) parameters.get("token");
+        if (ObjectHelper.isEmpty(token) && (ObjectHelper.isEmpty(username) || ObjectHelper.isEmpty(password))) {
+            throw new IllegalArgumentException("Username and password OR token has to be specified");
+        }
+        if (ObjectHelper.isNotEmpty(token)) {
+            parameters.remove("username");
+            parameters.remove("password");
         }
         return new SplunkConfiguration();
     }

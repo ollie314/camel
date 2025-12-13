@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,91 +23,174 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandler;
+import io.netty.handler.codec.Delimiters;
+import io.netty.handler.ssl.SslHandler;
+import io.netty.util.CharsetUtil;
+import org.apache.camel.Exchange;
 import org.apache.camel.LoggingLevel;
 import org.apache.camel.RuntimeCamelException;
+import org.apache.camel.spi.Configurer;
+import org.apache.camel.spi.PropertyConfigurer;
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriParams;
-import org.apache.camel.util.EndpointHelper;
-import org.apache.camel.util.IntrospectionSupport;
+import org.apache.camel.support.CamelContextHelper;
+import org.apache.camel.support.EndpointHelper;
+import org.apache.camel.support.PluginHelper;
+import org.apache.camel.support.PropertyBindingSupport;
 import org.apache.camel.util.ObjectHelper;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.ChannelHandler;
-import org.jboss.netty.handler.codec.frame.Delimiters;
-import org.jboss.netty.handler.ssl.SslHandler;
-import org.jboss.netty.util.CharsetUtil;
+import org.apache.camel.util.PropertiesHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @UriParams
+@Configurer
 public class NettyConfiguration extends NettyServerBootstrapConfiguration implements Cloneable {
     private static final Logger LOG = LoggerFactory.getLogger(NettyConfiguration.class);
 
-    @UriParam(label = "producer")
+    private transient List<ChannelHandler> encodersList = new ArrayList<>();
+    private transient List<ChannelHandler> decodersList = new ArrayList<>();
+
+    @UriParam(label = "producer",
+              description = "Allows to use a timeout for the Netty producer when calling a remote server. By default no timeout is in use. The"
+                            + " value is in milli seconds, so eg 30000 is 30 seconds. The requestTimeout is using Netty's ReadTimeoutHandler to"
+                            + " trigger the timeout.")
     private long requestTimeout;
-    @UriParam(defaultValue = "true")
+    @UriParam(defaultValue = "true", description = "Setting to set endpoint as one-way (false) or request-response (true)")
     private boolean sync = true;
-    @UriParam(label = "codec")
+    @UriParam(label = "codec",
+              description = "Only used for TCP. If no codec is specified, you can use this flag to indicate a text line based codec; if not"
+                            + " specified or the value is false, then Object Serialization is assumed over TCP - however only Strings are allowed"
+                            + " to be serialized by default.")
     private boolean textline;
-    @UriParam(label = "codec", defaultValue = "LINE")
+    @UriParam(label = "codec", defaultValue = "LINE", enums = "LINE,NULL",
+              description = "The delimiter to use for the textline codec. Possible values are LINE and NULL.")
     private TextLineDelimiter delimiter = TextLineDelimiter.LINE;
-    @UriParam(label = "codec", defaultValue = "true")
+    @UriParam(label = "codec", defaultValue = "true",
+              description = "Whether or not to auto append missing end delimiter when sending using the textline codec.")
     private boolean autoAppendDelimiter = true;
-    @UriParam(label = "codec", defaultValue = "1024")
+    @UriParam(label = "codec", defaultValue = "1024", description = "The max line length to use for the textline codec.")
     private int decoderMaxLineLength = 1024;
-    @UriParam(label = "codec")
+    @UriParam(label = "codec",
+              description = "The encoding (a charset name) to use for the textline codec. If not provided, Camel will use the JVM default Charset.")
     private String encoding;
-    @UriParam(label = "codec", description = "To use a single encoder. This options is deprecated use encoders instead.")
-    @Deprecated
-    private ChannelHandler encoder;
-    @UriParam(label = "codec", javaType = "java.lang.String")
-    private List<ChannelHandler> encoders = new ArrayList<ChannelHandler>();
-    @UriParam(label = "codec", description = "To use a single decoder. This options is deprecated use encoders instead.")
-    @Deprecated
-    private ChannelHandler decoder;
-    @UriParam(label = "codec", javaType = "java.lang.String")
-    private List<ChannelHandler> decoders = new ArrayList<ChannelHandler>();
-    @UriParam
+    @UriParam(label = "codec",
+              description = "A list of encoders to be used. You can use a String which have values separated by comma, and have the values be"
+                            + " looked up in the Registry. Just remember to prefix the value with # so Camel knows it should lookup.")
+    private String encoders;
+    @UriParam(label = "codec",
+              description = "A list of decoders to be used. You can use a String which have values separated by comma, and have the values be"
+                            + " looked up in the Registry. Just remember to prefix the value with # so Camel knows it should lookup.")
+    private String decoders;
+    @UriParam(label = "common,security", description = "To enable/disable hostname verification on SSLEngine")
+    private boolean hostnameVerification;
+    @UriParam(label = "common", description = "Whether or not to disconnect(close) from Netty Channel right after use.")
     private boolean disconnect;
-    @UriParam(label = "producer,advanced", defaultValue = "true")
+    @UriParam(label = "producer,advanced", defaultValue = "true",
+              description = "Channels can be lazily created to avoid exceptions, if the remote server is not up and running when the Camel producer is started.")
     private boolean lazyChannelCreation = true;
-    @UriParam(label = "advanced")
+    @UriParam(label = "advanced",
+              description = "Only used for TCP. You can transfer the exchange over the wire instead of just the body. The following fields are"
+                            + " transferred: In body, Out body, fault body, In headers, Out headers, fault headers, exchange properties, exchange"
+                            + " exception. This requires that the objects are serializable. Camel will exclude any non-serializable objects and"
+                            + " log it at WARN level.")
     private boolean transferExchange;
-    @UriParam(label = "consumer,advanced", defaultValue = "true")
+    @UriParam(label = "advanced",
+              description = "Only used for TCP when transferExchange is true. When set to true, serializable objects in headers and properties"
+                            + " will be added to the exchange. Otherwise Camel will exclude any non-serializable objects and log it at WARN level.")
+    private boolean allowSerializedHeaders;
+    @UriParam(label = "consumer,advanced", defaultValue = "true",
+              description = "If sync is enabled then this option dictates NettyConsumer if it should disconnect where there is no reply to send back.")
     private boolean disconnectOnNoReply = true;
-    @UriParam(label = "consumer,advanced", defaultValue = "WARN")
+    @UriParam(label = "consumer,advanced", defaultValue = "WARN", enums = "TRACE,DEBUG,INFO,WARN,ERROR,OFF",
+              description = "If sync is enabled this option dictates NettyConsumer which logging level to use when logging a there is no reply to send back.")
     private LoggingLevel noReplyLogLevel = LoggingLevel.WARN;
-    @UriParam(label = "consumer,advanced", defaultValue = "WARN")
+    @UriParam(label = "consumer,advanced", defaultValue = "WARN", enums = "TRACE,DEBUG,INFO,WARN,ERROR,OFF",
+              description = "If the server (NettyConsumer) catches an exception then its logged using this logging level.")
     private LoggingLevel serverExceptionCaughtLogLevel = LoggingLevel.WARN;
-    @UriParam(label = "consumer,advanced", defaultValue = "DEBUG")
+    @UriParam(label = "consumer,advanced", defaultValue = "DEBUG", enums = "TRACE,DEBUG,INFO,WARN,ERROR,OFF",
+              description = "If the server (NettyConsumer) catches an java.nio.channels.ClosedChannelException then its logged using this"
+                            + " logging level. This is used to avoid logging the closed channel exceptions, as clients can disconnect abruptly"
+                            + " and then cause a flood of closed exceptions in the Netty server.")
     private LoggingLevel serverClosedChannelExceptionCaughtLogLevel = LoggingLevel.DEBUG;
-    @UriParam(label = "codec", defaultValue = "true")
+    @UriParam(label = "codec", defaultValue = "true",
+              description = "The netty component installs a default codec if both, encoder/decoder is null and textline is false. Setting"
+                            + " allowDefaultCodec to false prevents the netty component from installing a default codec as the first element in the filter chain.")
     private boolean allowDefaultCodec = true;
-    @UriParam(label = "producer,advanced")
-    private ClientPipelineFactory clientPipelineFactory;
-    //CAMEL-8031 Moved this option to NettyComponent
-    private int maximumPoolSize = 16;
-    @UriParam(label = "consumer,advanced", defaultValue = "true")
-    private boolean orderedThreadPoolExecutor = true;
-    @UriParam(label = "producer,advanced", defaultValue = "-1")
-    private int producerPoolMaxActive = -1;
-    @UriParam(label = "producer,advanced")
+    @UriParam(label = "producer,advanced", description = "To use a custom ClientInitializerFactory")
+    private ClientInitializerFactory clientInitializerFactory;
+    @UriParam(label = "consumer,advanced", defaultValue = "true",
+              description = "Whether to use ordered thread pool, to ensure events are processed orderly on the same channel.")
+    private boolean usingExecutorService = true;
+    @UriParam(label = "producer,advanced", defaultValue = "-1",
+              description = "Sets the cap on the number of objects that can be allocated by the pool (checked out to clients, or idle awaiting"
+                            + " checkout) at a given time. Use a negative value for no limit. Be careful to not set this value too low (such as"
+                            + " 1) as the pool must have space to create a producer such as when performing retries. Be mindful that the option"
+                            + " producerPoolBlockWhenExhausted is default true, and the pool will then block when there is no space, which can"
+                            + " lead to the application to hang.")
+    private int producerPoolMaxTotal = -1;
+    @UriParam(label = "producer,advanced",
+              description = "Sets the minimum number of instances allowed in the producer pool before the evictor thread (if active) spawns new objects.")
     private int producerPoolMinIdle;
-    @UriParam(label = "producer,advanced", defaultValue = "100")
+    @UriParam(label = "producer,advanced", defaultValue = "100",
+              description = "Sets the cap on the number of idle instances in the pool.")
     private int producerPoolMaxIdle = 100;
-    @UriParam(label = "producer,advanced", defaultValue = "" + 5 * 60 * 1000L)
+    @UriParam(label = "producer,advanced", defaultValue = "" + 5 * 60 * 1000L,
+              description = "Sets the minimum amount of time (value in millis) an object may sit idle in the pool before it is eligible for eviction by the idle object evictor.")
     private long producerPoolMinEvictableIdle = 5 * 60 * 1000L;
-    @UriParam(label = "producer,advanced", defaultValue = "true")
+    @UriParam(label = "producer,advanced", defaultValue = "-1",
+              description = "Sets the maximum duration (value in millis) the borrowObject() method should block before throwing an exception"
+                            + " when the pool is exhausted and producerPoolBlockWhenExhausted is true. When less than 0, the borrowObject()"
+                            + " method may block indefinitely.")
+    private long producerPoolMaxWait = -1;
+    @UriParam(label = "producer,advanced", defaultValue = "true",
+              description = "Sets the value for the blockWhenExhausted configuration attribute. It determines whether to block when the"
+                            + " borrowObject() method is invoked when the pool is exhausted (the maximum number of active objects has been reached).")
+    private boolean producerPoolBlockWhenExhausted = true;
+    @UriParam(label = "producer,advanced", defaultValue = "true",
+              description = "Whether producer pool is enabled or not."
+                            + " Important: If you turn this off then a single shared connection is used for the producer, also if you are doing"
+                            + " request/reply. That means there is a potential issue with interleaved responses if replies comes back"
+                            + " out-of-order. Therefore you need to have a correlation id in both the request and reply messages so you can"
+                            + " properly correlate the replies to the Camel callback that is responsible for continue processing the message in"
+                            + " Camel. To do this you need to implement NettyCamelStateCorrelationManager as correlation manager and"
+                            + " configure it via the correlationManager option."
+                            + " See also the correlationManager option for more details.")
     private boolean producerPoolEnabled = true;
-    @UriParam(label = "producer,advanced")
+    @UriParam(label = "producer,advanced",
+              description = "This option supports connection less udp sending which is a real fire and forget. A connected udp send receive"
+                            + " the PortUnreachableException if no one is listen on the receiving port.")
     private boolean udpConnectionlessSending;
-    @UriParam(label = "consumer")
+    @UriParam(label = "consumer",
+              description = "If the clientMode is true, netty consumer will connect the address as a TCP client.")
     private boolean clientMode;
-    @UriParam(label = "producer,advanced")
-    private boolean useChannelBuffer;
-    @UriParam(label = "consumer,advanced", defaultValue = "" + 10 * 1024 * 1024L)
-    private long maxChannelMemorySize = 10 * 1024 * 1024L; 
-    @UriParam(label = "consumer,advanced", defaultValue = "" + 200 * 1024 * 1024L)
-    private long maxTotalMemorySize = 200 * 1024 * 1024L;
+    @UriParam(label = "producer,advanced",
+              description = "If the useByteBuf is true, netty producer will turn the message body into ByteBuf before sending it out.")
+    private boolean useByteBuf;
+    @UriParam(label = "advanced",
+              description = "For UDP only. If enabled the using byte array codec instead of Java serialization protocol.")
+    private boolean udpByteArrayCodec;
+    @UriParam(label = "common",
+              description = "This option allows producers and consumers (in client mode) to reuse the same Netty Channel for the"
+                            + " lifecycle of processing the Exchange. This is useful if you need to call a server multiple times in a"
+                            + " Camel route and want to use the same network connection. When using this, the channel is not returned to the"
+                            + " connection pool until the Exchange is done; or disconnected if the disconnect option is set to true."
+                            + " The reused Channel is stored on the Exchange as an exchange property with the key"
+                            + " CamelNettyChannel which allows you to obtain the channel during routing and use it as well.")
+    private boolean reuseChannel;
+    @UriParam(label = "producer,advanced",
+              description = "To use a custom correlation manager to manage how request and reply messages are mapped when using request/reply"
+                            + " with the netty producer. This should only be used if you have a way to map requests together with replies such as"
+                            + " if there is correlation ids in both the request and reply messages. This can be used if you want to multiplex"
+                            + " concurrent messages on the same channel (aka connection) in netty. When doing this you must have a way to"
+                            + " correlate the request and reply messages so you can store the right reply on the inflight Camel Exchange before"
+                            + " its continued routed."
+                            + " We recommend extending the TimeoutCorrelationManagerSupport when you build custom correlation managers."
+                            + " This provides support for timeout and other complexities you otherwise would need to implement as well."
+                            + " See also the producerPoolEnabled option for more details.")
+    private NettyCamelStateCorrelationManager correlationManager;
 
     /**
      * Returns a copy of this configuration
@@ -116,10 +199,8 @@ public class NettyConfiguration extends NettyServerBootstrapConfiguration implem
         try {
             NettyConfiguration answer = (NettyConfiguration) clone();
             // make sure the lists is copied in its own instance
-            List<ChannelHandler> encodersCopy = new ArrayList<ChannelHandler>(encoders);
-            answer.setEncoders(encodersCopy);
-            List<ChannelHandler> decodersCopy = new ArrayList<ChannelHandler>(decoders);
-            answer.setDecoders(decodersCopy);
+            answer.setEncodersAsList(new ArrayList<>(getEncodersAsList()));
+            answer.setDecodersAsList(new ArrayList<>(getDecodersAsList()));
             return answer;
         } catch (CloneNotSupportedException e) {
             throw new RuntimeCamelException(e);
@@ -128,36 +209,43 @@ public class NettyConfiguration extends NettyServerBootstrapConfiguration implem
 
     public void validateConfiguration() {
         // validate that the encoders is either shareable or is a handler factory
-        for (ChannelHandler encoder : encoders) {
+        for (ChannelHandler encoder : encodersList) {
             if (encoder instanceof ChannelHandlerFactory) {
                 continue;
             }
             if (ObjectHelper.getAnnotation(encoder, ChannelHandler.Sharable.class) != null) {
                 continue;
             }
-            LOG.warn("The encoder {} is not @Shareable or an ChannelHandlerFactory instance. The encoder cannot safely be used.", encoder);
+            LOG.warn(
+                    "The encoder {} is not @Shareable or an ChannelHandlerFactory instance. The encoder cannot safely be used.",
+                    encoder);
         }
 
         // validate that the decoders is either shareable or is a handler factory
-        for (ChannelHandler decoder : decoders) {
+        for (ChannelHandler decoder : decodersList) {
             if (decoder instanceof ChannelHandlerFactory) {
                 continue;
             }
             if (ObjectHelper.getAnnotation(decoder, ChannelHandler.Sharable.class) != null) {
                 continue;
             }
-            LOG.warn("The decoder {} is not @Shareable or an ChannelHandlerFactory instance. The decoder cannot safely be used.", decoder);
+            LOG.warn(
+                    "The decoder {} is not @Shareable or an ChannelHandlerFactory instance. The decoder cannot safely be used.",
+                    decoder);
         }
         if (sslHandler != null) {
             boolean factory = sslHandler instanceof ChannelHandlerFactory;
             boolean shareable = ObjectHelper.getAnnotation(sslHandler, ChannelHandler.Sharable.class) != null;
             if (!factory && !shareable) {
-                LOG.warn("The sslHandler {} is not @Shareable or an ChannelHandlerFactory instance. The sslHandler cannot safely be used.", sslHandler);
+                LOG.warn(
+                        "The sslHandler {} is not @Shareable or an ChannelHandlerFactory instance. The sslHandler cannot safely be used.",
+                        sslHandler);
             }
         }
     }
 
-    public void parseURI(URI uri, Map<String, Object> parameters, NettyComponent component, String... supportedProtocols) throws Exception {
+    public void parseURI(URI uri, Map<String, Object> parameters, NettyComponent component, String... supportedProtocols)
+            throws Exception {
         protocol = uri.getScheme();
 
         boolean found = false;
@@ -177,61 +265,105 @@ public class NettyConfiguration extends NettyServerBootstrapConfiguration implem
             setPort(uri.getPort());
         }
 
-        ssl = component.getAndRemoveOrResolveReferenceParameter(parameters, "ssl", boolean.class, false);
+        ssl = component.getAndRemoveOrResolveReferenceParameter(parameters, "ssl", boolean.class, ssl);
         sslHandler = component.getAndRemoveOrResolveReferenceParameter(parameters, "sslHandler", SslHandler.class, sslHandler);
         passphrase = component.getAndRemoveOrResolveReferenceParameter(parameters, "passphrase", String.class, passphrase);
-        keyStoreFormat = component.getAndRemoveOrResolveReferenceParameter(parameters, "keyStoreFormat", String.class, keyStoreFormat == null ? "JKS" : keyStoreFormat);
-        securityProvider = component.getAndRemoveOrResolveReferenceParameter(parameters, "securityProvider", String.class, securityProvider == null ? "SunX509" : securityProvider);
-        keyStoreFile = component.getAndRemoveOrResolveReferenceParameter(parameters, "keyStoreFile", File.class, keyStoreFile);
-        trustStoreFile = component.getAndRemoveOrResolveReferenceParameter(parameters, "trustStoreFile", File.class, trustStoreFile);
-        keyStoreResource = component.getAndRemoveOrResolveReferenceParameter(parameters, "keyStoreResource", String.class, keyStoreResource);
-        trustStoreResource = component.getAndRemoveOrResolveReferenceParameter(parameters, "trustStoreResource", String.class, trustStoreResource);
-        clientPipelineFactory = component.getAndRemoveOrResolveReferenceParameter(parameters, "clientPipelineFactory", ClientPipelineFactory.class, clientPipelineFactory);
-        serverPipelineFactory = component.getAndRemoveOrResolveReferenceParameter(parameters, "serverPipelineFactory", ServerPipelineFactory.class, serverPipelineFactory);
+        keyStoreFormat = component.getAndRemoveOrResolveReferenceParameter(parameters, "keyStoreFormat", String.class,
+                keyStoreFormat == null ? "JKS" : keyStoreFormat);
+        securityProvider = component.getAndRemoveOrResolveReferenceParameter(parameters, "securityProvider", String.class,
+                securityProvider == null ? "SunX509" : securityProvider);
+        keyStoreResource = uriRef(component, parameters, "keyStoreResource", keyStoreResource);
+        trustStoreResource = uriRef(component, parameters, "trustStoreResource", trustStoreResource);
+        clientInitializerFactory = component.getAndRemoveOrResolveReferenceParameter(parameters, "clientInitializerFactory",
+                ClientInitializerFactory.class, clientInitializerFactory);
+        serverInitializerFactory = component.getAndRemoveOrResolveReferenceParameter(parameters, "serverInitializerFactory",
+                ServerInitializerFactory.class, serverInitializerFactory);
 
         // set custom encoders and decoders first
-        List<ChannelHandler> referencedEncoders = component.resolveAndRemoveReferenceListParameter(parameters, "encoders", ChannelHandler.class, null);
-        addToHandlersList(encoders, referencedEncoders, ChannelHandler.class);
-        List<ChannelHandler> referencedDecoders = component.resolveAndRemoveReferenceListParameter(parameters, "decoders", ChannelHandler.class, null);
-        addToHandlersList(decoders, referencedDecoders, ChannelHandler.class);
+        List<ChannelHandler> referencedEncoders
+                = component.resolveAndRemoveReferenceListParameter(parameters, "encoders", ChannelHandler.class, null);
+        addToHandlersList(encodersList, referencedEncoders, ChannelHandler.class);
+        List<ChannelHandler> referencedDecoders
+                = component.resolveAndRemoveReferenceListParameter(parameters, "decoders", ChannelHandler.class, null);
+        addToHandlersList(decodersList, referencedDecoders, ChannelHandler.class);
+
+        // set custom encoders and decoders from config
+        List<ChannelHandler> configEncoders
+                = EndpointHelper.resolveReferenceListParameter(component.getCamelContext(), encoders, ChannelHandler.class);
+        addToHandlersList(encodersList, configEncoders, ChannelHandler.class);
+        List<ChannelHandler> configDecoders
+                = EndpointHelper.resolveReferenceListParameter(component.getCamelContext(), decoders, ChannelHandler.class);
+        addToHandlersList(decodersList, configDecoders, ChannelHandler.class);
 
         // then set parameters with the help of the camel context type converters
-        EndpointHelper.setReferenceProperties(component.getCamelContext(), this, parameters);
-        EndpointHelper.setProperties(component.getCamelContext(), this, parameters);
+        // and use configurer to avoid any reflection calls
+        PropertyConfigurer configurer = PluginHelper.getConfigurerResolver(component.getCamelContext())
+                .resolvePropertyConfigurer(this.getClass().getName(), component.getCamelContext());
+        PropertyBindingSupport.build()
+                .withCamelContext(component.getCamelContext())
+                .withTarget(this)
+                .withReflection(false)
+                .withIgnoreCase(true)
+                .withConfigurer(configurer)
+                .withProperties(parameters)
+                .bind();
 
-        // additional netty options, we don't want to store an empty map, so set it as null if empty
-        options = IntrospectionSupport.extractProperties(parameters, "option.");
-        if (options !=  null && options.isEmpty()) {
-            options = null;
-        }
+        addAdditionalOptions(PropertiesHelper.extractProperties(parameters, "option."));
 
         // add default encoders and decoders
-        if (encoders.isEmpty() && decoders.isEmpty()) {
+        if (encodersList.isEmpty() && decodersList.isEmpty()) {
             if (isAllowDefaultCodec()) {
-                // are we textline or object?
+                if ("udp".equalsIgnoreCase(protocol)) {
+                    encodersList.add(ChannelHandlerFactories.newDatagramPacketEncoder());
+                }
+                // are we textline or byte array
                 if (isTextline()) {
                     Charset charset = getEncoding() != null ? Charset.forName(getEncoding()) : CharsetUtil.UTF_8;
-                    encoders.add(ChannelHandlerFactories.newStringEncoder(charset));
-                    ChannelBuffer[] delimiters = delimiter == TextLineDelimiter.LINE ? Delimiters.lineDelimiter() : Delimiters.nulDelimiter();
-                    decoders.add(ChannelHandlerFactories.newDelimiterBasedFrameDecoder(decoderMaxLineLength, delimiters));
-                    decoders.add(ChannelHandlerFactories.newStringDecoder(charset));
+                    encodersList.add(ChannelHandlerFactories.newStringEncoder(charset, protocol));
+                    ByteBuf[] delimiters
+                            = delimiter == TextLineDelimiter.LINE ? Delimiters.lineDelimiter() : Delimiters.nulDelimiter();
+                    decodersList.add(
+                            ChannelHandlerFactories.newDelimiterBasedFrameDecoder(decoderMaxLineLength, delimiters, protocol));
+                    decodersList.add(ChannelHandlerFactories.newStringDecoder(charset, protocol));
 
-                    if (LOG.isDebugEnabled()) {
-                        LOG.debug("Using textline encoders and decoders with charset: {}, delimiter: {} and decoderMaxLineLength: {}", 
-                                new Object[]{charset, delimiter, decoderMaxLineLength});
-                    }
+                    LOG.debug(
+                            "Using textline encoders and decoders with charset: {}, delimiter: {} and decoderMaxLineLength: {}",
+                            charset, delimiter, decoderMaxLineLength);
+
+                } else if ("udp".equalsIgnoreCase(protocol) && isUdpByteArrayCodec()) {
+                    encodersList.add(ChannelHandlerFactories.newByteArrayEncoder(protocol));
+                    decodersList.add(ChannelHandlerFactories.newByteArrayDecoder(protocol));
                 } else {
-                    // object serializable is then used
-                    encoders.add(ChannelHandlerFactories.newObjectEncoder());
-                    decoders.add(ChannelHandlerFactories.newObjectDecoder());
-
-                    LOG.debug("Using object encoders and decoders");
+                    // Fall back to allowing Strings to be serialized only
+                    Charset charset = getEncoding() != null ? Charset.forName(getEncoding()) : CharsetUtil.UTF_8;
+                    encodersList.add(ChannelHandlerFactories.newStringEncoder(charset, protocol));
+                    decodersList.add(ChannelHandlerFactories.newStringDecoder(charset, protocol));
+                }
+                if ("udp".equalsIgnoreCase(protocol)) {
+                    decodersList.add(ChannelHandlerFactories.newDatagramPacketDecoder());
                 }
             } else {
                 LOG.debug("No encoders and decoders will be used");
             }
         } else {
             LOG.debug("Using configured encoders and/or decoders");
+        }
+    }
+
+    private String uriRef(NettyComponent component, Map<String, Object> parameters, String key, String defaultValue) {
+        Object value = parameters.remove(key);
+        if (value == null) {
+            value = defaultValue;
+        } else if (value instanceof String && EndpointHelper.isReferenceParameter((String) value)) {
+            String name = ((String) value).replace("#", "");
+            value = CamelContextHelper.mandatoryLookup(component.getCamelContext(), name);
+        }
+        if (value instanceof File) {
+            return "file:" + value.toString();
+        } else if (value != null) {
+            return value.toString();
+        } else {
+            return null;
         }
     }
 
@@ -251,9 +383,9 @@ public class NettyConfiguration extends NettyServerBootstrapConfiguration implem
     }
 
     /**
-     * Allows to use a timeout for the Netty producer when calling a remote server.
-     * By default no timeout is in use. The value is in milli seconds, so eg 30000 is 30 seconds.
-     * The requestTimeout is using Netty's ReadTimeoutHandler to trigger the timeout.
+     * Allows to use a timeout for the Netty producer when calling a remote server. By default no timeout is in use. The
+     * value is in milli seconds, so eg 30000 is 30 seconds. The requestTimeout is using Netty's ReadTimeoutHandler to
+     * trigger the timeout.
      */
     public void setRequestTimeout(long requestTimeout) {
         this.requestTimeout = requestTimeout;
@@ -275,8 +407,9 @@ public class NettyConfiguration extends NettyServerBootstrapConfiguration implem
     }
 
     /**
-     * Only used for TCP. If no codec is specified, you can use this flag to indicate a text line based codec;
-     * if not specified or the value is false, then Object Serialization is assumed over TCP.
+     * Only used for TCP. If no codec is specified, you can use this flag to indicate a text line based codec; if not
+     * specified or the value is false, then Object Serialization is assumed over TCP - however only Strings are allowed
+     * to be serialized by default.
      */
     public void setTextline(boolean textline) {
         this.textline = textline;
@@ -320,60 +453,84 @@ public class NettyConfiguration extends NettyServerBootstrapConfiguration implem
     }
 
     /**
-     * The encoding (a charset name) to use for the textline codec. If not provided, Camel will use the JVM default Charset.
+     * The encoding (a charset name) to use for the textline codec. If not provided, Camel will use the JVM default
+     * Charset.
      */
     public void setEncoding(String encoding) {
         this.encoding = encoding;
     }
 
-    public List<ChannelHandler> getDecoders() {
-        return decoders;
+    public List<ChannelHandler> getDecodersAsList() {
+        return decodersList;
+    }
+
+    public void setDecodersAsList(List<ChannelHandler> decoders) {
+        this.decodersList = decoders;
     }
 
     /**
-     * A list of decoders to be used.
-     * You can use a String which have values separated by comma, and have the values be looked up in the Registry.
-     * Just remember to prefix the value with # so Camel knows it should lookup.
+     * A list of decoders to be used. You can use a String which have values separated by comma, and have the values be
+     * looked up in the Registry. Just remember to prefix the value with # so Camel knows it should lookup.
      */
     public void setDecoders(List<ChannelHandler> decoders) {
+        this.decodersList = decoders;
+    }
+
+    /**
+     * A list of decoders to be used. You can use a String which have values separated by comma, and have the values be
+     * looked up in the Registry. Just remember to prefix the value with # so Camel knows it should lookup.
+     */
+    public void setDecoders(String decoders) {
         this.decoders = decoders;
     }
 
-    public List<ChannelHandler> getEncoders() {
+    public String getDecoders() {
+        return decoders;
+    }
+
+    public List<ChannelHandler> getEncodersAsList() {
+        return encodersList;
+    }
+
+    public void setEncodersAsList(List<ChannelHandler> encoders) {
+        this.encodersList = encoders;
+    }
+
+    /**
+     * A list of encoders to be used. You can use a String which have values separated by comma, and have the values be
+     * looked up in the Registry. Just remember to prefix the value with # so Camel knows it should lookup.
+     */
+    public void setEncoders(List<ChannelHandler> encoders) {
+        this.encodersList = encoders;
+    }
+
+    /**
+     * A list of encoders to be used. You can use a String which have values separated by comma, and have the values be
+     * looked up in the Registry. Just remember to prefix the value with # so Camel knows it should lookup.
+     */
+    public void setEncoders(String encoders) {
+        this.encoders = encoders;
+    }
+
+    public String getEncoders() {
         return encoders;
     }
 
     /**
-     * A list of encoders to be used. You can use a String which have values separated by comma, and have the values be looked up in the Registry.
-     * Just remember to prefix the value with # so Camel knows it should lookup.
+     * Adds a custom ChannelHandler class that can be used to perform special marshalling of outbound payloads.
      */
-    public void setEncoders(List<ChannelHandler> encoders) {
-        this.encoders = encoders;
-    }
-
-    public ChannelHandler getEncoder() {
-        return encoders.isEmpty() ? null : encoders.get(0);
-    }
-
-    /**
-     * A custom ChannelHandler class that can be used to perform special marshalling of outbound payloads. Must override org.jboss.netty.channel.ChannelDownStreamHandler.
-     */
-    public void setEncoder(ChannelHandler encoder) {
-        if (!encoders.contains(encoder)) {
-            encoders.add(encoder);
+    public void addEncoder(ChannelHandler encoder) {
+        if (!encodersList.contains(encoder)) {
+            encodersList.add(encoder);
         }
     }
 
-    public ChannelHandler getDecoder() {
-        return decoders.isEmpty() ? null : decoders.get(0);
-    }
-
     /**
-     * A custom ChannelHandler class that can be used to perform special marshalling of inbound payloads. Must override org.jboss.netty.channel.ChannelUpStreamHandler.
+     * Adds a custom ChannelHandler class that can be used to perform special marshalling of inbound payloads.
      */
-    public void setDecoder(ChannelHandler decoder) {
-        if (!decoders.contains(decoder)) {
-            decoders.add(decoder);
+    public void addDecoder(ChannelHandler decoder) {
+        if (!decodersList.contains(decoder)) {
+            decodersList.add(decoder);
         }
     }
 
@@ -382,7 +539,8 @@ public class NettyConfiguration extends NettyServerBootstrapConfiguration implem
     }
 
     /**
-     * Whether or not to disconnect(close) from Netty Channel right after use. Can be used for both consumer and producer.
+     * Whether or not to disconnect(close) from Netty Channel right after use. Can be used for both consumer and
+     * producer.
      */
     public void setDisconnect(boolean disconnect) {
         this.disconnect = disconnect;
@@ -393,7 +551,8 @@ public class NettyConfiguration extends NettyServerBootstrapConfiguration implem
     }
 
     /**
-     * Channels can be lazily created to avoid exceptions, if the remote server is not up and running when the Camel producer is started.
+     * Channels can be lazily created to avoid exceptions, if the remote server is not up and running when the Camel
+     * producer is started.
      */
     public void setLazyChannelCreation(boolean lazyChannelCreation) {
         this.lazyChannelCreation = lazyChannelCreation;
@@ -404,13 +563,26 @@ public class NettyConfiguration extends NettyServerBootstrapConfiguration implem
     }
 
     /**
-     * Only used for TCP. You can transfer the exchange over the wire instead of just the body.
-     * The following fields are transferred: In body, Out body, fault body, In headers, Out headers, fault headers,
-     * exchange properties, exchange exception.
-     * This requires that the objects are serializable. Camel will exclude any non-serializable objects and log it at WARN level.
+     * Only used for TCP. You can transfer the exchange over the wire instead of just the body. The following fields are
+     * transferred: In body, Out body, fault body, In headers, Out headers, fault headers, exchange properties, exchange
+     * exception. This requires that the objects are serializable. Camel will exclude any non-serializable objects and
+     * log it at WARN level.
      */
     public void setTransferExchange(boolean transferExchange) {
         this.transferExchange = transferExchange;
+    }
+
+    public boolean isAllowSerializedHeaders() {
+        return allowSerializedHeaders;
+    }
+
+    /**
+     * Only used for TCP when transferExchange is true. When set to true, serializable objects in headers and properties
+     * will be added to the exchange. Otherwise Camel will exclude any non-serializable objects and log it at WARN
+     * level.
+     */
+    public void setAllowSerializedHeaders(final boolean allowSerializedHeaders) {
+        this.allowSerializedHeaders = allowSerializedHeaders;
     }
 
     public boolean isDisconnectOnNoReply() {
@@ -418,7 +590,8 @@ public class NettyConfiguration extends NettyServerBootstrapConfiguration implem
     }
 
     /**
-     * If sync is enabled then this option dictates NettyConsumer if it should disconnect where there is no reply to send back.
+     * If sync is enabled then this option dictates NettyConsumer if it should disconnect where there is no reply to
+     * send back.
      */
     public void setDisconnectOnNoReply(boolean disconnectOnNoReply) {
         this.disconnectOnNoReply = disconnectOnNoReply;
@@ -429,7 +602,8 @@ public class NettyConfiguration extends NettyServerBootstrapConfiguration implem
     }
 
     /**
-     * If sync is enabled this option dictates NettyConsumer which logging level to use when logging a there is no reply to send back.
+     * If sync is enabled this option dictates NettyConsumer which logging level to use when logging a there is no reply
+     * to send back.
      */
     public void setNoReplyLogLevel(LoggingLevel noReplyLogLevel) {
         this.noReplyLogLevel = noReplyLogLevel;
@@ -451,8 +625,9 @@ public class NettyConfiguration extends NettyServerBootstrapConfiguration implem
     }
 
     /**
-     * If the server (NettyConsumer) catches an java.nio.channels.ClosedChannelException then its logged using this logging level.
-     * This is used to avoid logging the closed channel exceptions, as clients can disconnect abruptly and then cause a flood of closed exceptions in the Netty server.
+     * If the server (NettyConsumer) catches an java.nio.channels.ClosedChannelException then its logged using this
+     * logging level. This is used to avoid logging the closed channel exceptions, as clients can disconnect abruptly
+     * and then cause a flood of closed exceptions in the Netty server.
      */
     public void setServerClosedChannelExceptionCaughtLogLevel(LoggingLevel serverClosedChannelExceptionCaughtLogLevel) {
         this.serverClosedChannelExceptionCaughtLogLevel = serverClosedChannelExceptionCaughtLogLevel;
@@ -463,57 +638,49 @@ public class NettyConfiguration extends NettyServerBootstrapConfiguration implem
     }
 
     /**
-     * The netty component installs a default codec if both, encoder/deocder is null and textline is false.
-     * Setting allowDefaultCodec to false prevents the netty component from installing a default codec as the first element in the filter chain.
+     * The netty component installs a default codec if both, encoder/decoder is null and textline is false. Setting
+     * allowDefaultCodec to false prevents the netty component from installing a default codec as the first element in
+     * the filter chain.
      */
     public void setAllowDefaultCodec(boolean allowDefaultCodec) {
         this.allowDefaultCodec = allowDefaultCodec;
     }
 
-    /**
-     * To use a custom ClientPipelineFactory
-     */
-    public void setClientPipelineFactory(ClientPipelineFactory clientPipelineFactory) {
-        this.clientPipelineFactory = clientPipelineFactory;
-    }
-
-    public ClientPipelineFactory getClientPipelineFactory() {
-        return clientPipelineFactory;
+    public ClientInitializerFactory getClientInitializerFactory() {
+        return clientInitializerFactory;
     }
 
     /**
-     * The core pool size for the ordered thread pool, if its in use.
+     * To use a custom ClientInitializerFactory
      */
-    public int getMaximumPoolSize() {
-        return maximumPoolSize;
+    public void setClientInitializerFactory(ClientInitializerFactory clientInitializerFactory) {
+        this.clientInitializerFactory = clientInitializerFactory;
     }
 
-    public void setMaximumPoolSize(int maximumPoolSize) {
-        this.maximumPoolSize = maximumPoolSize;
-    }
-
-    public boolean isOrderedThreadPoolExecutor() {
-        return orderedThreadPoolExecutor;
+    public boolean isUsingExecutorService() {
+        return usingExecutorService;
     }
 
     /**
      * Whether to use ordered thread pool, to ensure events are processed orderly on the same channel.
-     * See details at the netty javadoc of org.jboss.netty.handler.execution.OrderedMemoryAwareThreadPoolExecutor for more details.
      */
-    public void setOrderedThreadPoolExecutor(boolean orderedThreadPoolExecutor) {
-        this.orderedThreadPoolExecutor = orderedThreadPoolExecutor;
+    public void setUsingExecutorService(boolean usingExecutorService) {
+        this.usingExecutorService = usingExecutorService;
     }
 
-    public int getProducerPoolMaxActive() {
-        return producerPoolMaxActive;
+    public int getProducerPoolMaxTotal() {
+        return producerPoolMaxTotal;
     }
 
     /**
-     * Sets the cap on the number of objects that can be allocated by the pool
-     * (checked out to clients, or idle awaiting checkout) at a given time. Use a negative value for no limit.
+     * Sets the cap on the number of objects that can be allocated by the pool (checked out to clients, or idle awaiting
+     * checkout) at a given time. Use a negative value for no limit. Be careful to not set this value too low (such as
+     * 1) as the pool must have space to create a producer such as when performing retries. Be mindful that the option
+     * producerPoolBlockWhenExhausted is default true, and the pool will then block when there is no space, which can
+     * lead to the application to hang.
      */
-    public void setProducerPoolMaxActive(int producerPoolMaxActive) {
-        this.producerPoolMaxActive = producerPoolMaxActive;
+    public void setProducerPoolMaxTotal(int producerPoolMaxTotal) {
+        this.producerPoolMaxTotal = producerPoolMaxTotal;
     }
 
     public int getProducerPoolMinIdle() {
@@ -521,7 +688,8 @@ public class NettyConfiguration extends NettyServerBootstrapConfiguration implem
     }
 
     /**
-     * Sets the minimum number of instances allowed in the producer pool before the evictor thread (if active) spawns new objects.
+     * Sets the minimum number of instances allowed in the producer pool before the evictor thread (if active) spawns
+     * new objects.
      */
     public void setProducerPoolMinIdle(int producerPoolMinIdle) {
         this.producerPoolMinIdle = producerPoolMinIdle;
@@ -543,10 +711,37 @@ public class NettyConfiguration extends NettyServerBootstrapConfiguration implem
     }
 
     /**
-     * Sets the minimum amount of time (value in millis) an object may sit idle in the pool before it is eligible for eviction by the idle object evictor.
+     * Sets the minimum amount of time (value in millis) an object may sit idle in the pool before it is eligible for
+     * eviction by the idle object evictor.
      */
     public void setProducerPoolMinEvictableIdle(long producerPoolMinEvictableIdle) {
         this.producerPoolMinEvictableIdle = producerPoolMinEvictableIdle;
+    }
+
+    public long getProducerPoolMaxWait() {
+        return producerPoolMaxWait;
+    }
+
+    /**
+     * Sets the maximum duration (value in millis) the borrowObject() method should block before throwing an exception
+     * when the pool is exhausted and producerPoolBlockWhenExhausted is true. When less than 0, the borrowObject()
+     * method may block indefinitely.
+     */
+    public void setProducerPoolMaxWait(long producerPoolMaxWait) {
+        this.producerPoolMaxWait = producerPoolMaxWait;
+    }
+
+    public boolean isProducerPoolBlockWhenExhausted() {
+        return producerPoolBlockWhenExhausted;
+    }
+
+    /**
+     * Sets the value for the blockWhenExhausted configuration attribute. It determines whether to block when the
+     * borrowObject() method is invoked when the pool is exhausted (the maximum number of "active" objects has been
+     * reached).
+     */
+    public void setProducerPoolBlockWhenExhausted(boolean producerPoolBlockWhenExhausted) {
+        this.producerPoolBlockWhenExhausted = producerPoolBlockWhenExhausted;
     }
 
     public boolean isProducerPoolEnabled() {
@@ -555,24 +750,32 @@ public class NettyConfiguration extends NettyServerBootstrapConfiguration implem
 
     /**
      * Whether producer pool is enabled or not.
-     * Important: Do not turn this off, as the pooling is needed for handling concurrency and reliable request/reply.
+     * <p>
+     * Important: If you turn this off then a single shared connection is used for the producer, also if you are doing
+     * request/reply. That means there is a potential issue with interleaved responses if replies comes back
+     * out-of-order. Therefore you need to have a correlation id in both the request and reply messages so you can
+     * properly correlate the replies to the Camel callback that is responsible for continue processing the message in
+     * Camel. To do this you need to implement {@link NettyCamelStateCorrelationManager} as correlation manager and
+     * configure it via the <tt>correlationManager</tt> option.
+     * <p/>
+     * See also the <tt>correlationManager</tt> option for more details.
      */
     public void setProducerPoolEnabled(boolean producerPoolEnabled) {
         this.producerPoolEnabled = producerPoolEnabled;
     }
-    
+
     public boolean isUdpConnectionlessSending() {
         return udpConnectionlessSending;
     }
 
     /**
-     * This option supports connection less udp sending which is a real fire and forget.
-     * A connected udp send receive the PortUnreachableException if no one is listen on the receiving port.
+     * This option supports connection less udp sending which is a real fire and forget. A connected udp send receive
+     * the PortUnreachableException if no one is listen on the receiving port.
      */
     public void setUdpConnectionlessSending(boolean udpConnectionlessSending) {
         this.udpConnectionlessSending = udpConnectionlessSending;
     }
-    
+
     public boolean isClientMode() {
         return clientMode;
     }
@@ -584,39 +787,75 @@ public class NettyConfiguration extends NettyServerBootstrapConfiguration implem
         this.clientMode = clientMode;
     }
 
-    public boolean isUseChannelBuffer() {
-        return useChannelBuffer;
+    public boolean isUseByteBuf() {
+        return useByteBuf;
     }
 
     /**
-     * If the useChannelBuffer is true, netty producer will turn the message body into {@link ChannelBuffer} before sending it out.
+     * If the useByteBuf is true, netty producer will turn the message body into {@link ByteBuf} before sending it out.
      */
-    public void setUseChannelBuffer(boolean useChannelBuffer) {
-        this.useChannelBuffer = useChannelBuffer;
+    public void setUseByteBuf(boolean useByteBuf) {
+        this.useByteBuf = useByteBuf;
     }
 
-    public long getMaxChannelMemorySize() {
-        return maxChannelMemorySize;
+    public boolean isUdpByteArrayCodec() {
+        return udpByteArrayCodec;
     }
 
     /**
-     * The maximum total size of the queued events per channel when using orderedThreadPoolExecutor.
-     * Specify 0 to disable.
+     * For UDP only. If enabled the using byte array codec instead of Java serialization protocol.
      */
-    public void setMaxChannelMemorySize(long maxChannelMemorySize) {
-        this.maxChannelMemorySize = maxChannelMemorySize;
+    public void setUdpByteArrayCodec(boolean udpByteArrayCodec) {
+        this.udpByteArrayCodec = udpByteArrayCodec;
     }
 
-    public long getMaxTotalMemorySize() {
-        return maxTotalMemorySize;
+    public boolean isReuseChannel() {
+        return reuseChannel;
     }
 
     /**
-     * The maximum total size of the queued events for this pool when using orderedThreadPoolExecutor.
-     * Specify 0 to disable.
+     * This option allows producers and consumers (in client mode) to reuse the same Netty {@link Channel} for the
+     * lifecycle of processing the {@link Exchange}. This is useful if you need to call a server multiple times in a
+     * Camel route and want to use the same network connection. When using this, the channel is not returned to the
+     * connection pool until the {@link Exchange} is done; or disconnected if the disconnect option is set to true.
+     * <p/>
+     * The reused {@link Channel} is stored on the {@link Exchange} as an exchange property with the key
+     * {@link NettyConstants#NETTY_CHANNEL} which allows you to obtain the channel during routing and use it as well.
      */
-    public void setMaxTotalMemorySize(long maxTotalMemorySize) {
-        this.maxTotalMemorySize = maxTotalMemorySize;
+    public void setReuseChannel(boolean reuseChannel) {
+        this.reuseChannel = reuseChannel;
+    }
+
+    public NettyCamelStateCorrelationManager getCorrelationManager() {
+        return correlationManager;
+    }
+
+    /**
+     * To use a custom correlation manager to manage how request and reply messages are mapped when using request/reply
+     * with the netty producer. This should only be used if you have a way to map requests together with replies such as
+     * if there is correlation ids in both the request and reply messages. This can be used if you want to multiplex
+     * concurrent messages on the same channel (aka connection) in netty. When doing this you must have a way to
+     * correlate the request and reply messages so you can store the right reply on the inflight Camel Exchange before
+     * its continued routed.
+     * <p/>
+     * We recommend extending the {@link TimeoutCorrelationManagerSupport} when you build custom correlation managers.
+     * This provides support for timeout and other complexities you otherwise would need to implement as well.
+     * <p/>
+     * See also the <tt>producerPoolEnabled</tt> option for more details.
+     */
+    public void setCorrelationManager(NettyCamelStateCorrelationManager correlationManager) {
+        this.correlationManager = correlationManager;
+    }
+
+    public boolean isHostnameVerification() {
+        return hostnameVerification;
+    }
+
+    /**
+     * To enable/disable hostname verification on SSLEngine
+     */
+    public void setHostnameVerification(boolean hostnameVerification) {
+        this.hostnameVerification = hostnameVerification;
     }
 
     private static <T> void addToHandlersList(List<T> configured, List<T> handlers, Class<T> handlerType) {

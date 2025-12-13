@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,27 +23,26 @@ import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.github.GitHubComponent;
 import org.apache.camel.component.github.GitHubComponentTestBase;
 import org.apache.camel.component.github.GitHubConstants;
 import org.eclipse.egit.github.core.Issue;
 import org.eclipse.egit.github.core.Repository;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class CreateIssueProducerTest extends GitHubComponentTestBase {
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
 
             @Override
-            public void configure() throws Exception {
-                context.addComponent("github", new GitHubComponent());
+            public void configure() {
                 from("direct:createIssue")
                         .process(new MockIssueCreateProducerProcessor())
-                        .to("github://createissue?state=success&username=someguy&password=apassword&repoOwner=anotherguy&repoName=somerepo");
+                        .to("github://createissue?state=success&repoOwner=anotherguy&repoName=somerepo");
             } // end of configure
-
 
         };
     }
@@ -66,15 +65,13 @@ public class CreateIssueProducerTest extends GitHubComponentTestBase {
         assertEquals("There's an error", issue.getBody());
     }
 
-
     public class MockIssueCreateProducerProcessor implements Processor {
         @Override
-        public void process(Exchange exchange) throws Exception {
+        public void process(Exchange exchange) {
             Message in = exchange.getIn();
             Map<String, Object> headers = in.getHeaders();
             headers.put(GitHubConstants.GITHUB_ISSUE_TITLE, "Error");
         }
     }
-
 
 }

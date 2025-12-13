@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,10 +19,12 @@ package org.apache.camel.component.splunk.support;
 import java.io.InputStream;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 import com.splunk.Job;
 import com.splunk.JobArgs;
@@ -37,10 +39,12 @@ import com.splunk.SavedSearchCollection;
 import com.splunk.SavedSearchDispatchArgs;
 import com.splunk.Service;
 import com.splunk.ServiceArgs;
-
 import org.apache.camel.component.splunk.ConsumerType;
 import org.apache.camel.component.splunk.SplunkEndpoint;
 import org.apache.camel.component.splunk.event.SplunkEvent;
+import org.apache.camel.support.task.Tasks;
+import org.apache.camel.support.task.budget.Budgets;
+import org.apache.camel.support.task.budget.IterationBoundedBudget;
 import org.apache.camel.util.IOHelper;
 import org.apache.camel.util.ObjectHelper;
 import org.slf4j.Logger;
@@ -52,8 +56,8 @@ public class SplunkDataReader {
     private static final String SPLUNK_TIME_FORMAT = "%m/%d/%y %H:%M:%S:%3N";
 
     private transient Calendar lastSuccessfulReadTime;
-    private SplunkEndpoint endpoint;
-    private ConsumerType consumerType;
+    private final SplunkEndpoint endpoint;
+    private final ConsumerType consumerType;
 
     public SplunkDataReader(SplunkEndpoint endpoint, ConsumerType consumerType) {
         this.endpoint = endpoint;
@@ -91,28 +95,28 @@ public class SplunkDataReader {
 
     public List<SplunkEvent> read(SplunkResultProcessor callback) throws Exception {
         switch (consumerType) {
-        case NORMAL: {
-            return nonBlockingSearch(callback);
-        }
-        case REALTIME: {
-            return realtimeSearch(callback);
-        }
-        case SAVEDSEARCH: {
-            return savedSearch(callback);
-        }
-        default: {
-            throw new RuntimeException("Unknown search mode " + consumerType);
-        }
+            case NORMAL: {
+                return nonBlockingSearch(callback);
+            }
+            case REALTIME: {
+                return realtimeSearch(callback);
+            }
+            case SAVEDSEARCH: {
+                return savedSearch(callback);
+            }
+            default: {
+                throw new RuntimeException("Unknown search mode " + consumerType);
+            }
         }
     }
 
     /**
      * Get the earliestTime of range search.
-     * 
-     * @param startTime the time where search start
-     * @param realtime if this is realtime search
-     * @return The time of last successful read if not realtime; Time difference
-     *         between last successful read and start time;
+     *
+     * @param  startTime the time where search start
+     * @param  realtime  if this is realtime search
+     * @return           The time of last successful read if not realtime; Time difference between last successful read
+     *                   and start time;
      */
     private String calculateEarliestTime(Calendar startTime, boolean realtime) {
         String result;
@@ -223,13 +227,21 @@ public class SplunkDataReader {
         } else {
             throw new RuntimeException("Unable to find saved search '" + getSavedSearch() + "'.");
         }
-        while (!job.isDone()) {
-            Thread.sleep(2000);
-        }
+
+        waitForJob(2000, job::isDone);
+
         List<SplunkEvent> data = extractData(job, false, callback);
         this.lastSuccessfulReadTime = startTime;
         return data;
 
+    }
+
+    private void waitForJob(long interval, BooleanSupplier supplier) {
+        Tasks.foregroundTask().withBudget(Budgets.iterationBudget()
+                .withMaxIterations(IterationBoundedBudget.UNLIMITED_ITERATIONS)
+                .withInterval(Duration.ofMillis(interval))
+                .build())
+                .build().run(endpoint.getCamelContext(), supplier);
     }
 
     private List<SplunkEvent> nonBlockingSearch(SplunkResultProcessor callback) throws Exception {
@@ -264,24 +276,21 @@ public class SplunkDataReader {
         Job job = service.getJobs().create(getSearch(), queryArgs);
         LOG.debug("Running search : {} with queryArgs : {}", getSearch(), queryArgs);
         if (realtime) {
-            while (!job.isReady()) {
-                Thread.sleep(500);
-            }
+            waitForJob(500, job::isReady);
             // Besides job.isReady there must be some delay before real time job
             // is ready
             // TODO seems that the realtime stream is not quite isReady to be
             // read
             Thread.sleep(4000);
         } else {
-            while (!job.isDone()) {
-                Thread.sleep(500);
-            }
+            waitForJob(500, job::isDone);
+
         }
         return extractData(job, realtime, callback);
     }
 
     private List<SplunkEvent> extractData(Job job, boolean realtime, SplunkResultProcessor callback) throws Exception {
-        List<SplunkEvent> result = new ArrayList<SplunkEvent>();
+        List<SplunkEvent> result = new ArrayList<>();
         HashMap<String, String> data;
         SplunkEvent splunkData;
         ResultsReader resultsReader = null;

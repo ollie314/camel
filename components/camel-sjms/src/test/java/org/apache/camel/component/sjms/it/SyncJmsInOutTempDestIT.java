@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,14 +22,13 @@ import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.component.sjms.support.JmsTestSupport;
 import org.apache.camel.util.StopWatch;
+import org.junit.jupiter.api.Test;
 
-import org.junit.Test;
-
+import static org.apache.camel.test.junit5.TestSupport.body;
 
 /**
- * Integration test that verifies the ability of SJMS to correctly process
- * synchronous InOut exchanges from both the Producer and Consumer perspective
- * using a temporary destination.
+ * Integration test that verifies the ability of SJMS to correctly process synchronous InOut exchanges from both the
+ * Producer and Consumer perspective using a temporary destination.
  */
 public class SyncJmsInOutTempDestIT extends JmsTestSupport {
 
@@ -42,27 +41,27 @@ public class SyncJmsInOutTempDestIT extends JmsTestSupport {
         StopWatch watch = new StopWatch();
 
         for (int i = 0; i < 100; i++) {
-            template.sendBody("seda:start", "" + i);
+            template.sendBody("seda:start.SyncJmsInOutTempDestIT", Integer.toString(i));
         }
 
         // just in case we run on slow boxes
-        assertMockEndpointsSatisfied(20, TimeUnit.SECONDS);
+        MockEndpoint.assertIsSatisfied(context, 20, TimeUnit.SECONDS);
 
-        log.info("Took " + watch.stop() + " ms. to process 100 messages request/reply over JMS");
+        log.info("Took {} ms. to process 100 messages request/reply over JMS", watch.taken());
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("seda:start")
-                    .to("sjms:in.foo.tempQ?exchangePattern=InOut")
-                    .to("mock:result");
+            public void configure() {
+                from("seda:start.SyncJmsInOutTempDestIT")
+                        .to("sjms:in.foo.tempQ.SyncJmsInOutTempDestIT?exchangePattern=InOut")
+                        .to("mock:result");
 
-                from("sjms:in.foo.tempQ?exchangePattern=InOut")
-                    .log("Using ${threadName} to process ${body}")
-                    .transform(body().prepend("Bye "));
+                from("sjms:in.foo.tempQ.SyncJmsInOutTempDestIT?exchangePattern=InOut")
+                        .log("Using ${threadName} to process ${body}")
+                        .transform(body().prepend("Bye "));
             }
         };
     }

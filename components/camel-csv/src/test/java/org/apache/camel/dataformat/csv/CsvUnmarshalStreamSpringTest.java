@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,25 +21,27 @@ import java.util.List;
 
 import org.apache.camel.EndpointInject;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.spring.CamelSpringTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.spring.junit5.CamelSpringTestSupport;
+import org.junit.jupiter.api.Test;
 import org.springframework.context.support.AbstractApplicationContext;
 import org.springframework.context.support.ClassPathXmlApplicationContext;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class CsvUnmarshalStreamSpringTest extends CamelSpringTestSupport {
 
     private static final String CSV_SAMPLE = "A,B,C\r1,2,3\rone,two,three";
 
-    @EndpointInject(uri = "mock:line")
+    @EndpointInject("mock:line")
     private MockEndpoint line;
 
     @Test
-    public void testCsvUnMarshal() throws Exception {
+    void testCsvUnMarshal() throws Exception {
         line.expectedMessageCount(3);
 
         template.sendBody("direct:start", CSV_SAMPLE);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         List body1 = line.getExchanges().get(0).getIn().getBody(List.class);
         List body2 = line.getExchanges().get(1).getIn().getBody(List.class);

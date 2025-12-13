@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,14 +24,13 @@ public class HttpRestHeaderFilterStrategy extends HttpHeaderFilterStrategy {
     private final String queryParameters;
 
     public HttpRestHeaderFilterStrategy(String templateUri, String queryParameters) {
-        super();
         this.templateUri = templateUri;
         this.queryParameters = queryParameters;
     }
 
     @Override
     public boolean applyFilterToCamelHeaders(String headerName, Object headerValue, Exchange exchange) {
-        boolean answer = super.applyFilterToExternalHeaders(headerName, headerValue, exchange);
+        boolean answer = super.applyFilterToCamelHeaders(headerName, headerValue, exchange);
         // using rest producer then headers are mapping to uri and query parameters using {key} syntax
         // if there is a match to an existing Camel Message header, then we should filter (=true) this
         // header as its already been mapped by the RestProducer from camel-core, and we do not want
@@ -44,9 +43,16 @@ public class HttpRestHeaderFilterStrategy extends HttpHeaderFilterStrategy {
                 }
             }
             if (!answer && queryParameters != null) {
-                String token = "=%7B" + headerName + "%7D"; // encoded values for { }
-                if (queryParameters.contains(token)) {
-                    answer = true;
+                String[] tokens = new String[4];
+                tokens[0] = "={" + headerName + "}";
+                tokens[1] = "={" + headerName + "?}";
+                tokens[2] = "=%7B" + headerName + "%7D";
+                tokens[3] = "=%7B" + headerName + "%3F%7D";
+                for (String token : tokens) {
+                    if (queryParameters.contains(token)) {
+                        answer = true;
+                        break;
+                    }
                 }
             }
         }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,47 +18,45 @@ package org.apache.camel.component.cm;
 
 import java.util.Map;
 import java.util.Set;
-import javax.validation.ConstraintViolation;
-import javax.validation.Validation;
-import javax.validation.Validator;
-import javax.validation.ValidatorFactory;
+
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+import jakarta.validation.ValidatorFactory;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
 import org.apache.camel.ResolveEndpointFailedException;
-import org.apache.camel.impl.UriEndpointComponent;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.camel.spi.annotations.Component;
+import org.apache.camel.support.DefaultComponent;
 
 /**
  * Represents the component that manages {@link CMEndpoint}s.
  */
-public class CMComponent extends UriEndpointComponent {
-
-    private static final Logger LOG = LoggerFactory.getLogger(CMComponent.class);
+@Component("cm-sms")
+public class CMComponent extends DefaultComponent {
 
     private Validator validator;
 
     public CMComponent() {
-        super(CMEndpoint.class);
     }
 
     public CMComponent(final CamelContext context) {
-        super(context, CMEndpoint.class);
+        super(context);
     }
 
     @Override
-    protected Endpoint createEndpoint(final String uri, final String remaining, final Map<String, Object> parameters) throws Exception {
-
-        // Set configuration based on uri parameters
-        final CMConfiguration config = new CMConfiguration();
-        setProperties(config, parameters);
+    protected Endpoint createEndpoint(final String uri, final String remaining, final Map<String, Object> parameters)
+            throws Exception {
+        CMEndpoint endpoint = new CMEndpoint(uri, this);
+        endpoint.setHost(remaining);
+        setProperties(endpoint, parameters);
 
         // Validate configuration
-        LOG.debug("Validating uri based configuration");
-        final Set<ConstraintViolation<CMConfiguration>> constraintViolations = getValidator().validate(config);
-        if (constraintViolations.size() > 0) {
-            final StringBuffer msg = new StringBuffer();
+        final Set<ConstraintViolation<CMConfiguration>> constraintViolations
+                = getValidator().validate(endpoint.getConfiguration());
+        if (!constraintViolations.isEmpty()) {
+            final StringBuilder msg = new StringBuilder();
             for (final ConstraintViolation<CMConfiguration> cv : constraintViolations) {
                 msg.append(String.format("- Invalid value for %s: %s",
                         cv.getPropertyPath().toString(),
@@ -66,13 +64,6 @@ public class CMComponent extends UriEndpointComponent {
             }
             throw new ResolveEndpointFailedException(uri, msg.toString());
         }
-
-        // Component is an Endpoint factory. So far, just one Endpoint type.
-        // Endpoint construction and configuration.
-
-        final CMEndpoint endpoint = new CMEndpoint(uri, this);
-        endpoint.setConfiguration(config);
-        endpoint.setHost(remaining);
 
         return endpoint;
     }
@@ -84,5 +75,4 @@ public class CMComponent extends UriEndpointComponent {
         }
         return validator;
     }
-
 }

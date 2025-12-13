@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,18 +18,19 @@ package org.apache.camel.component.mina;
 
 import java.util.ArrayList;
 import java.util.List;
-import javax.naming.Context;
 
 import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
 import org.apache.camel.Producer;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.util.jndi.JndiContext;
-import org.apache.mina.common.IoFilter;
-import org.apache.mina.common.IoFilterAdapter;
-import org.apache.mina.common.IoSession;
-import org.junit.Test;
+import org.apache.camel.spi.Registry;
+import org.apache.mina.core.filterchain.IoFilter;
+import org.apache.mina.core.filterchain.IoFilterAdapter;
+import org.apache.mina.core.session.IoSession;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * For unit testing the <tt>filters</tt> option.
@@ -38,24 +39,25 @@ public class MinaFiltersTest extends BaseMinaTest {
 
     @Test
     public void testFilterListRef() throws Exception {
-        testFilter(String.format("mina:tcp://localhost:%1$s?textline=true&minaLogger=true&sync=false&filters=#myFilters", getPort()));
+        testFilter(String.format("mina:tcp://localhost:%1$s?textline=true&minaLogger=true&sync=false&filters=#myFilters",
+                getPort()));
     }
 
     @Test
     public void testFilterElementRef() throws Exception {
-        testFilter(String.format("mina:tcp://localhost:%1$s?textline=true&minaLogger=true&sync=false&filters=#myFilter", getPort()));
+        testFilter(String.format("mina:tcp://localhost:%1$s?textline=true&minaLogger=true&sync=false&filters=#myFilter",
+                getPort()));
     }
 
     @Override
-    public void setUp() throws Exception {
+    public void doPostTearDown() {
         TestFilter.called = 0;
-        super.setUp();
     }
 
     private void testFilter(final String uri) throws Exception {
         context.addRoutes(new RouteBuilder() {
 
-            public void configure() throws Exception {
+            public void configure() {
                 from(uri).to("mock:result");
             }
         });
@@ -72,23 +74,21 @@ public class MinaFiltersTest extends BaseMinaTest {
         exchange.getIn().setBody("Hello World");
         producer.process(exchange);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
-        assertEquals("The filter should have been called twice (producer and consumer)", 2, TestFilter.called);
+        assertEquals(2, TestFilter.called, "The filter should have been called twice (producer and consumer)");
 
         producer.stop();
     }
 
     @Override
-    protected Context createJndiContext() throws Exception {
-        JndiContext answer = new JndiContext();
+    protected void bindToRegistry(Registry registry) {
         IoFilter myFilter = new TestFilter();
-        List<IoFilter> myFilters = new ArrayList<IoFilter>();
+        List<IoFilter> myFilters = new ArrayList<>();
         myFilters.add(myFilter);
 
-        answer.bind("myFilters", myFilters);
-        answer.bind("myFilter", myFilter);
-        return answer;
+        registry.bind("myFilters", myFilters);
+        registry.bind("myFilter", myFilter);
     }
 
     public static final class TestFilter extends IoFilterAdapter {
@@ -96,7 +96,7 @@ public class MinaFiltersTest extends BaseMinaTest {
         public static volatile int called;
 
         @Override
-        public void sessionCreated(NextFilter nextFilter, IoSession session) throws Exception {
+        public void sessionCreated(NextFilter nextFilter, IoSession session) {
             incCalled();
             nextFilter.sessionCreated(session);
         }
@@ -105,6 +105,4 @@ public class MinaFiltersTest extends BaseMinaTest {
             called++;
         }
     }
-
 }
-

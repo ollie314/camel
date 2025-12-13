@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,29 +24,34 @@ import java.util.Map;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class ProducerBatchTest extends CamelTestSupport {
 
     private EmbeddedDatabase db;
 
-    @Before
-    public void setUp() throws Exception {
+    @Override
+
+    public void doPreSetup() throws Exception {
         db = new EmbeddedDatabaseBuilder()
-                .setType(EmbeddedDatabaseType.DERBY).addScript("sql/storedProcedureTest.sql").build();
-        super.setUp();
+                .setName(getClass().getSimpleName())
+                .setType(EmbeddedDatabaseType.DERBY)
+                .addScript("sql/storedProcedureTest.sql").build();
+
     }
 
-    @After
-    public void tearDown() throws Exception {
-        super.tearDown();
-        db.shutdown();
+    @Override
+    public void doPostTearDown() throws Exception {
+        if (db != null) {
+            db.shutdown();
+        }
     }
 
     @Test
@@ -54,14 +59,12 @@ public class ProducerBatchTest extends CamelTestSupport {
         MockEndpoint mock = getMockEndpoint("mock:query");
         mock.expectedMessageCount(1);
 
-
-        List<Map> batchParams = new ArrayList<>();
+        List<Map<String, Object>> batchParams = new ArrayList<>();
 
         Map<String, Object> batch1 = new HashMap<>();
         batchParams.add(batch1);
 
         batch1.put("num", "1");
-
 
         Map<String, Object> batch2 = new HashMap<>();
 
@@ -72,7 +75,7 @@ public class ProducerBatchTest extends CamelTestSupport {
 
         template.requestBody("direct:query", batchParams);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         Exchange exchange = mock.getExchanges().get(0);
 
@@ -81,10 +84,10 @@ public class ProducerBatchTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // required for the sql component
                 getContext().getComponent("sql-stored", SqlStoredComponent.class).setDataSource(db);
 

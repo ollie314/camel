@@ -1,12 +1,22 @@
-[[AsteriskComponent-AsteriskComponent]]
-Asterisk Component
-~~~~~~~~~~~~~~~~~~~
+= Asterisk Component
+:doctitle: Asterisk
+:shortname: asterisk
+:artifactid: camel-asterisk
+:description: Interact with Asterisk PBX Server (VoIP).
+:since: 2.18
+:supportlevel: Stable
+:tabs-sync-option:
+:component-header: Both producer and consumer are supported
+//Manually maintained attributes
+:camel-spring-boot-name: asterisk
 
-*Available as of Camel 2.18*
+*Since Camel {since}*
 
-The *asterisk:* component allows you to work easily with an Asterisk PBX Server http://www.asterisk.org/ using https://asterisk-java.org/[asterisk-java]
+*{component-header}*
 
-This component help to interface with http://www.voip-info.org/wiki-Asterisk+manager+API[Asterisk Manager Interface]
+The Asterisk component allows you to work easily with an Asterisk PBX Server http://www.asterisk.org/ using https://asterisk-java.org/[asterisk-java]
+
+This component helps to interface with http://www.voip-info.org/wiki-Asterisk+manager+API[Asterisk Manager Interface]
 
 Maven users will need to add the following dependency to their `pom.xml`
 for this component:
@@ -21,48 +31,43 @@ for this component:
 </dependency>
 ------------------------------------------------------------
 
-[[AsteriskComponent-URIformat]]
-URI format
-^^^^^^^^^^
+== URI format
 
-[source,java]
--------------------------------------------------------------------------------------------------------------------------
+----
 asterisk:name[?options]
--------------------------------------------------------------------------------------------------------------------------
-
-[[AsteriskComponent-Options]]
-Options
-^^^^^^^
+----
 
 // component options: START
-The Asterisk component has no options.
+include::partial$component-configure-options.adoc[]
+include::partial$component-endpoint-options.adoc[]
+include::partial$component-endpoint-headers.adoc[]
 // component options: END
 
-// endpoint options: START
-The Asterisk component supports 9 endpoint options which are listed below:
+== Action
 
-{% raw %}
-[width="100%",cols="2,1,1m,1m,5",options="header"]
-|=======================================================================
-| Name | Group | Default | Java Type | Description
-| name | common |  | String | *Required* Logical name
-| hostname | common |  | String | The hostname of the asterix server
-| password | common |  | String | Login password
-| username | common |  | String | Login username
-| bridgeErrorHandler | consumer | false | boolean | Allows for bridging the consumer to the Camel routing Error Handler which mean any exceptions occurred while the consumer is trying to pickup incoming messages or the likes will now be processed as a message and handled by the routing Error Handler. By default the consumer will use the org.apache.camel.spi.ExceptionHandler to deal with exceptions that will be logged at WARN/ERROR level and ignored.
-| exceptionHandler | consumer (advanced) |  | ExceptionHandler | To let the consumer use a custom ExceptionHandler. Notice if the option bridgeErrorHandler is enabled then this options is not in use. By default the consumer will deal with exceptions that will be logged at WARN/ERROR level and ignored.
-| exchangePattern | consumer (advanced) |  | ExchangePattern | Sets the exchange pattern when the consumer creates an exchange.
-| action | producer |  | AsteriskActionEnum | What action to perform such as getting queue status sip peers or extension state.
-| synchronous | advanced | false | boolean | Sets whether synchronous processing should be strictly used or Camel is allowed to use asynchronous processing (if supported).
-|=======================================================================
-{% endraw %}
-// endpoint options: END
-
-[[Asterisk-Actions]]
-Action
-^^^^^^
 Supported actions are:
 
-* QUEUE_STATUS, Queue Status
-* SIP_PEERS, List SIP Peers
-* EXTENSION_STATE, Check Extension Status
+* QUEUE_STATUS: Queue status
+* SIP_PEERS: List SIP peers
+* EXTENSION_STATE: Check extension status
+
+== Examples
+
+=== Producer Example
+
+[source,java]
+--------------------------------------------------------------------------------
+from("direct:in")
+  .to("asterisk://myVoIP?hostname=hostname&username=username&password=password&action=EXTENSION_STATE")
+--------------------------------------------------------------------------------
+
+=== Consumer Example
+
+[source,java]
+--------------------------------------------------------------------------------
+from("asterisk:myVoIP?hostname=hostname&username=username&password=password")
+  .log("Received a message - ${body}");
+--------------------------------------------------------------------------------
+
+
+include::spring-boot:partial$starter.adoc[]

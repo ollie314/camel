@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,18 +16,21 @@
  */
 package org.apache.camel.component.salesforce.api.dto.bulk;
 
-import javax.xml.bind.annotation.XmlAccessType;
-import javax.xml.bind.annotation.XmlAccessorType;
-import javax.xml.bind.annotation.XmlSchemaType;
-import javax.xml.bind.annotation.XmlType;
+import jakarta.xml.bind.annotation.XmlAccessType;
+import jakarta.xml.bind.annotation.XmlAccessorType;
+import jakarta.xml.bind.annotation.XmlSchemaType;
+import jakarta.xml.bind.annotation.XmlType;
+
 import javax.xml.datatype.XMLGregorianCalendar;
 
-
 /**
- * <p>Java class for JobInfo complex type.
+ * <p>
+ * Java class for JobInfo complex type.
  * <p/>
- * <p>The following schema fragment specifies the expected content contained within this class.
+ * <p>
+ * The following schema fragment specifies the expected content contained within this class.
  * <p/>
+ *
  * <pre>
  * &lt;complexType name="JobInfo">
  *   &lt;complexContent>
@@ -63,31 +66,15 @@ import javax.xml.datatype.XMLGregorianCalendar;
  * </pre>
  */
 @XmlAccessorType(XmlAccessType.FIELD)
-@XmlType(name = "JobInfo", propOrder = {
-        "id",
-        "operation",
-        "object",
-        "createdById",
-        "createdDate",
-        "systemModstamp",
-        "state",
-        "externalIdFieldName",
-        "concurrencyMode",
-        "contentType",
-        "numberBatchesQueued",
-        "numberBatchesInProgress",
-        "numberBatchesCompleted",
-        "numberBatchesFailed",
-        "numberBatchesTotal",
-        "numberRecordsProcessed",
-        "numberRetries",
-        "apiVersion",
-        "assignmentRuleId",
-        "numberRecordsFailed",
-        "totalProcessingTime",
-        "apiActiveProcessingTime",
-        "apexProcessingTime"
-        })
+@XmlType(name = "JobInfo",
+         propOrder = {
+                 "id", "operation", "object", "createdById", "createdDate", "systemModstamp", "state", "externalIdFieldName",
+                 "concurrencyMode",
+                 "contentType", "numberBatchesQueued", "numberBatchesInProgress", "numberBatchesCompleted",
+                 "numberBatchesFailed", "numberBatchesTotal",
+                 "numberRecordsProcessed", "numberRetries", "apiVersion", "assignmentRuleId", "numberRecordsFailed",
+                 "totalProcessingTime",
+                 "apiActiveProcessingTime", "apexProcessingTime" })
 public class JobInfo {
 
     protected String id;
@@ -119,8 +106,7 @@ public class JobInfo {
     /**
      * Gets the value of the id property.
      *
-     * @return possible object is
-     *         {@link String }
+     * @return possible object is {@link String }
      */
     public String getId() {
         return id;
@@ -129,8 +115,7 @@ public class JobInfo {
     /**
      * Sets the value of the id property.
      *
-     * @param value allowed object is
-     *              {@link String }
+     * @param value allowed object is {@link String }
      */
     public void setId(String value) {
         this.id = value;
@@ -139,8 +124,7 @@ public class JobInfo {
     /**
      * Gets the value of the operation property.
      *
-     * @return possible object is
-     *         {@link OperationEnum }
+     * @return possible object is {@link OperationEnum }
      */
     public OperationEnum getOperation() {
         return operation;
@@ -149,8 +133,7 @@ public class JobInfo {
     /**
      * Sets the value of the operation property.
      *
-     * @param value allowed object is
-     *              {@link OperationEnum }
+     * @param value allowed object is {@link OperationEnum }
      */
     public void setOperation(OperationEnum value) {
         this.operation = value;
@@ -159,8 +142,7 @@ public class JobInfo {
     /**
      * Gets the value of the object property.
      *
-     * @return possible object is
-     *         {@link String }
+     * @return possible object is {@link String }
      */
     public String getObject() {
         return object;
@@ -169,8 +151,7 @@ public class JobInfo {
     /**
      * Sets the value of the object property.
      *
-     * @param value allowed object is
-     *              {@link String }
+     * @param value allowed object is {@link String }
      */
     public void setObject(String value) {
         this.object = value;
@@ -179,8 +160,7 @@ public class JobInfo {
     /**
      * Gets the value of the createdById property.
      *
-     * @return possible object is
-     *         {@link String }
+     * @return possible object is {@link String }
      */
     public String getCreatedById() {
         return createdById;
@@ -189,8 +169,7 @@ public class JobInfo {
     /**
      * Sets the value of the createdById property.
      *
-     * @param value allowed object is
-     *              {@link String }
+     * @param value allowed object is {@link String }
      */
     public void setCreatedById(String value) {
         this.createdById = value;
@@ -199,8 +178,7 @@ public class JobInfo {
     /**
      * Gets the value of the createdDate property.
      *
-     * @return possible object is
-     *         {@link javax.xml.datatype.XMLGregorianCalendar }
+     * @return possible object is {@link javax.xml.datatype.XMLGregorianCalendar }
      */
     public XMLGregorianCalendar getCreatedDate() {
         return createdDate;
@@ -209,8 +187,7 @@ public class JobInfo {
     /**
      * Sets the value of the createdDate property.
      *
-     * @param value allowed object is
-     *              {@link javax.xml.datatype.XMLGregorianCalendar }
+     * @param value allowed object is {@link javax.xml.datatype.XMLGregorianCalendar }
      */
     public void setCreatedDate(XMLGregorianCalendar value) {
         this.createdDate = value;
@@ -219,8 +196,7 @@ public class JobInfo {
     /**
      * Gets the value of the systemModstamp property.
      *
-     * @return possible object is
-     *         {@link javax.xml.datatype.XMLGregorianCalendar }
+     * @return possible object is {@link javax.xml.datatype.XMLGregorianCalendar }
      */
     public XMLGregorianCalendar getSystemModstamp() {
         return systemModstamp;
@@ -229,8 +205,7 @@ public class JobInfo {
     /**
      * Sets the value of the systemModstamp property.
      *
-     * @param value allowed object is
-     *              {@link javax.xml.datatype.XMLGregorianCalendar }
+     * @param value allowed object is {@link javax.xml.datatype.XMLGregorianCalendar }
      */
     public void setSystemModstamp(XMLGregorianCalendar value) {
         this.systemModstamp = value;
@@ -239,8 +214,7 @@ public class JobInfo {
     /**
      * Gets the value of the state property.
      *
-     * @return possible object is
-     *         {@link JobStateEnum }
+     * @return possible object is {@link JobStateEnum }
      */
     public JobStateEnum getState() {
         return state;
@@ -249,8 +223,7 @@ public class JobInfo {
     /**
      * Sets the value of the state property.
      *
-     * @param value allowed object is
-     *              {@link JobStateEnum }
+     * @param value allowed object is {@link JobStateEnum }
      */
     public void setState(JobStateEnum value) {
         this.state = value;
@@ -259,8 +232,7 @@ public class JobInfo {
     /**
      * Gets the value of the externalIdFieldName property.
      *
-     * @return possible object is
-     *         {@link String }
+     * @return possible object is {@link String }
      */
     public String getExternalIdFieldName() {
         return externalIdFieldName;
@@ -269,8 +241,7 @@ public class JobInfo {
     /**
      * Sets the value of the externalIdFieldName property.
      *
-     * @param value allowed object is
-     *              {@link String }
+     * @param value allowed object is {@link String }
      */
     public void setExternalIdFieldName(String value) {
         this.externalIdFieldName = value;
@@ -279,8 +250,7 @@ public class JobInfo {
     /**
      * Gets the value of the concurrencyMode property.
      *
-     * @return possible object is
-     *         {@link ConcurrencyModeEnum }
+     * @return possible object is {@link ConcurrencyModeEnum }
      */
     public ConcurrencyModeEnum getConcurrencyMode() {
         return concurrencyMode;
@@ -289,8 +259,7 @@ public class JobInfo {
     /**
      * Sets the value of the concurrencyMode property.
      *
-     * @param value allowed object is
-     *              {@link ConcurrencyModeEnum }
+     * @param value allowed object is {@link ConcurrencyModeEnum }
      */
     public void setConcurrencyMode(ConcurrencyModeEnum value) {
         this.concurrencyMode = value;
@@ -299,8 +268,7 @@ public class JobInfo {
     /**
      * Gets the value of the contentType property.
      *
-     * @return possible object is
-     *         {@link ContentType }
+     * @return possible object is {@link ContentType }
      */
     public ContentType getContentType() {
         return contentType;
@@ -309,8 +277,7 @@ public class JobInfo {
     /**
      * Sets the value of the contentType property.
      *
-     * @param value allowed object is
-     *              {@link ContentType }
+     * @param value allowed object is {@link ContentType }
      */
     public void setContentType(ContentType value) {
         this.contentType = value;
@@ -319,8 +286,7 @@ public class JobInfo {
     /**
      * Gets the value of the numberBatchesQueued property.
      *
-     * @return possible object is
-     *         {@link Integer }
+     * @return possible object is {@link Integer }
      */
     public Integer getNumberBatchesQueued() {
         return numberBatchesQueued;
@@ -329,8 +295,7 @@ public class JobInfo {
     /**
      * Sets the value of the numberBatchesQueued property.
      *
-     * @param value allowed object is
-     *              {@link Integer }
+     * @param value allowed object is {@link Integer }
      */
     public void setNumberBatchesQueued(Integer value) {
         this.numberBatchesQueued = value;
@@ -339,8 +304,7 @@ public class JobInfo {
     /**
      * Gets the value of the numberBatchesInProgress property.
      *
-     * @return possible object is
-     *         {@link Integer }
+     * @return possible object is {@link Integer }
      */
     public Integer getNumberBatchesInProgress() {
         return numberBatchesInProgress;
@@ -349,8 +313,7 @@ public class JobInfo {
     /**
      * Sets the value of the numberBatchesInProgress property.
      *
-     * @param value allowed object is
-     *              {@link Integer }
+     * @param value allowed object is {@link Integer }
      */
     public void setNumberBatchesInProgress(Integer value) {
         this.numberBatchesInProgress = value;
@@ -359,8 +322,7 @@ public class JobInfo {
     /**
      * Gets the value of the numberBatchesCompleted property.
      *
-     * @return possible object is
-     *         {@link Integer }
+     * @return possible object is {@link Integer }
      */
     public Integer getNumberBatchesCompleted() {
         return numberBatchesCompleted;
@@ -369,8 +331,7 @@ public class JobInfo {
     /**
      * Sets the value of the numberBatchesCompleted property.
      *
-     * @param value allowed object is
-     *              {@link Integer }
+     * @param value allowed object is {@link Integer }
      */
     public void setNumberBatchesCompleted(Integer value) {
         this.numberBatchesCompleted = value;
@@ -379,8 +340,7 @@ public class JobInfo {
     /**
      * Gets the value of the numberBatchesFailed property.
      *
-     * @return possible object is
-     *         {@link Integer }
+     * @return possible object is {@link Integer }
      */
     public Integer getNumberBatchesFailed() {
         return numberBatchesFailed;
@@ -389,8 +349,7 @@ public class JobInfo {
     /**
      * Sets the value of the numberBatchesFailed property.
      *
-     * @param value allowed object is
-     *              {@link Integer }
+     * @param value allowed object is {@link Integer }
      */
     public void setNumberBatchesFailed(Integer value) {
         this.numberBatchesFailed = value;
@@ -399,8 +358,7 @@ public class JobInfo {
     /**
      * Gets the value of the numberBatchesTotal property.
      *
-     * @return possible object is
-     *         {@link Integer }
+     * @return possible object is {@link Integer }
      */
     public Integer getNumberBatchesTotal() {
         return numberBatchesTotal;
@@ -409,8 +367,7 @@ public class JobInfo {
     /**
      * Sets the value of the numberBatchesTotal property.
      *
-     * @param value allowed object is
-     *              {@link Integer }
+     * @param value allowed object is {@link Integer }
      */
     public void setNumberBatchesTotal(Integer value) {
         this.numberBatchesTotal = value;
@@ -419,8 +376,7 @@ public class JobInfo {
     /**
      * Gets the value of the numberRecordsProcessed property.
      *
-     * @return possible object is
-     *         {@link Integer }
+     * @return possible object is {@link Integer }
      */
     public Integer getNumberRecordsProcessed() {
         return numberRecordsProcessed;
@@ -429,8 +385,7 @@ public class JobInfo {
     /**
      * Sets the value of the numberRecordsProcessed property.
      *
-     * @param value allowed object is
-     *              {@link Integer }
+     * @param value allowed object is {@link Integer }
      */
     public void setNumberRecordsProcessed(Integer value) {
         this.numberRecordsProcessed = value;
@@ -439,8 +394,7 @@ public class JobInfo {
     /**
      * Gets the value of the numberRetries property.
      *
-     * @return possible object is
-     *         {@link Integer }
+     * @return possible object is {@link Integer }
      */
     public Integer getNumberRetries() {
         return numberRetries;
@@ -449,8 +403,7 @@ public class JobInfo {
     /**
      * Sets the value of the numberRetries property.
      *
-     * @param value allowed object is
-     *              {@link Integer }
+     * @param value allowed object is {@link Integer }
      */
     public void setNumberRetries(Integer value) {
         this.numberRetries = value;
@@ -459,8 +412,7 @@ public class JobInfo {
     /**
      * Gets the value of the apiVersion property.
      *
-     * @return possible object is
-     *         {@link String }
+     * @return possible object is {@link String }
      */
     public String getApiVersion() {
         return apiVersion;
@@ -469,8 +421,7 @@ public class JobInfo {
     /**
      * Sets the value of the apiVersion property.
      *
-     * @param value allowed object is
-     *              {@link String }
+     * @param value allowed object is {@link String }
      */
     public void setApiVersion(String value) {
         this.apiVersion = value;
@@ -479,8 +430,7 @@ public class JobInfo {
     /**
      * Gets the value of the assignmentRuleId property.
      *
-     * @return possible object is
-     *         {@link String }
+     * @return possible object is {@link String }
      */
     public String getAssignmentRuleId() {
         return assignmentRuleId;
@@ -489,8 +439,7 @@ public class JobInfo {
     /**
      * Sets the value of the assignmentRuleId property.
      *
-     * @param value allowed object is
-     *              {@link String }
+     * @param value allowed object is {@link String }
      */
     public void setAssignmentRuleId(String value) {
         this.assignmentRuleId = value;
@@ -499,8 +448,7 @@ public class JobInfo {
     /**
      * Gets the value of the numberRecordsFailed property.
      *
-     * @return possible object is
-     *         {@link Integer }
+     * @return possible object is {@link Integer }
      */
     public Integer getNumberRecordsFailed() {
         return numberRecordsFailed;
@@ -509,8 +457,7 @@ public class JobInfo {
     /**
      * Sets the value of the numberRecordsFailed property.
      *
-     * @param value allowed object is
-     *              {@link Integer }
+     * @param value allowed object is {@link Integer }
      */
     public void setNumberRecordsFailed(Integer value) {
         this.numberRecordsFailed = value;
@@ -519,8 +466,7 @@ public class JobInfo {
     /**
      * Gets the value of the totalProcessingTime property.
      *
-     * @return possible object is
-     *         {@link Long }
+     * @return possible object is {@link Long }
      */
     public Long getTotalProcessingTime() {
         return totalProcessingTime;
@@ -529,8 +475,7 @@ public class JobInfo {
     /**
      * Sets the value of the totalProcessingTime property.
      *
-     * @param value allowed object is
-     *              {@link Long }
+     * @param value allowed object is {@link Long }
      */
     public void setTotalProcessingTime(Long value) {
         this.totalProcessingTime = value;
@@ -539,8 +484,7 @@ public class JobInfo {
     /**
      * Gets the value of the apiActiveProcessingTime property.
      *
-     * @return possible object is
-     *         {@link Long }
+     * @return possible object is {@link Long }
      */
     public Long getApiActiveProcessingTime() {
         return apiActiveProcessingTime;
@@ -549,8 +493,7 @@ public class JobInfo {
     /**
      * Sets the value of the apiActiveProcessingTime property.
      *
-     * @param value allowed object is
-     *              {@link Long }
+     * @param value allowed object is {@link Long }
      */
     public void setApiActiveProcessingTime(Long value) {
         this.apiActiveProcessingTime = value;
@@ -559,8 +502,7 @@ public class JobInfo {
     /**
      * Gets the value of the apexProcessingTime property.
      *
-     * @return possible object is
-     *         {@link Long }
+     * @return possible object is {@link Long }
      */
     public Long getApexProcessingTime() {
         return apexProcessingTime;
@@ -569,8 +511,7 @@ public class JobInfo {
     /**
      * Sets the value of the apexProcessingTime property.
      *
-     * @param value allowed object is
-     *              {@link Long }
+     * @param value allowed object is {@link Long }
      */
     public void setApexProcessingTime(Long value) {
         this.apexProcessingTime = value;

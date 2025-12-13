@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,21 +18,28 @@ package org.apache.camel.component.atom;
 
 import java.util.List;
 
-import org.apache.abdera.model.Feed;
+import com.apptasticsoftware.rssreader.Item;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * Unit test for AtomPollingConsumer
  */
+@DisabledOnOs(OS.AIX)
 public class AtomPollingConsumerTest extends CamelTestSupport {
 
     @Test
-    public void testNoSplitEntries() throws Exception {
+    void testNoSplitEntries() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMessageCount(1);
         mock.assertIsSatisfied();
@@ -40,35 +47,37 @@ public class AtomPollingConsumerTest extends CamelTestSupport {
         Exchange exchange = mock.getExchanges().get(0);
         Message in = exchange.getIn();
         assertNotNull(in);
-        assertTrue(in.getBody() instanceof List);
-        assertTrue(in.getHeader(AtomConstants.ATOM_FEED) instanceof Feed);
+        assertInstanceOf(List.class, in.getBody());
+        assertInstanceOf(List.class, in.getHeader(AtomConstants.ATOM_FEED));
 
-        Feed feed = in.getHeader(AtomConstants.ATOM_FEED, Feed.class);
-        assertEquals("James Strachan", feed.getAuthor().getName());
+        List feed = in.getHeader(AtomConstants.ATOM_FEED, List.class);
+        Item item = (Item) feed.get(0);
+        assertEquals("James Strachan", item.getAuthor().get());
 
         List<?> entries = in.getBody(List.class);
         assertEquals(7, entries.size());
     }
 
     @Test
-    public void testUsingAtomUriParameter() throws Exception {
+    void testUsingAtomUriParameter() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:result2");
         mock.expectedMessageCount(1);
         mock.assertIsSatisfied();
     }
 
     @Test
-    public void testNoCamelParametersInFeedUri() throws Exception {
+    void testNoCamelParametersInFeedUri() {
         AtomEndpoint endpoint = context.getEndpoint("atom:file:src/test/data/feed.atom?splitEntries=false", AtomEndpoint.class);
         assertEquals("file:src/test/data/feed.atom", endpoint.getFeedUri());
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 from("atom:file:src/test/data/feed.atom?splitEntries=false").to("mock:result");
 
-                // this is a bit weird syntax that normally is not used using the feedUri parameter
+                // this is a bit weird syntax that normally is not using the feedUri parameter
                 from("atom:?feedUri=file:src/test/data/feed.atom&splitEntries=false").to("mock:result2");
             }
         };

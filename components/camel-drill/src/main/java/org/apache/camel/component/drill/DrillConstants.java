@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,7 +16,11 @@
  */
 package org.apache.camel.component.drill;
 
+import org.apache.camel.spi.Metadata;
+
 public final class DrillConstants {
+
+    @Metadata(description = "The drill query", javaType = "String")
     public static final String DRILL_QUERY = "CamelDrillQuery";
 
     public static final String DRILL_DRIVER = "org.apache.drill.jdbc.Driver";

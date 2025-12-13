@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,23 +16,25 @@
  */
 package org.apache.camel.component.sjms.producer;
 
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.TextMessage;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.TextMessage;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.component.sjms.support.JmsTestSupport;
+import org.junit.jupiter.api.Test;
 
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class QueueProducerTest extends JmsTestSupport {
-    
-    private static final String TEST_DESTINATION_NAME = "test.foo";
-    
+
+    private static final String TEST_DESTINATION_NAME = "test.foo.QueueProducerTest";
+
     public QueueProducerTest() {
     }
-    
+
     @Override
     protected boolean useJmx() {
         return false;
@@ -52,33 +54,27 @@ public class QueueProducerTest extends JmsTestSupport {
         Message message = mc.receive(5000);
         assertNotNull(message);
         assertTrue(message instanceof TextMessage);
-        
+
         TextMessage tm = (TextMessage) message;
         String text = tm.getText();
         assertNotNull(text);
-        
+
         template.sendBody("direct:finish", text);
-        
+
         mock.assertIsSatisfied();
         mc.close();
 
     }
 
-    /**
-     * @see org.apache.camel.test.junit4.CamelTestSupport#createRouteBuilder()
-     *
-     * @return
-     * @throws Exception
-     */
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
                 from("direct:start")
-                    .to("sjms:queue:" + TEST_DESTINATION_NAME);
-                
+                        .to("sjms:queue:" + TEST_DESTINATION_NAME);
+
                 from("direct:finish")
-                    .to("log:test.log.1?showBody=true", "mock:result");
+                        .to("log:test.log.1?showBody=true", "mock:result");
             }
         };
     }

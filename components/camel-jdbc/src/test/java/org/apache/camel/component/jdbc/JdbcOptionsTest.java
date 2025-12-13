@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,11 +24,15 @@ import org.apache.camel.EndpointInject;
 import org.apache.camel.ResolveEndpointFailedException;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class JdbcOptionsTest extends AbstractJdbcTestSupport {
 
-    @EndpointInject(uri = "mock:result")
+    @EndpointInject("mock:result")
     private MockEndpoint mock;
 
     @SuppressWarnings("rawtypes")
@@ -38,7 +42,7 @@ public class JdbcOptionsTest extends AbstractJdbcTestSupport {
 
         template.sendBody("direct:start", "select * from customer");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         List list = mock.getExchanges().get(0).getIn().getBody(ArrayList.class);
         assertEquals(1, list.size());
@@ -56,7 +60,6 @@ public class JdbcOptionsTest extends AbstractJdbcTestSupport {
         mock.assertIsSatisfied();
 
         String body = mock.getExchanges().get(0).getIn().getBody(String.class);
-        assertNull(body);
 
         // now test to see that they were inserted and committed properly
         MockEndpoint mockTest = getMockEndpoint("mock:retrieve");
@@ -72,33 +75,33 @@ public class JdbcOptionsTest extends AbstractJdbcTestSupport {
     }
 
     @Test
-    public void testNoDataSourceInRegistry() throws Exception {
+    public void testNoDataSourceInRegistry() {
         try {
             template.sendBody("jdbc:xxx", "Hello World");
             fail("Should have thrown a ResolveEndpointFailedException");
         } catch (ResolveEndpointFailedException e) {
             assertEquals("No bean could be found in the registry for: xxx of type: javax.sql.DataSource",
-                e.getCause().getMessage());
+                    e.getCause().getMessage());
         }
     }
-    
+
     @Test
     public void testResettingAutoCommitOption() throws Exception {
         Connection connection = db.getConnection();
         assertTrue(connection.getAutoCommit());
         connection.close();
-        
+
         template.sendBody("direct:retrieve", "select * from customer");
-        
+
         connection = db.getConnection();
         assertTrue(connection.getAutoCommit());
         connection.close();
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start").to("jdbc:testdb?readSize=1").to("mock:result");
                 from("direct:retrieve").to("jdbc:testdb").to("mock:retrieve");
                 from("direct:startTx").to("jdbc:testdb?transacted=true").to("mock:resultTx");

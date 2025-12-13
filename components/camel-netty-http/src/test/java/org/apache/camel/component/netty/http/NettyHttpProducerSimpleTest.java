@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,11 +16,15 @@
  */
 package org.apache.camel.component.netty.http;
 
+import io.netty.handler.codec.http.HttpResponse;
 import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.jboss.netty.handler.codec.http.HttpResponse;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class NettyHttpProducerSimpleTest extends BaseNettyTest {
 
@@ -31,42 +35,38 @@ public class NettyHttpProducerSimpleTest extends BaseNettyTest {
         String out = template.requestBody("netty-http:http://localhost:{{port}}/foo", "Hello World", String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
     public void testHttpSimpleExchange() throws Exception {
         getMockEndpoint("mock:input").expectedBodiesReceived("Hello World");
 
-        Exchange out = template.request("netty-http:http://localhost:{{port}}/foo", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setBody("Hello World");
-            }
-        });
+        Exchange out = template.request("netty-http:http://localhost:{{port}}/foo",
+                exchange -> exchange.getIn().setBody("Hello World"));
         assertNotNull(out);
         assertTrue(out.hasOut());
 
-        NettyHttpMessage response = out.getOut(NettyHttpMessage.class);
+        NettyHttpMessage response = out.getMessage(NettyHttpMessage.class);
         assertNotNull(response);
-        assertEquals(200, response.getHttpResponse().getStatus().getCode());
+        assertEquals(200, response.getHttpResponse().status().code());
 
         // we can also get the response as body
-        HttpResponse body = out.getOut().getBody(HttpResponse.class);
+        HttpResponse body = out.getMessage().getBody(HttpResponse.class);
         assertNotNull(body);
-        assertEquals(200, body.getStatus().getCode());
+        assertEquals(200, body.status().code());
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("netty-http:http://0.0.0.0:{{port}}/foo")
-                    .to("mock:input")
-                    .transform().constant("Bye World");
+            public void configure() {
+                from("netty-http:http://localhost:{{port}}/foo")
+                        .to("mock:input")
+                        .transform().constant("Bye World");
             }
         };
     }

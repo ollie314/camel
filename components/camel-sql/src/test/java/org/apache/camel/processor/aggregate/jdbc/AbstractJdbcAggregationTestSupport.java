@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,56 +16,87 @@
  */
 package org.apache.camel.processor.aggregate.jdbc;
 
+import org.apache.camel.AggregationStrategy;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.processor.aggregate.AggregationStrategy;
-import org.apache.camel.test.spring.CamelSpringTestSupport;
+import org.apache.camel.spi.OptimisticLockingAggregationRepository;
+import org.apache.camel.test.spring.junit5.CamelSpringTestSupport;
+import org.apache.camel.util.ObjectHelper;
 import org.springframework.context.support.AbstractApplicationContext;
-import org.springframework.context.support.ClassPathXmlApplicationContext;
 
 public abstract class AbstractJdbcAggregationTestSupport extends CamelSpringTestSupport {
 
     JdbcAggregationRepository repo;
 
-    @Override
-    public void postProcessTest() throws Exception {
-        super.postProcessTest();
-        
-        repo = applicationContext.getBean("repo1", JdbcAggregationRepository.class);
-        configureJdbcAggregationRepository();
-    }
-    
     void configureJdbcAggregationRepository() {
+        repo = applicationContext.getBean("repo1", JdbcAggregationRepository.class);
     }
-    
+
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
             // START SNIPPET: e1
-            public void configure() throws Exception {
+            public void configure() {
+                configureJdbcAggregationRepository();
+
                 // here is the Camel route where we aggregate
                 from("direct:start")
                         .aggregate(header("id"), new MyAggregationStrategy())
-                                // complete every 5th seconds
+                        // complete every 5th seconds
                         .completionInterval(getCompletionInterval()).aggregationRepository(repo)
                         .to("mock:aggregated");
             }
             // END SNIPPET: e1
         };
     }
-    
+
     long getCompletionInterval() {
         return 5000;
     }
-    
+
     @Override
     protected AbstractApplicationContext createApplicationContext() {
-        return new ClassPathXmlApplicationContext("org/apache/camel/processor/aggregate/jdbc/JdbcSpringDataSource.xml");
+        return newAppContext(
+                "JdbcSpringDataSource.xml", "JdbcSpringDataSource.xml");
+    }
+
+    protected Exchange repoAddAndGet(String key, Exchange exchange) {
+        return repoAddAndGet(key, exchange, true);
+    }
+
+    protected Exchange repoAddAndGet(String key, Exchange exchange, boolean optimistic) {
+        int retry = optimistic ? 5 : 1;
+        while (retry-- > 0) {
+            try {
+                repo.add(context, key, exchange);
+                // recover the exchange with the new version to be able to add again
+                exchange = repo.get(context, key);
+                return exchange;
+            } catch (Exception e) {
+                if (optimistic) {
+                    OptimisticLockingAggregationRepository.OptimisticLockingException ole
+                            = ObjectHelper.getException(OptimisticLockingAggregationRepository.OptimisticLockingException.class,
+                                    e);
+                    if (ole != null) {
+                        // okay lets try again
+                        try {
+                            Thread.sleep(50);
+                        } catch (InterruptedException ex) {
+                            // ignore
+                        }
+                        continue;
+                    }
+                }
+                throw e;
+            }
+        }
+        return exchange;
     }
 
     public static class MyAggregationStrategy implements AggregationStrategy {
 
+        @Override
         public Exchange aggregate(Exchange oldExchange, Exchange newExchange) {
             if (oldExchange == null) {
                 return newExchange;

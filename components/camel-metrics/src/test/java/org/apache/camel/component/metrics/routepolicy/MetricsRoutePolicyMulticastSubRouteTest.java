@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,8 +22,11 @@ import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
 import org.apache.camel.CamelContext;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * CAMEL-9226 - check metrics are counted correctly in multicast sub-routes
@@ -52,7 +55,7 @@ public class MetricsRoutePolicyMulticastSubRouteTest extends CamelTestSupport {
 
         template.sendBody("direct:multicast", "Hello World");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // there should be 3 names
         assertEquals(3, registry.getNames().size());
@@ -64,15 +67,15 @@ public class MetricsRoutePolicyMulticastSubRouteTest extends CamelTestSupport {
             String metricName = timerEntry.getKey();
             Timer timer = timerEntry.getValue();
             // each count should be 1
-            assertEquals("Count is wrong for " + metricName, 1, timer.getCount());
+            assertEquals(1, timer.getCount(), "Count is wrong for " + metricName);
         }
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:foo").routeId("foo").to("mock:foo");
 
                 from("direct:bar").routeId("bar").multicast().to("mock:bar1", "mock:bar2");

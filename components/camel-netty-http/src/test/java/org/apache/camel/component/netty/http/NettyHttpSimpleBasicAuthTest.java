@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,50 +18,78 @@ package org.apache.camel.component.netty.http;
 
 import org.apache.camel.CamelExecutionException;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 
+import static io.netty.handler.codec.http.HttpResponseStatus.UNAUTHORIZED;
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class NettyHttpSimpleBasicAuthTest extends BaseNettyTest {
 
     @Override
-    public void setUp() throws Exception {
+    public void doPreSetup() {
         System.setProperty("java.security.auth.login.config", "src/test/resources/myjaas.config");
-        super.setUp();
     }
 
     @Override
-    public void tearDown() throws Exception {
+    public void doPostTearDown() {
         System.clearProperty("java.security.auth.login.config");
-        super.tearDown();
     }
 
-    @Test
-    public void testBasicAuth() throws Exception {
-        try {
-            template.requestBody("netty-http:http://localhost:{{port}}/foo", "Hello World", String.class);
-            fail("Should send back 401");
-        } catch (CamelExecutionException e) {
-            NettyHttpOperationFailedException cause = assertIsInstanceOf(NettyHttpOperationFailedException.class, e.getCause());
-            assertEquals(401, cause.getStatusCode());
-        }
+    private void sendUnauthorizedRequest() {
+        CamelExecutionException exception = assertThrows(CamelExecutionException.class,
+                () -> template.requestBody("netty-http:http://localhost:{{port}}/foo", "Hello World", String.class),
+                "Should have thrown a CamelExecutionException");
 
+        NettyHttpOperationFailedException cause
+                = assertIsInstanceOf(NettyHttpOperationFailedException.class, exception.getCause());
+        assertEquals(UNAUTHORIZED.code(), cause.getStatusCode(), "Should have sent back HTTP status 401");
+    }
+
+    @Order(1)
+    @DisplayName("Tests whether it returns unauthorized (HTTP 401) for unauthorized access")
+    @Test
+    void testBasicAuth() {
+        sendUnauthorizedRequest();
+    }
+
+    @Order(2)
+    @DisplayName("Tests whether it authorized access succeeds")
+    @Test
+    void testWithAuth() throws InterruptedException {
         getMockEndpoint("mock:input").expectedBodiesReceived("Hello World");
 
         // username:password is scott:secret
         String auth = "Basic c2NvdHQ6c2VjcmV0";
-        String out = template.requestBodyAndHeader("netty-http:http://localhost:{{port}}/foo", "Hello World", "Authorization", auth, String.class);
+        String out = template.requestBodyAndHeader("netty-http:http://localhost:{{port}}/foo", "Hello World", "Authorization",
+                auth, String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
+    }
+
+    @Order(3)
+    @DisplayName("Tests whether it returns unauthorized (HTTP 401) for unauthorized access after a successful authorization")
+    @Test
+    void testBasicAuthPostAuth() {
+        sendUnauthorizedRequest();
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("netty-http:http://0.0.0.0:{{port}}/foo?securityConfiguration.realm=karaf")
-                    .to("mock:input")
-                    .transform().constant("Bye World");
+                        .to("mock:input")
+                        .transform().constant("Bye World");
             }
         };
     }

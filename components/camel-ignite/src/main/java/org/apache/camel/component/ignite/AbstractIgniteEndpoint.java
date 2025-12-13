@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,18 +17,15 @@
 package org.apache.camel.component.ignite;
 
 import org.apache.camel.Component;
-import org.apache.camel.impl.DefaultEndpoint;
-import org.apache.camel.spi.UriEndpoint;
+import org.apache.camel.spi.EndpointServiceLocation;
 import org.apache.camel.spi.UriParam;
+import org.apache.camel.support.DefaultEndpoint;
 import org.apache.ignite.Ignite;
 
 /**
- * Base class for all Ignite endpoints. 
+ * Base class for all Ignite endpoints.
  */
-@UriEndpoint(scheme = "ignite:...", title = "Ignite endpoints", syntax = "ignite:...", label = "nosql,cache,compute", producerOnly = true)
-public abstract class AbstractIgniteEndpoint extends DefaultEndpoint {
-
-    protected IgniteComponent component;
+public abstract class AbstractIgniteEndpoint extends DefaultEndpoint implements EndpointServiceLocation {
 
     @UriParam(defaultValue = "true")
     private boolean propagateIncomingBodyIfNoReturnValue = true;
@@ -41,15 +38,21 @@ public abstract class AbstractIgniteEndpoint extends DefaultEndpoint {
     }
 
     @Override
-    public boolean isSingleton() {
-        return false;
+    public String getServiceUrl() {
+        var a = ignite().cluster().localNode().addresses();
+        if (!a.isEmpty()) {
+            return a.iterator().next();
+        }
+        return null;
     }
 
-    protected IgniteComponent igniteComponent() {
-        if (component == null) {
-            component = (IgniteComponent) getComponent();
-        }
-        return component;
+    @Override
+    public String getServiceProtocol() {
+        return "ignite";
+    }
+
+    protected AbstractIgniteComponent igniteComponent() {
+        return (AbstractIgniteComponent) getComponent();
     }
 
     protected Ignite ignite() {
@@ -57,40 +60,28 @@ public abstract class AbstractIgniteEndpoint extends DefaultEndpoint {
     }
 
     /**
-     * Gets whether to propagate the incoming body if the return type of the underlying 
-     * Ignite operation is void.
-     * 
-     * @return
+     * Gets whether to propagate the incoming body if the return type of the underlying Ignite operation is void.
      */
     public boolean isPropagateIncomingBodyIfNoReturnValue() {
         return propagateIncomingBodyIfNoReturnValue;
     }
 
     /**
-     * Sets whether to propagate the incoming body if the return type of the underlying 
-     * Ignite operation is void.
-     * 
-     * @param propagateIncomingBodyIfNoReturnValue
+     * Sets whether to propagate the incoming body if the return type of the underlying Ignite operation is void.
      */
     public void setPropagateIncomingBodyIfNoReturnValue(boolean propagateIncomingBodyIfNoReturnValue) {
         this.propagateIncomingBodyIfNoReturnValue = propagateIncomingBodyIfNoReturnValue;
     }
 
     /**
-     * Gets whether to treat Collections as cache objects or as Collections of items to 
-     * insert/update/compute, etc.
-     * 
-     * @return
+     * Gets whether to treat Collections as cache objects or as Collections of items to insert/update/compute, etc.
      */
     public boolean isTreatCollectionsAsCacheObjects() {
         return treatCollectionsAsCacheObjects;
     }
 
     /**
-     * Sets whether to treat Collections as cache objects or as Collections of items to 
-     * insert/update/compute, etc.
-     * 
-     * @param treatCollectionsAsCacheObjects
+     * Sets whether to treat Collections as cache objects or as Collections of items to insert/update/compute, etc.
      */
     public void setTreatCollectionsAsCacheObjects(boolean treatCollectionsAsCacheObjects) {
         this.treatCollectionsAsCacheObjects = treatCollectionsAsCacheObjects;

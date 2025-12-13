@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,31 +23,36 @@ import java.util.Map;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 public class SqlProducerUseMessageBodyForSqlTest extends CamelTestSupport {
 
     private EmbeddedDatabase db;
 
-    @Before
-    public void setUp() throws Exception {
-        db = new EmbeddedDatabaseBuilder()
-                .setType(EmbeddedDatabaseType.DERBY).addScript("sql/createAndPopulateDatabase.sql").build();
+    @Override
 
-        super.setUp();
+    public void doPreSetup() throws Exception {
+        db = new EmbeddedDatabaseBuilder()
+                .setName(getClass().getSimpleName())
+                .setType(EmbeddedDatabaseType.H2)
+                .addScript("sql/createAndPopulateDatabase.sql").build();
+
     }
 
-    @After
-    public void tearDown() throws Exception {
-        super.tearDown();
+    @Override
+    public void doPostTearDown() throws Exception {
 
-        db.shutdown();
+        if (db != null) {
+            db.shutdown();
+        }
     }
 
     @Test
@@ -56,7 +61,7 @@ public class SqlProducerUseMessageBodyForSqlTest extends CamelTestSupport {
             public void configure() {
                 getContext().getComponent("sql", SqlComponent.class).setDataSource(db);
 
-                from("direct:start")
+                from("direct:start").routeId("foo")
                         .setBody(constant("select * from projects where license = :?lic order by id"))
                         .to("sql://query?useMessageBodyForSql=true")
                         .to("mock:result");
@@ -84,7 +89,7 @@ public class SqlProducerUseMessageBodyForSqlTest extends CamelTestSupport {
             public void configure() {
                 getContext().getComponent("sql", SqlComponent.class).setDataSource(db);
 
-                from("direct:start")
+                from("direct:start").routeId("bar")
                         .setBody(constant("select * from projects where license = :?lic order by id"))
                         .to("sql://query?useMessageBodyForSql=true")
                         .to("mock:result");
@@ -94,7 +99,7 @@ public class SqlProducerUseMessageBodyForSqlTest extends CamelTestSupport {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMessageCount(1);
 
-        Map<String, Object> row = new HashMap<String, Object>();
+        Map<String, Object> row = new HashMap<>();
         row.put("lic", "ASF");
         template.sendBodyAndHeader("direct:start", null, SqlConstants.SQL_PARAMETERS, row);
 
@@ -108,13 +113,13 @@ public class SqlProducerUseMessageBodyForSqlTest extends CamelTestSupport {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({ "unchecked", "deprecated" })
     public void testUseMessageBodyForSqlAndCamelSqlParametersBatch() throws Exception {
         context.addRoutes(new RouteBuilder() {
             public void configure() {
                 getContext().getComponent("sql", SqlComponent.class).setDataSource(db);
 
-                from("direct:start")
+                from("direct:start").routeId("baz")
                         .setBody(constant("insert into projects(id, project, license) values(:?id,:?project,:?lic)"))
                         .to("sql://query?useMessageBodyForSql=true&batch=true")
                         .to("mock:result");
@@ -124,13 +129,13 @@ public class SqlProducerUseMessageBodyForSqlTest extends CamelTestSupport {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMessageCount(1);
 
-        List<Map<String, Object>> rows = new ArrayList<Map<String, Object>>();
-        Map<String, Object> row = new HashMap<String, Object>();
+        List<Map<String, Object>> rows = new ArrayList<>();
+        Map<String, Object> row = new HashMap<>();
         row.put("id", 200);
         row.put("project", "MyProject1");
         row.put("lic", "OPEN1");
         rows.add(row);
-        row = new HashMap<String, Object>();
+        row = new HashMap<>();
         row.put("id", 201);
         row.put("project", "MyProject2");
         row.put("lic", "OPEN1");
@@ -140,7 +145,7 @@ public class SqlProducerUseMessageBodyForSqlTest extends CamelTestSupport {
         String origSql = assertIsInstanceOf(String.class, mock.getReceivedExchanges().get(0).getIn().getBody());
         assertEquals("insert into projects(id, project, license) values(:?id,:?project,:?lic)", origSql);
 
-        assertEquals(null, mock.getReceivedExchanges().get(0).getOut().getBody());
+        assertNull(mock.getReceivedExchanges().get(0).getOut().getBody());
 
         // Clear and then use route2 to verify result of above insert select
         context.removeRoute(context.getRoutes().get(0).getId());

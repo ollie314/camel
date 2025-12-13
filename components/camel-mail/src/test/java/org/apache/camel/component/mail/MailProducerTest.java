@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,69 +16,77 @@
  */
 package org.apache.camel.component.mail;
 
-import javax.mail.Address;
-import javax.mail.Message.RecipientType;
-import javax.mail.Session;
-import javax.mail.internet.InternetAddress;
-import javax.mail.internet.MimeMessage;
+import jakarta.mail.Address;
+import jakarta.mail.Message.RecipientType;
+import jakarta.mail.Session;
+import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import org.jvnet.mock_javamail.Mailbox;
+import org.apache.camel.component.mail.Mailbox.MailboxUser;
+import org.apache.camel.component.mail.Mailbox.Protocol;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class MailProducerTest extends CamelTestSupport {
+    private static final MailboxUser camel = Mailbox.getOrCreateUser("camel", "secret");
+    private static final MailboxUser someone = Mailbox.getOrCreateUser("someone", "secret");
+    private static final MailboxUser recipient2 = Mailbox.getOrCreateUser("recipient2", "secret");
 
     @Test
-    public void testProduer() throws Exception {
+    public void testProducer() throws Exception {
         Mailbox.clearAll();
         getMockEndpoint("mock:result").expectedMessageCount(1);
 
         template.sendBodyAndHeader("direct:start", "Message ", "To", "someone@localhost");
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
         // need to check the message header
         Exchange exchange = getMockEndpoint("mock:result").getExchanges().get(0);
-        assertNotNull("The message id should not be null", exchange.getIn().getHeader(MailConstants.MAIL_MESSAGE_ID));
+        assertNotNull(exchange.getIn().getHeader(MailConstants.MAIL_MESSAGE_ID), "The message id should not be null");
 
-        Mailbox box = Mailbox.get("someone@localhost");
-        assertEquals(1, box.size());
+        Mailbox box = someone.getInbox();
+        assertEquals(1, box.getMessageCount());
     }
-    
+
     @Test
     public void testProducerBodyIsMimeMessage() throws Exception {
         Mailbox.clearAll();
         getMockEndpoint("mock:result").expectedMessageCount(1);
 
         Address from = new InternetAddress("fromCamelTest@localhost");
-        Address to = new InternetAddress("recipient2@localhost");
-        Session session = Session.getDefaultInstance(System.getProperties());
+        Address to = new InternetAddress(recipient2.getEmail());
+        Session session = Mailbox.getSmtpSession();
         MimeMessage mimeMessage = new MimeMessage(session);
         mimeMessage.setFrom(from);
         mimeMessage.addRecipient(RecipientType.TO, to);
         mimeMessage.setSubject("This is the subject.");
-        mimeMessage.setText("This is the message");        
-        
+        mimeMessage.setText("This is the message");
+
         template.sendBodyAndHeader("direct:start", mimeMessage, "To", "someone@localhost");
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
         // need to check the message header
         Exchange exchange = getMockEndpoint("mock:result").getExchanges().get(0);
-        assertNotNull("The message id should not be null", exchange.getIn().getHeader(MailConstants.MAIL_MESSAGE_ID));
+        assertNotNull(exchange.getIn().getHeader(MailConstants.MAIL_MESSAGE_ID), "The message id should not be null");
 
-        Mailbox box = Mailbox.get("someone@localhost");
-        assertEquals(0, box.size());
-        
+        Mailbox box = someone.getInbox();
+        assertEquals(0, box.getMessageCount());
+
         // Check if the mimeMessagea has override body and headers
-        Mailbox box2 = Mailbox.get("recipient2@localhost");
-        assertEquals(1, box2.size());
+        Mailbox box2 = recipient2.getInbox();
+        assertEquals(1, box2.getMessageCount());
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("direct:start").to("smtp://camel@localhost", "mock:result");
+            public void configure() {
+                from("direct:start").to(camel.uriPrefix(Protocol.smtp), "mock:result");
             }
         };
     }

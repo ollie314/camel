@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,40 +16,32 @@
  */
 package org.apache.camel.jaxb;
 
-import java.util.concurrent.atomic.AtomicInteger;
-
 import org.apache.camel.CamelExecutionException;
-import org.apache.camel.Exchange;
-import org.apache.camel.InvalidPayloadException;
-import org.apache.camel.NoTypeConversionAvailableException;
-import org.apache.camel.Processor;
-import org.apache.camel.TypeConversionException;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.converter.jaxb.FallbackTypeConverter;
 import org.apache.camel.converter.jaxb.message.Message;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class FallbackTypeConverterObjectFactoryDisabledTest extends CamelTestSupport {
-    
-    @Test(expected = CamelExecutionException.class)
-    public void testObjectFactoryFalse() throws Exception {
+
+    @Test
+    public void testObjectFactoryFalse() {
         Message in = new Message("Hello World");
         getMockEndpoint("mock:a").expectedBodiesReceived(in);
 
-        template.sendBody("direct:a", in);
-
-        assertMockEndpointsSatisfied();
+        assertThrows(CamelExecutionException.class, () -> template.sendBody("direct:a", in));
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
-        context.getProperties().put(FallbackTypeConverter.OBJECT_FACTORY, "false");
+    protected RouteBuilder createRouteBuilder() {
+        context.getGlobalOptions().put(FallbackTypeConverter.OBJECT_FACTORY, "false");
         return new RouteBuilder(context) {
 
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:a").convertBodyTo(String.class).to("direct:b");
                 from("direct:b").convertBodyTo(Message.class).to("mock:a");
             }

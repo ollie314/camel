@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -34,12 +34,17 @@ public class SubmitDataWriter extends SplunkDataWriter {
 
     @Override
     protected void doWrite(String event) throws IOException {
-        Index index = getIndex();
-        if (index != null) {
-            index.submit(args, event);
-        } else {
-            Receiver receiver = endpoint.getService().getReceiver();
-            receiver.submit(args, event);
+        lock.lock();
+        try {
+            Index index = getIndex();
+            if (index != null) {
+                index.submit(args, event);
+            } else {
+                Receiver receiver = endpoint.getService().getReceiver();
+                receiver.submit(args, event);
+            }
+        } finally {
+            lock.unlock();
         }
     }
 

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,40 +16,60 @@
  */
 package org.apache.camel.component.http;
 
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.http.common.DefaultHttpBinding;
-import org.apache.camel.impl.JndiRegistry;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.apache.commons.httpclient.HttpClient;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
+import org.apache.hc.client5.http.protocol.HttpClientContext;
+import org.apache.hc.core5.http.protocol.HttpContext;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 /**
  * Unit test for resolving reference parameters.
  */
 public class HttpReferenceParameterTest extends CamelTestSupport {
 
-    private static final String TEST_URI_1 = "http://localhost:8080?httpBinding=#customBinding&httpClientConfigurer=#customConfigurer";
-    private static final String TEST_URI_2 = "http://localhost:8081?httpBinding=#customBinding&httpClientConfigurer=#customConfigurer";
-    
+    private static final String TEST_URI_1
+            = "http://localhost:8080?httpBinding=#customBinding&httpClientConfigurer=#customConfigurer&httpContext=#customContext";
+    private static final String TEST_URI_2
+            = "http://localhost:8081?httpBinding=#customBinding&httpClientConfigurer=#customConfigurer&httpContext=#customContext";
+
     private HttpEndpoint endpoint1;
     private HttpEndpoint endpoint2;
-    
+
+    @BindToRegistry("customBinding")
     private TestHttpBinding testBinding;
+
+    @BindToRegistry("customConfigurer")
     private TestClientConfigurer testConfigurer;
-    
+
+    @BindToRegistry("customContext")
+    private HttpContext testHttpContext;
+
     @Override
-    public void setUp() throws Exception {
+    public final void doPreSetup() throws Exception {
+        super.doPreSetup();
+
         this.testBinding = new TestHttpBinding();
         this.testConfigurer = new TestClientConfigurer();
-        super.setUp();
+        this.testHttpContext = HttpClientContext.create();
+    }
+
+    @Override
+    protected final void doPostSetup() throws Exception {
+        super.doPostSetup();
+
         this.endpoint1 = context.getEndpoint(TEST_URI_1, HttpEndpoint.class);
         this.endpoint2 = context.getEndpoint(TEST_URI_2, HttpEndpoint.class);
     }
-    
+
     @Test
     public void testHttpBinding() {
-        assertSame(testBinding, endpoint1.getBinding());
-        assertSame(testBinding, endpoint2.getBinding());
+        assertSame(testBinding, endpoint1.getHttpBinding());
+        assertSame(testBinding, endpoint2.getHttpBinding());
     }
 
     @Test
@@ -58,16 +78,14 @@ public class HttpReferenceParameterTest extends CamelTestSupport {
         assertSame(testConfigurer, endpoint2.getHttpClientConfigurer());
     }
 
-    @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry registry = super.createRegistry();
-        registry.bind("customBinding", testBinding);
-        registry.bind("customConfigurer", testConfigurer);
-        return registry;
+    @Test
+    public void testHttpContext() {
+        assertSame(testHttpContext, endpoint1.getHttpContext());
+        assertSame(testHttpContext, endpoint2.getHttpContext());
     }
-    
+
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
                 from("direct:start1").to(TEST_URI_1);
@@ -77,16 +95,12 @@ public class HttpReferenceParameterTest extends CamelTestSupport {
     }
 
     private static class TestHttpBinding extends DefaultHttpBinding {
-        TestHttpBinding() {
-            super(new HttpEndpoint());
-        }
     }
-    
+
     private static class TestClientConfigurer implements HttpClientConfigurer {
 
-        public void configureHttpClient(HttpClient client) {
+        @Override
+        public void configureHttpClient(HttpClientBuilder clientBuilder) {
         }
-
     }
-    
 }

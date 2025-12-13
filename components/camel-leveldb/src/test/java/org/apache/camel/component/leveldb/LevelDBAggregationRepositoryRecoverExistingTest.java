@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,17 +19,23 @@ package org.apache.camel.component.leveldb;
 import java.io.File;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.impl.DefaultExchange;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.support.DefaultExchange;
+import org.apache.camel.test.junit5.params.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
-public class LevelDBAggregationRepositoryRecoverExistingTest extends CamelTestSupport {
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
+@DisabledOnOs({ OS.AIX, OS.OTHER })
+public class LevelDBAggregationRepositoryRecoverExistingTest extends LevelDBTestSupport {
 
     private LevelDBFile levelDBFile;
 
     @Override
-    public void setUp() throws Exception {
-        super.setUp();
+    public void doPostSetup() {
         deleteDirectory("target/data");
         File file = new File("target/data/leveldb.dat");
         levelDBFile = new LevelDBFile();
@@ -38,7 +44,7 @@ public class LevelDBAggregationRepositoryRecoverExistingTest extends CamelTestSu
 
     @Test
     public void testExisting() throws Exception {
-        LevelDBAggregationRepository repo = new LevelDBAggregationRepository();
+        LevelDBAggregationRepository repo = getRepo();
         repo.setLevelDBFile(levelDBFile);
         repo.setRepositoryName("repo1");
         repo.setReturnOldExchange(true);
@@ -49,7 +55,7 @@ public class LevelDBAggregationRepositoryRecoverExistingTest extends CamelTestSu
         Exchange exchange1 = new DefaultExchange(context);
         exchange1.getIn().setBody("counter:1");
         Exchange actual = repo.add(context, "foo", exchange1);
-        assertEquals(null, actual);
+        assertNull(actual);
 
         // Remove it, which makes it in the pre confirm stage
         repo.remove(context, "foo", exchange1);

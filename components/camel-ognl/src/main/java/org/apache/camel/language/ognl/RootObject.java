@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,9 +22,6 @@ import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 
-/**
- * @version 
- */
 public class RootObject {
     private final Exchange exchange;
 
@@ -50,14 +47,15 @@ public class RootObject {
 
     public Message getRequest() {
         return exchange.getIn();
-    }   
+    }
 
+    @Deprecated
     public Message getResponse() {
         return exchange.getOut();
     }
 
     public Map<String, Object> getProperties() {
-        return exchange.getProperties();
+        return exchange.getAllProperties();
     }
 
     public Object getProperty(String name) {
@@ -67,4 +65,17 @@ public class RootObject {
     public <T> T getProperty(String name, Class<T> type) {
         return exchange.getProperty(name, type);
     }
+
+    public Map<String, Object> getHeaders() {
+        return exchange.getMessage().getHeaders();
+    }
+
+    public Object getHeader(String name) {
+        return exchange.getMessage().getHeader(name);
+    }
+
+    public <T> T getHeader(String name, Class<T> type) {
+        return exchange.getMessage().getHeader(name, type);
+    }
+
 }

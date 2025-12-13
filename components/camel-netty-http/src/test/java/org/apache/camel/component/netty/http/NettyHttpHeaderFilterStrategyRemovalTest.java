@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,21 +16,21 @@
  */
 package org.apache.camel.component.netty.http;
 
-import static java.util.Collections.singleton;
-
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.EndpointInject;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.impl.JndiRegistry;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
+import static java.util.Collections.singleton;
 import static org.apache.camel.Exchange.HTTP_QUERY;
 
 public class NettyHttpHeaderFilterStrategyRemovalTest extends BaseNettyTest {
 
-    NettyHttpHeaderFilterStrategy headerFilterStrategy = new NettyHttpHeaderFilterStrategy();
+    @BindToRegistry("headerFilterStrategy")
+    final NettyHttpHeaderFilterStrategy headerFilterStrategy = new NettyHttpHeaderFilterStrategy();
 
-    @EndpointInject(uri = "mock:test")
+    @EndpointInject("mock:test")
     MockEndpoint mockEndpoint;
 
     @Test
@@ -41,7 +41,7 @@ public class NettyHttpHeaderFilterStrategyRemovalTest extends BaseNettyTest {
 
         template.sendBody("netty-http:http://localhost:" + getPort() + "/?" + options, "message");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -52,25 +52,18 @@ public class NettyHttpHeaderFilterStrategyRemovalTest extends BaseNettyTest {
         mockEndpoint.expectedMessageCount(1);
         mockEndpoint.message(0).header(headerToFilter).isNull();
 
-        template.sendBodyAndHeader("netty-http:http://localhost:" + getPort() + "/?" + options, "message", headerToFilter, "headerValue");
+        template.sendBodyAndHeader("netty-http:http://localhost:" + getPort() + "/?" + options, "message", headerToFilter,
+                "headerValue");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry registry = super.createRegistry();
-        registry.bind("headerFilterStrategy", headerFilterStrategy);
-        return registry;
-    }
-
-    @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("netty-http:http://0.0.0.0:{{port}}/")
-                        .to(mockEndpoint);
+            public void configure() {
+                from("netty-http:http://0.0.0.0:{{port}}/").to(mockEndpoint);
             }
         };
     }

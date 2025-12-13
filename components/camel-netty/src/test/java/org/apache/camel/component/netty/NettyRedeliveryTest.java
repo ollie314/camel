@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,7 +24,6 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.util.Deque;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -36,8 +35,10 @@ import org.apache.camel.LoggingLevel;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.impl.DefaultCamelContext;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Test the effect of redelivery in association with netty component.
@@ -56,13 +57,13 @@ public class NettyRedeliveryTest extends CamelTestSupport {
 
     private ExecutorService listener = Executors.newSingleThreadExecutor();
 
-    @EndpointInject(uri = "mock:exception")
+    @EndpointInject("mock:exception")
     private MockEndpoint exception;
 
-    @EndpointInject(uri = "mock:downstream")
+    @EndpointInject("mock:downstream")
     private MockEndpoint downstream;
 
-    private Deque<Callable<?>> tasks = new LinkedBlockingDeque<Callable<?>>();
+    private Deque<Object> tasks = new LinkedBlockingDeque<>();
     private int port;
     private boolean alive = true;
 
@@ -73,16 +74,17 @@ public class NettyRedeliveryTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 onException(Exception.class)
                         .maximumRedeliveries(REDELIVERY_COUNT)
                         .retryAttemptedLogLevel(LoggingLevel.INFO)
                         .retriesExhaustedLogLevel(LoggingLevel.ERROR)
-                                // lets have a little delay so we do async redelivery
+                        // lets have a little delay so we do async redelivery
                         .redeliveryDelay(10)
+                        .asyncDelayedRedelivery()
                         .to("mock:exception")
                         .handled(true);
 
@@ -96,8 +98,7 @@ public class NettyRedeliveryTest extends CamelTestSupport {
     }
 
     @Override
-    public void tearDown() throws Exception {
-        super.tearDown();
+    public void doPostTearDown() {
         alive = false;
         listener.shutdown();
     }
@@ -133,9 +134,10 @@ public class NettyRedeliveryTest extends CamelTestSupport {
     @Override
     protected CamelContext createCamelContext() throws Exception {
         // Override the error handler executor service such that we can track the tasks created
-        CamelContext context = new DefaultCamelContext(createRegistry()) {
+        CamelContext context = new DefaultCamelContext() {
+
             @Override
-            public ScheduledExecutorService getErrorHandlerExecutorService() {
+            protected ScheduledExecutorService createErrorHandlerExecutorService() {
                 return getScheduledExecutorService();
             }
         };
@@ -148,7 +150,7 @@ public class NettyRedeliveryTest extends CamelTestSupport {
             @Override
             public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
                 if ("submit".equals(method.getName()) || "schedule".equals(method.getName())) {
-                    tasks.add((Callable<?>) args[0]);
+                    tasks.add(args[0]);
                 }
                 return method.invoke(delegate, args);
             }
@@ -186,7 +188,7 @@ public class NettyRedeliveryTest extends CamelTestSupport {
     }
 
     private static <T> T newProxy(Class<T> interfaceType, InvocationHandler handler) {
-        Object object = Proxy.newProxyInstance(interfaceType.getClassLoader(), new Class<?>[]{interfaceType}, handler);
+        Object object = Proxy.newProxyInstance(interfaceType.getClassLoader(), new Class<?>[] { interfaceType }, handler);
         return interfaceType.cast(object);
     }
 
@@ -205,7 +207,7 @@ public class NettyRedeliveryTest extends CamelTestSupport {
             try {
                 Thread.sleep(10);
                 socket.close();
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             } finally {
                 try {

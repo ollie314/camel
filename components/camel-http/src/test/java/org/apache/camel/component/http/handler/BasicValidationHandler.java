@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,25 +17,27 @@
 package org.apache.camel.component.http.handler;
 
 import java.io.IOException;
-import java.io.PrintWriter;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import org.apache.hc.core5.http.ClassicHttpRequest;
+import org.apache.hc.core5.http.ClassicHttpResponse;
+import org.apache.hc.core5.http.HttpEntity;
+import org.apache.hc.core5.http.HttpException;
+import org.apache.hc.core5.http.HttpStatus;
+import org.apache.hc.core5.http.io.HttpRequestHandler;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
+import org.apache.hc.core5.http.io.entity.StringEntity;
+import org.apache.hc.core5.http.protocol.HttpContext;
 
-import org.eclipse.jetty.server.Request;
-import org.eclipse.jetty.server.handler.AbstractHandler;
+public class BasicValidationHandler implements HttpRequestHandler {
 
-/**
- *
- * @version 
- */
-public class BasicValidationHandler extends AbstractHandler {
-
-    protected String expectedMethod;
-    protected String expectedQuery;
-    protected Object expectedContent;
-    protected String responseContent;
+    protected String expectedUri;
+    protected final String expectedMethod;
+    protected final String expectedQuery;
+    protected final Object expectedContent;
+    protected final String responseContent;
 
     public BasicValidationHandler(String expectedMethod, String expectedQuery,
                                   Object expectedContent, String responseContent) {
@@ -45,49 +47,82 @@ public class BasicValidationHandler extends AbstractHandler {
         this.responseContent = responseContent;
     }
 
-    @Override
-    public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response)
-            throws IOException, ServletException {
+    public BasicValidationHandler(String expectedUri, String expectedMethod, String expectedQuery,
+                                  Object expectedContent, String responseContent) {
+        this.expectedUri = expectedUri;
+        this.expectedMethod = expectedMethod;
+        this.expectedQuery = expectedQuery;
+        this.expectedContent = expectedContent;
+        this.responseContent = responseContent;
+    }
 
-        baseRequest.setHandled(true);
+    @Override
+    public void handle(
+            final ClassicHttpRequest request, final ClassicHttpResponse response,
+            final HttpContext context)
+            throws HttpException, IOException {
+
+        if (expectedUri != null && !expectedUri.equals(request.getRequestUri())) {
+            response.setCode(HttpStatus.SC_BAD_REQUEST);
+            return;
+        }
 
         if (expectedMethod != null && !expectedMethod.equals(request.getMethod())) {
-            response.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+            response.setCode(HttpStatus.SC_METHOD_FAILURE);
             return;
         }
 
         if (!validateQuery(request)) {
-            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            response.setCode(HttpStatus.SC_BAD_REQUEST);
+            return;
+        }
+
+        if (!validateRequestEncoding(request)) {
+            response.setCode(HttpStatus.SC_BAD_REQUEST);
+            response.setReasonPhrase("Request URI not encoded correctly!");
             return;
         }
 
         if (expectedContent != null) {
-            StringBuilder content = new StringBuilder();
-            String line = null;
-            while ((line = request.getReader().readLine()) != null) {
-                content.append(line);
-            }
+            HttpEntity entity = request.getEntity();
+            String content = EntityUtils.toString(entity);
 
-            if (!expectedContent.equals(content.toString())) {
-                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            if (!expectedContent.equals(content)) {
+                response.setCode(HttpStatus.SC_BAD_REQUEST);
                 return;
             }
         }
 
-        response.setStatus(HttpServletResponse.SC_OK);
-        if (responseContent != null) {
-            response.setContentType("text/plain; charset=utf-8");
-            PrintWriter out = response.getWriter();
-            out.print(responseContent);
+        response.setCode(HttpStatus.SC_OK);
+        String content = buildResponse(request);
+        if (content != null) {
+            response.setEntity(new StringEntity(content, StandardCharsets.US_ASCII));
         }
     }
 
-    protected boolean validateQuery(HttpServletRequest request) {
-        String query = request.getQueryString();
-        if (expectedQuery != null && !expectedQuery.equals(query)) {
-            return false;
+    protected boolean validateQuery(ClassicHttpRequest request) throws IOException {
+        try {
+            String query = request.getUri().getQuery();
+            if (expectedQuery != null && !expectedQuery.equals(query)) {
+                return false;
+            }
+        } catch (URISyntaxException e) {
+            throw new IOException(e);
         }
         return true;
+    }
+
+    protected boolean validateRequestEncoding(ClassicHttpRequest request) throws IOException {
+        try {
+            String encodedRequestPath = new URI(request.getPath()).toASCIIString();
+            return request.getPath().equals(encodedRequestPath); // Did request.path contain un-encoded characters?
+        } catch (URISyntaxException e) {
+            throw new IOException(e);
+        }
+    }
+
+    protected String buildResponse(ClassicHttpRequest request) {
+        return responseContent;
     }
 
 }

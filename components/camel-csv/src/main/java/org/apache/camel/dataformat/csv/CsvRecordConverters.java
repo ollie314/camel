@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -45,10 +45,10 @@ final class CsvRecordConverters {
         private static final ListCsvRecordConverter SINGLETON = new ListCsvRecordConverter();
 
         @Override
-        public List<String> convertRecord(CSVRecord record) {
-            List<String> answer = new ArrayList<String>(record.size());
-            for (int i = 0; i < record.size(); i++) {
-                answer.add(record.get(i));
+        public List<String> convertRecord(CSVRecord csvRecord) {
+            List<String> answer = new ArrayList<>(csvRecord.size());
+            for (int i = 0; i < csvRecord.size(); i++) {
+                answer.add(csvRecord.get(i));
             }
             return answer;
         }
@@ -67,8 +67,27 @@ final class CsvRecordConverters {
         private static final MapCsvRecordConverter SINGLETON = new MapCsvRecordConverter();
 
         @Override
-        public Map<String, String> convertRecord(CSVRecord record) {
-            return record.toMap();
+        public Map<String, String> convertRecord(CSVRecord csvRecord) {
+            return csvRecord.toMap();
+        }
+    }
+
+    /**
+     * Returns a converter that transforms the CSV record into an ordered map.
+     *
+     * @return converter that transforms the CSV record into an ordered map
+     */
+    public static CsvRecordConverter<Map<String, String>> orderedMapConverter() {
+        return OrderedMapCsvRecordConverter.SINGLETON;
+    }
+
+    private static class OrderedMapCsvRecordConverter implements CsvRecordConverter<Map<String, String>> {
+        private static final OrderedMapCsvRecordConverter SINGLETON = new OrderedMapCsvRecordConverter();
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public Map<String, String> convertRecord(CSVRecord csvRecord) {
+            return csvRecord.toMap();
         }
     }
 }

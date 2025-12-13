@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,8 +19,10 @@ package org.apache.camel.dataformat.bindy.csv;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.dataformat.bindy.model.simple.spanLastRecord.RegexSpanLastRecord;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class BindySimpleCsvRegexAutospanLineTest extends CamelTestSupport {
 
@@ -31,10 +33,10 @@ public class BindySimpleCsvRegexAutospanLineTest extends CamelTestSupport {
 
         template.sendBody("direct:unmarshal", "1 hei kommentar");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         final RegexSpanLastRecord order = mock.getReceivedExchanges().get(0).getIn().getBody(RegexSpanLastRecord.class);
-        
+
         assertEquals(1, order.getRecordId());
         assertEquals("hei", order.getName());
         assertEquals("kommentar", order.getComment());
@@ -47,20 +49,20 @@ public class BindySimpleCsvRegexAutospanLineTest extends CamelTestSupport {
 
         template.sendBody("direct:unmarshal", "1 hei kommentar test noe hei");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         final RegexSpanLastRecord order = mock.getReceivedExchanges().get(0).getIn().getBody(RegexSpanLastRecord.class);
-        
+
         assertEquals(1, order.getRecordId());
         assertEquals("hei", order.getName());
         assertEquals("kommentar test noe hei", order.getComment());
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 final BindyCsvDataFormat bindy = new BindyCsvDataFormat(RegexSpanLastRecord.class);
 
                 from("direct:unmarshal")

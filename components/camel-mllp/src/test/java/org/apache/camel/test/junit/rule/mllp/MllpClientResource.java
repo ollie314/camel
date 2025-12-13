@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -25,17 +25,18 @@ import java.net.Socket;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
 
-import org.junit.rules.ExternalResource;
+import org.junit.jupiter.api.extension.AfterEachCallback;
+import org.junit.jupiter.api.extension.BeforeEachCallback;
+import org.junit.jupiter.api.extension.ExtensionContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * MLLP Test Client packaged as a JUnit Rule
  *
- * The client can be configured to simulate a large number
- * of error conditions.
+ * The client can be configured to simulate a large number of error conditions.
  */
-public class MllpClientResource extends ExternalResource {
+public class MllpClientResource implements BeforeEachCallback, AfterEachCallback {
 
     static final char START_OF_BLOCK = 0x0b;
     static final char END_OF_BLOCK = 0x1c;
@@ -79,17 +80,14 @@ public class MllpClientResource extends ExternalResource {
     }
 
     @Override
-    protected void before() throws Throwable {
+    public void beforeEach(ExtensionContext context) {
         if (0 < mllpPort) {
             this.connect();
         }
-
-        super.before();
     }
 
     @Override
-    protected void after() {
-        super.after();
+    public void afterEach(ExtensionContext context) {
         this.close();
     }
 
@@ -99,7 +97,7 @@ public class MllpClientResource extends ExternalResource {
                 clientSocket.close();
             }
         } catch (IOException e) {
-            log.warn(String.format("Exception encountered closing connection to {}:{}", mllpHost, mllpPort), e);
+            log.warn(String.format("Exception encountered closing connection to %s:%s", mllpHost, mllpPort), e);
         } finally {
             inputStream = null;
             outputStream = null;
@@ -143,7 +141,7 @@ public class MllpClientResource extends ExternalResource {
                 clientSocket.close();
             }
         } catch (IOException e) {
-            log.warn(String.format("Exception encountered resetting connection to {}:{}", mllpHost, mllpPort), e);
+            log.warn(String.format("Exception encountered resetting connection to %s:%s", mllpHost, mllpPort), e);
         } finally {
             inputStream = null;
             outputStream = null;
@@ -164,8 +162,34 @@ public class MllpClientResource extends ExternalResource {
         return disconnectMethod;
     }
 
+    public void setDisconnectMethod(DisconnectMethod disconnectMethod) {
+        this.disconnectMethod = disconnectMethod;
+    }
+
     public boolean isConnected() {
         return clientSocket.isConnected() && !clientSocket.isClosed();
+    }
+
+    public void checkConnection() {
+        if (clientSocket == null) {
+            throw new MllpJUnitResourceException("checkConnection failed - clientSocket is null");
+        }
+
+        if (clientSocket.isClosed()) {
+            throw new MllpJUnitResourceException("checkConnection failed - clientSocket is closed");
+        }
+
+        if (!clientSocket.isConnected()) {
+            throw new MllpJUnitResourceException("checkConnection failed - clientSocket is not connected");
+        }
+
+        try {
+            if (END_OF_STREAM == clientSocket.getInputStream().read()) {
+                throw new MllpJUnitResourceException("checkConnection failed - read() returned END_OF_STREAM");
+            }
+        } catch (IOException ioEx) {
+            throw new MllpJUnitResourceException("checkConnection failed - read() failure", ioEx);
+        }
     }
 
     public void sendData(String data) {
@@ -257,9 +281,9 @@ public class MllpClientResource extends ExternalResource {
             } else {
                 log.warn("Not sending START_OF_BLOCK");
             }
-            for (int i = 0; i < payloadBytes.length; ++i) {
-                outputStream.write(payloadBytes[i]);
-                if (flushByte == payloadBytes[i]) {
+            for (byte payloadByte : payloadBytes) {
+                outputStream.write(payloadByte);
+                if (flushByte == payloadByte) {
                     outputStream.flush();
                 }
             }
@@ -289,7 +313,7 @@ public class MllpClientResource extends ExternalResource {
         return receiveFramedData(soTimeout);
     }
 
-    public String receiveFramedData(int timout) throws SocketException, SocketTimeoutException {
+    public String receiveFramedData(int timout) throws SocketException {
         if (!isConnected()) {
             throw new MllpJUnitResourceException("Cannot receive acknowledgement - client is not connected");
         }
@@ -308,7 +332,8 @@ public class MllpClientResource extends ExternalResource {
                         try {
                             clientSocket.close();
                         } catch (Exception ex) {
-                            log.warn("Exception encountered closing socket after receiving END_OF_STREAM while waiting for START_OF_BLOCK");
+                            log.warn(
+                                    "Exception encountered closing socket after receiving END_OF_STREAM while waiting for START_OF_BLOCK");
                         }
                         return "";
                     } else {
@@ -323,25 +348,26 @@ public class MllpClientResource extends ExternalResource {
             while (readingMessage) {
                 int nextByte = inputStream.read();
                 switch (nextByte) {
-                case -1:
-                    throw new MllpJUnitResourceCorruptFrameException("Reached end of stream before END_OF_BLOCK");
-                case START_OF_BLOCK:
-                    throw new MllpJUnitResourceCorruptFrameException("Received START_OF_BLOCK before END_OF_BLOCK");
-                case END_OF_BLOCK:
-                    if (END_OF_DATA != inputStream.read()) {
-                        throw new MllpJUnitResourceCorruptFrameException("END_OF_BLOCK was not followed by END_OF_DATA");
-                    }
-                    readingMessage = false;
-                    break;
-                default:
-                    acknowledgement.append((char) nextByte);
+                    case -1:
+                        throw new MllpJUnitResourceCorruptFrameException("Reached end of stream before END_OF_BLOCK");
+                    case START_OF_BLOCK:
+                        throw new MllpJUnitResourceCorruptFrameException("Received START_OF_BLOCK before END_OF_BLOCK");
+                    case END_OF_BLOCK:
+                        if (END_OF_DATA != inputStream.read()) {
+                            throw new MllpJUnitResourceCorruptFrameException("END_OF_BLOCK was not followed by END_OF_DATA");
+                        }
+                        readingMessage = false;
+                        break;
+                    default:
+                        acknowledgement.append((char) nextByte);
                 }
             }
         } catch (SocketTimeoutException timeoutEx) {
             if (0 < acknowledgement.length()) {
                 log.error("Timeout waiting for acknowledgement", timeoutEx);
             } else {
-                log.error("Timeout while reading acknowledgement\n" + acknowledgement.toString().replace('\r', '\n'), timeoutEx);
+                log.error("Timeout while reading acknowledgement\n{}", acknowledgement.toString().replace('\r', '\n'),
+                        timeoutEx);
             }
             throw new MllpJUnitResourceTimeoutException("Timeout while reading acknowledgement", timeoutEx);
         } catch (IOException e) {
@@ -356,7 +382,7 @@ public class MllpClientResource extends ExternalResource {
         return receiveData(soTimeout);
     }
 
-    public String receiveData(int timeout) throws SocketException, SocketTimeoutException {
+    public String receiveData(int timeout) throws SocketException {
         clientSocket.setSoTimeout(timeout);
         StringBuilder availableInput = new StringBuilder();
 
@@ -375,7 +401,7 @@ public class MllpClientResource extends ExternalResource {
         return availableInput.toString();
     }
 
-    public String eatData() throws SocketException, SocketTimeoutException {
+    public String eatData() throws SocketException {
         return eatData(soTimeout);
     }
 
@@ -400,7 +426,8 @@ public class MllpClientResource extends ExternalResource {
         return receiveFramedData();
     }
 
-    public String sendMessageAndWaitForAcknowledgement(String hl7Data, int acknwoledgementTimeout) throws SocketException, SocketTimeoutException {
+    public String sendMessageAndWaitForAcknowledgement(String hl7Data, int acknwoledgementTimeout)
+            throws SocketException, SocketTimeoutException {
         sendFramedData(hl7Data);
         return receiveFramedData(acknwoledgementTimeout);
     }
@@ -475,10 +502,6 @@ public class MllpClientResource extends ExternalResource {
 
     public void setTcpNoDelay(boolean tcpNoDelay) {
         this.tcpNoDelay = tcpNoDelay;
-    }
-
-    public void setDisconnectMethod(DisconnectMethod disconnectMethod) {
-        this.disconnectMethod = disconnectMethod;
     }
 
     public enum DisconnectMethod {

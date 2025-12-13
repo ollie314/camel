@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,18 +19,18 @@ package org.apache.camel.component.pdf.text;
 import java.util.ArrayList;
 import java.util.Collection;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class PatternSplitStrategyTest {
     private static final String PATTERN = "\n";
     private PatternSplitStrategy patternSplitStrategy = new PatternSplitStrategy(PATTERN);
 
     @Test
-    public void testSplit() throws Exception {
+    public void testSplit() {
         Collection<String> split = patternSplitStrategy.split("hello" + PATTERN + "world");
         assertEquals(2, split.size());
-        assertEquals("world", new ArrayList<String>(split).get(1));
+        assertEquals("world", new ArrayList<>(split).get(1));
     }
 }

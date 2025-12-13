@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,18 +23,20 @@ import javax.jcr.SimpleCredentials;
 import javax.jcr.security.AccessControlList;
 import javax.jcr.security.AccessControlManager;
 import javax.jcr.security.AccessControlPolicyIterator;
-import javax.naming.Context;
 
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.spi.Registry;
+import org.apache.camel.test.junit5.CamelTestSupport;
 import org.apache.jackrabbit.api.security.user.User;
 import org.apache.jackrabbit.api.security.user.UserManager;
 import org.apache.jackrabbit.core.SessionImpl;
 import org.apache.jackrabbit.core.TransientRepository;
-import org.junit.Before;
+import org.junit.jupiter.api.BeforeAll;
+
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
 
 /**
- * Base class for tests that use authentication/authorization in the repository.
- * Ensures that the transient repo is set up properly for each test.
+ * Base class for tests that use authentication/authorization in the repository. Ensures that the transient repo is set
+ * up properly for each test.
  */
 public abstract class JcrAuthTestBase extends CamelTestSupport {
 
@@ -42,21 +44,15 @@ public abstract class JcrAuthTestBase extends CamelTestSupport {
 
     protected static final String REPO_PATH = "target/repository";
 
-    private Repository repository;
+    private static Repository repository = new TransientRepository(new File(REPO_PATH));
 
-    @Override
-    @Before
-    public void setUp() throws Exception {
+    @BeforeAll
+    public static void cleanupDirectory() {
         deleteDirectory(REPO_PATH);
-        super.setUp();
     }
 
     @Override
-    protected Context createJndiContext() throws Exception {
-        Context context = super.createJndiContext();
-        
-        repository = new TransientRepository(new File(REPO_PATH));
-
+    protected void bindToRegistry(Registry registry) throws Exception {
         // set up a user to authenticate
         SessionImpl session = (SessionImpl) repository
                 .login(new SimpleCredentials("admin", "admin".toCharArray()));
@@ -83,8 +79,7 @@ public abstract class JcrAuthTestBase extends CamelTestSupport {
         session.save();
         session.logout();
 
-        context.bind("repository", repository);
-        return context;
+        registry.bind("repository", repository);
     }
 
     protected Repository getRepository() {

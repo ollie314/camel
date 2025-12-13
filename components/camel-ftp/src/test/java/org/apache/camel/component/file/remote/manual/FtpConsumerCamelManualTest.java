@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,34 +16,34 @@
  */
 package org.apache.camel.component.file.remote.manual;
 
+import java.nio.file.Path;
+
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.apache.camel.test.junit5.TestSupport;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
-@Ignore("Run this test manually")
+@Disabled("Run this test manually")
 public class FtpConsumerCamelManualTest extends CamelTestSupport {
-
-    @Override
-    public void setUp() throws Exception {
-        deleteDirectory("target/ftptest");
-        super.setUp();
-    }
+    @TempDir
+    Path testDirectory;
 
     @Test
     public void testFtpConsumerManual() throws Exception {
         getMockEndpoint("mock:result").expectedMessageCount(1);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("ftp:localhost/one/two?username=camel&password=camel&noop=true")
-                    .to("file:target/ftptest")
-                    .to("mock:result");
+            public void configure() {
+                from("ftp:localhost/one/two?username=camel&password=camel&noop=true").to(TestSupport.fileUri(testDirectory))
+                        .to("mock:result");
             }
         };
     }

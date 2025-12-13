@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,24 +21,20 @@ import java.util.Map;
 
 import com.codahale.metrics.Counter;
 import com.codahale.metrics.MetricRegistry;
+import org.apache.camel.CamelContext;
 import org.apache.camel.EndpointInject;
 import org.apache.camel.Produce;
 import org.apache.camel.ProducerTemplate;
+import org.apache.camel.RoutesBuilder;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.spring.javaconfig.SingleRouteCamelConfiguration;
-import org.apache.camel.test.spring.CamelSpringDelegatingTestContextLoader;
-import org.apache.camel.test.spring.CamelSpringJUnit4ClassRunner;
-import org.apache.camel.test.spring.MockEndpoints;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.apache.camel.test.spring.junit5.CamelSpringTest;
+import org.apache.camel.test.spring.junit5.CamelSpringTestSupport;
+import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.mockito.Mockito;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.test.context.ContextConfiguration;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.context.support.AbstractApplicationContext;
 
 import static org.apache.camel.component.metrics.MetricsComponent.METRIC_REGISTRY_NAME;
 import static org.apache.camel.component.metrics.MetricsConstants.HEADER_COUNTER_DECREMENT;
@@ -49,26 +45,22 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
-@RunWith(CamelSpringJUnit4ClassRunner.class)
-@ContextConfiguration(
-        classes = { CounterRouteTest.TestConfig.class },
-        loader = CamelSpringDelegatingTestContextLoader.class)
-@MockEndpoints
-public class CounterRouteTest {
+@CamelSpringTest
+public class CounterRouteTest extends CamelSpringTestSupport {
 
-    @EndpointInject(uri = "mock:out")
+    @EndpointInject("mock:out")
     private MockEndpoint endpoint;
 
-    @Produce(uri = "direct:in-1")
+    @Produce("direct:in-1")
     private ProducerTemplate producer1;
 
-    @Produce(uri = "direct:in-2")
+    @Produce("direct:in-2")
     private ProducerTemplate producer2;
 
-    @Produce(uri = "direct:in-3")
+    @Produce("direct:in-3")
     private ProducerTemplate producer3;
 
-    @Produce(uri = "direct:in-4")
+    @Produce("direct:in-4")
     private ProducerTemplate producer4;
 
     private MetricRegistry mockRegistry;
@@ -77,53 +69,51 @@ public class CounterRouteTest {
 
     private InOrder inOrder;
 
-    @Configuration
-    public static class TestConfig extends SingleRouteCamelConfiguration {
-
-        @Bean
-        @Override
-        public RouteBuilder route() {
-            return new RouteBuilder() {
-
-                @Override
-                public void configure() throws Exception {
-                    from("direct:in-1")
-                            .to("metrics:counter:A?increment=5")
-                            .to("mock:out");
-
-                    from("direct:in-2")
-                            .to("metrics:counter:A?decrement=9")
-                            .to("mock:out");
-
-                    from("direct:in-3")
-                            .setHeader(HEADER_COUNTER_INCREMENT, constant(417L))
-                            .to("metrics:counter:A")
-                            .to("mock:out");
-
-                    from("direct:in-4")
-                            .setHeader(HEADER_COUNTER_INCREMENT, simple("${body.length}"))
-                            .to("metrics:counter:A")
-                            .to("mock:out");
-                }
-            };
-        }
-
-        @Bean(name = METRIC_REGISTRY_NAME)
-        public MetricRegistry getMetricRegistry() {
-            return Mockito.mock(MetricRegistry.class);
-        }
+    @Override
+    protected AbstractApplicationContext createApplicationContext() {
+        return new AnnotationConfigApplicationContext();
     }
 
-    @Before
-    public void setup() {
-        // TODO - 12.05.2014, Lauri - is there any better way to set this up?
-        mockRegistry = endpoint.getCamelContext().getRegistry().lookupByNameAndType(METRIC_REGISTRY_NAME, MetricRegistry.class);
+    @Override
+    protected CamelContext createCamelContext() throws Exception {
+        CamelContext context = super.createCamelContext();
+
+        mockRegistry = Mockito.mock(MetricRegistry.class);
+        context.getRegistry().bind(METRIC_REGISTRY_NAME, mockRegistry);
         mockCounter = mock(Counter.class);
         inOrder = Mockito.inOrder(mockRegistry, mockCounter);
+
+        return context;
     }
 
-    @After
-    public void tearDown() {
+    @Override
+    protected RoutesBuilder createRouteBuilder() {
+        return new RouteBuilder() {
+            @Override
+            public void configure() {
+                from("direct:in-1")
+                        .to("metrics:counter:A?increment=5")
+                        .to("mock:out");
+
+                from("direct:in-2")
+                        .to("metrics:counter:A?decrement=9")
+                        .to("mock:out");
+
+                from("direct:in-3")
+                        .setHeader(HEADER_COUNTER_INCREMENT, constant(417L))
+                        .to("metrics:counter:A")
+                        .to("mock:out");
+
+                from("direct:in-4")
+                        .setHeader(HEADER_COUNTER_INCREMENT, simple("${body.length}"))
+                        .to("metrics:counter:A")
+                        .to("mock:out");
+            }
+        };
+    }
+
+    @Override
+    public void doPostTearDown() {
         endpoint.reset();
         reset(mockRegistry, mockCounter);
     }
@@ -154,7 +144,7 @@ public class CounterRouteTest {
     public void testOverrideIncrementAndDecrement() throws Exception {
         when(mockRegistry.counter("A")).thenReturn(mockCounter);
         endpoint.expectedMessageCount(1);
-        Map<String, Object> headers = new HashMap<String, Object>();
+        Map<String, Object> headers = new HashMap<>();
         headers.put(HEADER_COUNTER_INCREMENT, 912L);
         headers.put(HEADER_COUNTER_DECREMENT, 43219L);
         producer1.sendBodyAndHeaders(new Object(), headers);

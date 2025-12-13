@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,45 +16,35 @@
  */
 package org.apache.camel.coap;
 
-import org.apache.camel.Exchange;
-import org.apache.camel.ExchangePattern;
-import org.apache.camel.Processor;
 import org.apache.camel.Produce;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.AvailablePortFinder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.eclipse.californium.core.network.config.NetworkConfig;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class CoAPPingTest extends CamelTestSupport {
-    static final int PORT = AvailablePortFinder.getNextAvailable();
-    
-    @Produce(uri = "direct:start")
+public class CoAPPingTest extends CoAPTestSupport {
+
+    @Produce("direct:start")
     protected ProducerTemplate sender;
-    
+
     @Test
-    public void testCoAP() throws Exception {
-        NetworkConfig.createStandardWithoutFile();
+    void testCoAP() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMinimumMessageCount(1);
         mock.expectedBodiesReceived(true);
-        sender.sendBody("Hello");
-        assertMockEndpointsSatisfied();
+        sender.sendBodyAndHeader("Hello", CoAPConstants.COAP_METHOD, CoAPConstants.METHOD_PING);
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception { 
-                from("coap://localhost:" + PORT + "/TestResource?coapMethod=PING")
-                    .to("log:exch")
-                    .transform(body().convertTo(Boolean.class))
-                    .to("log:exch");
-                
-                from("direct:start").to("coap://localhost:" + PORT + "/TestResource?coapMethod=PING").to("mock:result");
+            public void configure() {
+                fromF("coap://localhost:%d/TestResource", PORT).to("log:exch").transform(body().convertTo(Boolean.class))
+                        .to("log:exch");
+
+                from("direct:start").toF("coap://localhost:%d/TestResource", PORT).to("mock:result");
             }
         };
     }

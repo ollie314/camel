@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,50 +16,55 @@
  */
 package org.apache.camel.component.xquery;
 
+import java.nio.file.Path;
 import java.util.List;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.apache.camel.test.junit5.TestSupport;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  *
  */
 public class XQueryFromFileTest extends CamelTestSupport {
+    @TempDir
+    Path testDirectory;
 
     @Test
     public void testXQueryFromFile() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMessageCount(1);
 
-        template.sendBodyAndHeader("file:target/xquery", "<mail><subject>Hey</subject><body>Hello world!</body></mail>",
+        template.sendBodyAndHeader(TestSupport.fileUri(testDirectory),
+                "<mail><subject>Hey</subject><body>Hello world!</body></mail>",
                 Exchange.FILE_NAME, "body.xml");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         List<Exchange> list = mock.getReceivedExchanges();
         Exchange exchange = list.get(0);
         String xml = exchange.getIn().getBody(String.class);
-        assertNotNull("The transformed XML should not be null", xml);
-        assertEquals("transformed", "<transformed subject=\"Hey\"><mail><subject>Hey</subject>"
-            + "<body>Hello world!</body></mail></transformed>", xml);
-    }
-
-    public void setUp() throws Exception {
-        deleteDirectory("target/xquery");
-        super.setUp();
+        assertNotNull(xml, "The transformed XML should not be null");
+        assertEquals("<transformed subject=\"Hey\"><mail><subject>Hey</subject>"
+                     + "<body>Hello world!</body></mail></transformed>",
+                xml, "transformed");
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("file:target/xquery")
-                    .to("xquery:org/apache/camel/component/xquery/transform.xquery")
-                    .to("mock:result");
+            public void configure() {
+                from(TestSupport.fileUri(testDirectory))
+                        .to("xquery:org/apache/camel/component/xquery/transform.xquery")
+                        .to("mock:result");
             }
         };
     }

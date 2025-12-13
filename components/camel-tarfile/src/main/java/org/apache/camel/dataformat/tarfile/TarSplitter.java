@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,8 +23,8 @@ import org.apache.camel.Expression;
 import org.apache.camel.Message;
 
 /**
- * TarSplitter the expression builder which can be used after the splitter
- * Based on the ZipSplitter from camel-zipfile component
+ * TarSplitter the expression builder which can be used after the splitter Based on the ZipSplitter from camel-zipfile
+ * component
  */
 public class TarSplitter implements Expression {
 
@@ -33,7 +33,8 @@ public class TarSplitter implements Expression {
 
     public Object evaluate(Exchange exchange) {
         Message inputMessage = exchange.getIn();
-        return new TarIterator(inputMessage, inputMessage.getBody(InputStream.class));
+        InputStream inputStream = inputMessage.getBody(InputStream.class);
+        return new TarIterator(exchange, inputStream);
     }
 
     @Override

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,55 +21,46 @@ import ca.uhn.hl7v2.model.v24.message.ADR_A19;
 import ca.uhn.hl7v2.model.v24.segment.MSA;
 import ca.uhn.hl7v2.model.v24.segment.MSH;
 import ca.uhn.hl7v2.model.v24.segment.QRD;
-import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.impl.JndiRegistry;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Unit test for the HL7MLLP Codec.
  */
 public class HL7MLLPCodecTest extends HL7TestSupport {
-    
 
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry jndi = super.createRegistry();
-
-        // START SNIPPET: e1
+    @BindToRegistry("hl7codec")
+    public HL7MLLPCodec addCodec() {
         HL7MLLPCodec codec = new HL7MLLPCodec();
         codec.setCharset("iso-8859-1");
         codec.setConvertLFtoCR(true);
 
-        jndi.bind("hl7codec", codec);
-        // END SNIPPET: e1
-
-        return jndi;
+        return codec;
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("mina2:tcp://127.0.0.1:" + getPort() + "?sync=true&codec=#hl7codec")
-                    .process(new Processor() {
-                        public void process(Exchange exchange) throws Exception {
-                            Message input = exchange.getIn().getBody(Message.class);
+            public void configure() {
+                from("mina:tcp://127.0.0.1:" + getPort() + "?sync=true&codec=#hl7codec").process(exchange -> {
+                    Message input = exchange.getIn().getBody(Message.class);
 
-                            assertEquals("2.4", input.getVersion());
-                            QRD qrd = (QRD)input.get("QRD");
-                            assertEquals("0101701234", qrd.getWhoSubjectFilter(0).getIDNumber().getValue());
+                    assertEquals("2.4", input.getVersion());
+                    QRD qrd = (QRD) input.get("QRD");
+                    assertEquals("0101701234", qrd.getWhoSubjectFilter(0).getIDNumber().getValue());
 
-                            Message response = createHL7AsMessage();
-                            exchange.getOut().setBody(response);
-                        }
-                    })
-                    .to("mock:result");
+                    Message response = createHL7AsMessage();
+                    exchange.getMessage().setBody(response);
+                }).to("mock:result");
             }
         };
     }
 
     @Test
-    public void testSendHL7Message() throws Exception {
+    public void testSendHL7Message() {
         // START SNIPPET: e2
         String line1 = "MSH|^~\\&|MYSENDER|MYRECEIVER|MYAPPLICATION||200612211200||QRY^A19|1234|P|2.4";
         String line2 = "QRD|200612211200|R|I|GetPatient|||1^RD|0101701234|DEM||";
@@ -79,7 +70,8 @@ public class HL7MLLPCodecTest extends HL7TestSupport {
         in.append("\n");
         in.append(line2);
 
-        String out = template.requestBody("mina2:tcp://127.0.0.1:" + getPort() + "?sync=true&codec=#hl7codec", in.toString(), String.class);
+        String out = template.requestBody("mina:tcp://127.0.0.1:" + getPort() + "?sync=true&codec=#hl7codec", in.toString(),
+                String.class);
         // END SNIPPET: e2
 
         String[] lines = out.split("\r");

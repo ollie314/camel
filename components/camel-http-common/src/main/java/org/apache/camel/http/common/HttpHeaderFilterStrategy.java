@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,35 +16,30 @@
  */
 package org.apache.camel.http.common;
 
-import org.apache.camel.impl.DefaultHeaderFilterStrategy;
+import java.util.Set;
 
-public class HttpHeaderFilterStrategy extends DefaultHeaderFilterStrategy {
-    
+import org.apache.camel.support.http.HttpUtil;
+
+/**
+ * @deprecated use {@link org.apache.camel.http.base.HttpHeaderFilterStrategy}
+ */
+@Deprecated
+public class HttpHeaderFilterStrategy extends org.apache.camel.http.base.HttpHeaderFilterStrategy {
+
     public HttpHeaderFilterStrategy() {
-        initialize();  
+        initialize();
     }
 
     protected void initialize() {
-        getOutFilter().add("content-length");
-        getOutFilter().add("content-type");
-        getOutFilter().add("host");
-        // Add the filter for the Generic Message header
-        // http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.5
-        getOutFilter().add("cache-control");
-        getOutFilter().add("connection");
-        getOutFilter().add("date");
-        getOutFilter().add("pragma");
-        getOutFilter().add("trailer");
-        getOutFilter().add("transfer-encoding");
-        getOutFilter().add("upgrade");
-        getOutFilter().add("via");
-        getOutFilter().add("warning");
-        
+        final Set<String> outFilter = getOutFilter();
+        HttpUtil.addCommonFilters(outFilter);
+
         setLowerCase(true);
-        
+
         // filter headers begin with "Camel" or "org.apache.camel"
         // must ignore case for Http based transports
-        setOutFilterPattern("(?i)(Camel|org\\.apache\\.camel)[\\.|a-z|A-z|0-9]*");
-        setInFilterPattern("(?i)(Camel|org\\.apache\\.camel)[\\.|a-z|A-z|0-9]*");
+        setOutFilterStartsWith(CAMEL_FILTER_STARTS_WITH);
+        setInFilterStartsWith(CAMEL_FILTER_STARTS_WITH);
     }
+
 }

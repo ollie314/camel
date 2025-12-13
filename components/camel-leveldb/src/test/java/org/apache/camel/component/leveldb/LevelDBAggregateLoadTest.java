@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,28 +16,29 @@
  */
 package org.apache.camel.component.leveldb;
 
+import org.apache.camel.AggregationStrategy;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.processor.aggregate.AggregationStrategy;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.junit5.params.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class LevelDBAggregateLoadTest extends CamelTestSupport {
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
+
+@DisabledOnOs({ OS.AIX, OS.OTHER })
+public class LevelDBAggregateLoadTest extends LevelDBTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(LevelDBAggregateLoadTest.class);
     private static final int SIZE = 500;
-    private LevelDBAggregationRepository repo;
 
-    @Before
+    @BeforeEach
     @Override
-    public void setUp() throws Exception {
+    public void doPreSetup() throws Exception {
         deleteDirectory("target/data");
-        repo = new LevelDBAggregationRepository("repo1", "target/data/leveldb.dat");
-        super.setUp();
     }
 
     @Test
@@ -46,39 +47,40 @@ public class LevelDBAggregateLoadTest extends CamelTestSupport {
         mock.expectedMinimumMessageCount(1);
         mock.setResultWaitTime(50 * 1000);
 
-        LOG.info("Staring to send " + SIZE + " messages.");
+        LOG.info("Starting to send {} messages.", SIZE);
 
         for (int i = 0; i < SIZE; i++) {
             final int value = 1;
             char id = 'A';
             LOG.debug("Sending {} with id {}", value, id);
-            template.sendBodyAndHeader("seda:start?size=" + SIZE, value, "id", "" + id);
+            template.sendBodyAndHeader("seda:start?size=" + SIZE, value, "id", Character.toString(id));
         }
 
-        LOG.info("Sending all " + SIZE + " message done. Now waiting for aggregation to complete.");
+        LOG.info("Sending all {} message done. Now waiting for aggregation to complete.", SIZE);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("seda:start?size=" + SIZE)
-                    .to("log:input?groupSize=500")
-                    .aggregate(header("id"), new MyAggregationStrategy())
-                        .aggregationRepository(repo)
+                        .to("log:input?groupSize=500")
+                        .aggregate(header("id"), new IntegerAggregationStrategy())
+                        .aggregationRepository(getRepo())
                         .completionSize(SIZE)
                         .to("log:output?showHeaders=true")
                         .to("mock:result")
-                    .end();
+                        .end();
             }
         };
     }
 
     public static class MyAggregationStrategy implements AggregationStrategy {
 
+        @Override
         public Exchange aggregate(Exchange oldExchange, Exchange newExchange) {
             if (oldExchange == null) {
                 return newExchange;

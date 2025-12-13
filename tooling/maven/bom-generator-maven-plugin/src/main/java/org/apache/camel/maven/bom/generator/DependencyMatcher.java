@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -31,9 +31,10 @@ import org.codehaus.plexus.util.SelectorUtils;
 public class DependencyMatcher {
 
     private static final String ARTIFACT_FORMAT = "%s:%s:%s:%s:%s";
-    private static final Pattern ARTIFACT_PATTERN = Pattern.compile("(?<groupId>[^:]+):(?<artifactId>[^:]+)(:(?<version>[^:]+))?(:(?<type>[^:]+))?(:(?<classifier>[^:]+))?");
+    private static final Pattern ARTIFACT_PATTERN = Pattern
+            .compile("(?<groupId>[^:]+):(?<artifactId>[^:]+)(:(?<version>[^:]+))?(:(?<type>[^:]+))?(:(?<classifier>[^:]+))?");
 
-    private Collection<String> selectors;
+    private final Collection<String> selectors;
 
     public DependencyMatcher(Collection<String> selectors) {
         this.selectors = selectors;

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,16 +23,15 @@ import javax.jcr.Repository;
 import javax.jcr.RepositoryException;
 import javax.jcr.Session;
 import javax.jcr.SimpleCredentials;
-import javax.naming.Context;
 
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.spi.Registry;
+import org.apache.camel.test.junit5.CamelTestSupport;
 import org.apache.jackrabbit.core.TransientRepository;
-import org.junit.Before;
+
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
 
 /**
  * JcrRouteTestSupport
- * 
- * @version $Id$
  */
 public abstract class JcrRouteTestSupport extends CamelTestSupport {
 
@@ -40,13 +39,11 @@ public abstract class JcrRouteTestSupport extends CamelTestSupport {
 
     protected static final String REPO_PATH = "target/repository-simple-security";
 
-    private Repository repository;
+    private static final Repository repository = new TransientRepository(CONFIG_FILE, REPO_PATH);
 
     @Override
-    @Before
-    public void setUp() throws Exception {
+    public void doPreSetup() throws Exception {
         deleteDirectory(REPO_PATH);
-        super.setUp();
     }
 
     protected Repository getRepository() {
@@ -58,15 +55,12 @@ public abstract class JcrRouteTestSupport extends CamelTestSupport {
     }
 
     @Override
-    protected Context createJndiContext() throws Exception {
+    protected void bindToRegistry(Registry registry) throws Exception {
         File config = new File(CONFIG_FILE);
         if (!config.exists()) {
             throw new FileNotFoundException("Missing config file: " + config.getPath());
         }
-        
-        Context context = super.createJndiContext();
-        repository = new TransientRepository(CONFIG_FILE, REPO_PATH);
-        context.bind("repository", repository);
-        return context;
+
+        registry.bind("repository", repository);
     }
 }

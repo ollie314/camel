@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,11 +17,12 @@
 package org.apache.camel.dataformat.bindy.format.factories;
 
 import java.math.BigDecimal;
-import org.apache.camel.dataformat.bindy.FormattingOptions;
-import org.junit.Test;
 
+import org.apache.camel.dataformat.bindy.FormattingOptions;
+import org.junit.jupiter.api.Test;
+
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.Is.is;
-import static org.junit.Assert.*;
 
 public class BigDecimalFormatFactoryTest {
 
@@ -34,15 +35,9 @@ public class BigDecimalFormatFactoryTest {
             .withPattern("999.99");
 
     @Test
-    public void canBuild() throws Exception {
+    public void canBuild() {
         assertThat(new BigDecimalFormatFactory().canBuild(formattingOptions), is(true));
         assertThat(new BigDecimalFormatFactory().canBuild(wrongClass), is(false));
         assertThat(new BigDecimalFormatFactory().canBuild(hasPattern), is(false));
     }
-
-    @Test
-    public void build() throws Exception {
-
-    }
-
 }

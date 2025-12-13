@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,6 +22,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
+import java.io.StringReader;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -37,11 +38,11 @@ import org.apache.camel.Exchange;
 import org.apache.camel.component.flatpack.DataSetList;
 import org.apache.camel.spi.DataFormat;
 import org.apache.camel.spi.DataFormatName;
-import org.apache.camel.support.ServiceSupport;
-import org.apache.camel.util.IOHelper;
+import org.apache.camel.spi.annotations.Dataformat;
+import org.apache.camel.support.ExchangeHelper;
+import org.apache.camel.support.ResourceHelper;
+import org.apache.camel.support.service.ServiceSupport;
 import org.apache.camel.util.ObjectHelper;
-import org.apache.camel.util.ResourceHelper;
-import org.jdom.JDOMException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,13 +51,14 @@ import org.slf4j.LoggerFactory;
  * <p/>
  * This data format supports two operations:
  * <ul>
- * <li>marshal = from <tt>List&lt;Map&lt;String, Object&gt;&gt;</tt> to <tt>OutputStream</tt> (can be converted to String)</li>
- * <li>unmarshal = from <tt>InputStream</tt> (such as a File) to {@link org.apache.camel.component.flatpack.DataSetList}.
+ * <li>marshal = from <tt>List&lt;Map&lt;String, Object&gt;&gt;</tt> to <tt>OutputStream</tt> (can be converted to
+ * String)</li>
+ * <li>unmarshal = from <tt>InputStream</tt> (such as a File) to
+ * {@link org.apache.camel.component.flatpack.DataSetList}.
  * </ul>
  * <b>Notice:</b> The Flatpack library does currently not support header and trailers for the marshal operation.
- *
- * @version 
  */
+@Dataformat("flatpack")
 public class FlatpackDataFormat extends ServiceSupport implements DataFormat, DataFormatName {
     private static final Logger LOG = LoggerFactory.getLogger(FlatpackDataFormat.class);
     private ParserFactory parserFactory = DefaultParserFactory.getInstance();
@@ -73,6 +75,7 @@ public class FlatpackDataFormat extends ServiceSupport implements DataFormat, Da
         return "flatback";
     }
 
+    @Override
     @SuppressWarnings("unchecked")
     public void marshal(Exchange exchange, Object graph, OutputStream stream) throws Exception {
         ObjectHelper.notNull(graph, "The object to marshal must be provided");
@@ -106,8 +109,24 @@ public class FlatpackDataFormat extends ServiceSupport implements DataFormat, Da
         }
     }
 
+    @Override
     public Object unmarshal(Exchange exchange, InputStream stream) throws Exception {
-        InputStreamReader reader = new InputStreamReader(stream, IOHelper.getCharsetName(exchange));
+        return unmarshal(exchange, (Object) stream);
+    }
+
+    @Override
+    public Object unmarshal(Exchange exchange, Object body) throws Exception {
+        Reader reader;
+        if (body instanceof Reader r) {
+            reader = r;
+        } else if (body instanceof String s) {
+            reader = new StringReader(s);
+        } else {
+            // fallback to input stream
+            InputStream is = exchange.getContext().getTypeConverter().mandatoryConvertTo(InputStream.class, exchange, body);
+            reader = new InputStreamReader(is, ExchangeHelper.getCharsetName(exchange));
+        }
+
         try {
             Parser parser = createParser(exchange, reader);
             DataSet dataSet = parser.parse();
@@ -115,17 +134,6 @@ public class FlatpackDataFormat extends ServiceSupport implements DataFormat, Da
         } finally {
             reader.close();
         }
-    }
-
-    @Override
-    protected void doStart() throws Exception {
-        // noop
-    }
-
-    @Override
-    protected void doStop() throws Exception {
-        // noop
-
     }
 
     // Properties
@@ -207,7 +215,7 @@ public class FlatpackDataFormat extends ServiceSupport implements DataFormat, Da
     protected Parser createParser(Exchange exchange, Reader bodyReader) throws IOException {
         if (isFixed()) {
             InputStream is = ResourceHelper.resolveMandatoryResourceAsInputStream(exchange.getContext(), getDefinition());
-            InputStreamReader reader = new InputStreamReader(is, IOHelper.getCharsetName(exchange));
+            InputStreamReader reader = new InputStreamReader(is, ExchangeHelper.getCharsetName(exchange));
             Parser parser = getParserFactory().newFixedLengthParser(reader, bodyReader);
             if (allowShortLines) {
                 parser.setHandlingShortLines(true);
@@ -223,8 +231,9 @@ public class FlatpackDataFormat extends ServiceSupport implements DataFormat, Da
                 return getParserFactory().newDelimitedParser(bodyReader, delimiter, textQualifier);
             } else {
                 InputStream is = ResourceHelper.resolveMandatoryResourceAsInputStream(exchange.getContext(), getDefinition());
-                InputStreamReader reader = new InputStreamReader(is, IOHelper.getCharsetName(exchange));
-                Parser parser = getParserFactory().newDelimitedParser(reader, bodyReader, delimiter, textQualifier, ignoreFirstRecord);
+                InputStreamReader reader = new InputStreamReader(is, ExchangeHelper.getCharsetName(exchange));
+                Parser parser = getParserFactory().newDelimitedParser(reader, bodyReader, delimiter, textQualifier,
+                        ignoreFirstRecord);
                 if (allowShortLines) {
                     parser.setHandlingShortLines(true);
                     parser.setIgnoreParseWarnings(true);
@@ -238,12 +247,12 @@ public class FlatpackDataFormat extends ServiceSupport implements DataFormat, Da
         }
     }
 
-    private Writer createWriter(Exchange exchange, Map<String, Object> firstRow, OutputStream stream) throws JDOMException, IOException {
+    private Writer createWriter(Exchange exchange, Map<String, Object> firstRow, OutputStream stream) throws IOException {
         if (isFixed()) {
             InputStream is = ResourceHelper.resolveMandatoryResourceAsInputStream(exchange.getContext(), getDefinition());
-            InputStreamReader reader = new InputStreamReader(is, IOHelper.getCharsetName(exchange));
+            InputStreamReader reader = new InputStreamReader(is, ExchangeHelper.getCharsetName(exchange));
             FixedWriterFactory factory = new FixedWriterFactory(reader);
-            return factory.createWriter(new OutputStreamWriter(stream, IOHelper.getCharsetName(exchange)));
+            return factory.createWriter(new OutputStreamWriter(stream, ExchangeHelper.getCharsetName(exchange)));
         } else {
             if (getDefinition() == null) {
                 DelimiterWriterFactory factory = new DelimiterWriterFactory(delimiter, textQualifier);
@@ -251,12 +260,12 @@ public class FlatpackDataFormat extends ServiceSupport implements DataFormat, Da
                 for (String key : firstRow.keySet()) {
                     factory.addColumnTitle(key);
                 }
-                return factory.createWriter(new OutputStreamWriter(stream, IOHelper.getCharsetName(exchange)));
+                return factory.createWriter(new OutputStreamWriter(stream, ExchangeHelper.getCharsetName(exchange)));
             } else {
                 InputStream is = ResourceHelper.resolveMandatoryResourceAsInputStream(exchange.getContext(), getDefinition());
-                InputStreamReader reader = new InputStreamReader(is, IOHelper.getCharsetName(exchange));
+                InputStreamReader reader = new InputStreamReader(is, ExchangeHelper.getCharsetName(exchange));
                 DelimiterWriterFactory factory = new DelimiterWriterFactory(reader, delimiter, textQualifier);
-                return factory.createWriter(new OutputStreamWriter(stream, IOHelper.getCharsetName(exchange)));
+                return factory.createWriter(new OutputStreamWriter(stream, ExchangeHelper.getCharsetName(exchange)));
             }
         }
     }

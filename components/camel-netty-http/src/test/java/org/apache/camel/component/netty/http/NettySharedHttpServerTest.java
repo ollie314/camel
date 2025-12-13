@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,19 +16,21 @@
  */
 package org.apache.camel.component.netty.http;
 
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.impl.DefaultClassResolver;
-import org.apache.camel.impl.JndiRegistry;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class NettySharedHttpServerTest extends BaseNettyTest {
 
     private NettySharedHttpServer nettySharedHttpServer;
 
-    @Override
-    protected JndiRegistry createRegistry() throws Exception {
+    @BindToRegistry("myNettyServer")
+    public NettySharedHttpServer createServer() {
         nettySharedHttpServer = new DefaultNettySharedHttpServer();
-        nettySharedHttpServer.setClassResolver(new DefaultClassResolver(context));
+        nettySharedHttpServer.setCamelContext(context);
 
         NettySharedHttpServerBootstrapConfiguration configuration = new NettySharedHttpServerBootstrapConfiguration();
         configuration.setPort(getPort());
@@ -40,15 +42,12 @@ public class NettySharedHttpServerTest extends BaseNettyTest {
 
         nettySharedHttpServer.start();
 
-        JndiRegistry jndi = super.createRegistry();
-        jndi.bind("myNettyServer", nettySharedHttpServer);
-        return jndi;
+        return nettySharedHttpServer;
     }
 
     @Override
-    public void tearDown() throws Exception {
+    public void doPostTearDown() {
         nettySharedHttpServer.stop();
-        super.tearDown();
     }
 
     @Test
@@ -64,25 +63,25 @@ public class NettySharedHttpServerTest extends BaseNettyTest {
 
         assertEquals(2, nettySharedHttpServer.getConsumersSize());
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // we are using a shared netty http server, so the port number is not needed to be defined in the uri
                 from("netty-http:http://localhost/foo?nettySharedHttpServer=#myNettyServer")
-                    .log("Foo route using thread ${threadName}")
-                    .to("mock:foo")
-                    .transform().constant("Bye World");
+                        .log("Foo route using thread ${threadName}")
+                        .to("mock:foo")
+                        .transform().constant("Bye World");
 
                 // we are using a shared netty http server, so the port number is not needed to be defined in the uri
                 from("netty-http:http://localhost/bar?nettySharedHttpServer=#myNettyServer")
-                    .log("Bar route using thread ${threadName}")
-                    .to("mock:bar")
-                    .transform().constant("Bye Camel");
+                        .log("Bar route using thread ${threadName}")
+                        .to("mock:bar")
+                        .transform().constant("Bye Camel");
             }
         };
     }

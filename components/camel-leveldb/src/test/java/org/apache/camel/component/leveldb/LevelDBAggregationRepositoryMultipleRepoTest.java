@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,17 +19,22 @@ package org.apache.camel.component.leveldb;
 import java.io.File;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.impl.DefaultExchange;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.support.DefaultExchange;
+import org.apache.camel.test.junit5.params.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
-public class LevelDBAggregationRepositoryMultipleRepoTest extends CamelTestSupport {
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
+@DisabledOnOs({ OS.AIX, OS.OTHER })
+public class LevelDBAggregationRepositoryMultipleRepoTest extends LevelDBTestSupport {
 
     private LevelDBFile levelDBFile;
 
     @Override
-    public void setUp() throws Exception {
-        super.setUp();
+    public void doPostSetup() {
         deleteDirectory("target/data");
         File file = new File("target/data/leveldb.dat");
         levelDBFile = new LevelDBFile();
@@ -38,40 +43,39 @@ public class LevelDBAggregationRepositoryMultipleRepoTest extends CamelTestSuppo
     }
 
     @Override
-    public void tearDown() throws Exception {
+    public void doPostTearDown() {
         levelDBFile.stop();
-        super.tearDown();
     }
 
     @Test
     public void testMultipeRepo() {
-        LevelDBAggregationRepository repo1 = new LevelDBAggregationRepository();
+        LevelDBAggregationRepository repo1 = createRepo();
         repo1.setLevelDBFile(levelDBFile);
         repo1.setRepositoryName("repo1");
         repo1.setReturnOldExchange(true);
 
-        LevelDBAggregationRepository repo2 = new LevelDBAggregationRepository();
+        LevelDBAggregationRepository repo2 = createRepo();
         repo2.setLevelDBFile(levelDBFile);
         repo2.setRepositoryName("repo2");
         repo2.setReturnOldExchange(true);
 
         // Can't get something we have not put in...
         Exchange actual = repo1.get(context, "missing");
-        assertEquals(null, actual);
+        assertNull(actual);
 
         actual = repo2.get(context, "missing");
-        assertEquals(null, actual);
+        assertNull(actual);
 
         // Store it..
         Exchange exchange1 = new DefaultExchange(context);
         exchange1.getIn().setBody("counter:1");
         actual = repo1.add(context, "foo", exchange1);
-        assertEquals(null, actual);
+        assertNull(actual);
 
         // Get it back..
         actual = repo1.get(context, "foo");
         assertEquals("counter:1", actual.getIn().getBody());
-        assertEquals(null, repo2.get(context, "foo"));
+        assertNull(repo2.get(context, "foo"));
 
         // Change it..
         Exchange exchange2 = new DefaultExchange(context);
@@ -84,26 +88,26 @@ public class LevelDBAggregationRepositoryMultipleRepoTest extends CamelTestSuppo
         Exchange exchange3 = new DefaultExchange(context);
         exchange3.getIn().setBody("Hello World");
         actual = repo2.add(context, "bar", exchange3);
-        assertEquals(null, actual);
-        assertEquals(null, repo1.get(context, "bar"));
+        assertNull(actual);
+        assertNull(repo1.get(context, "bar"));
 
         // Get it back..
         actual = repo1.get(context, "foo");
         assertEquals("counter:2", actual.getIn().getBody());
-        assertEquals(null, repo2.get(context, "foo"));
+        assertNull(repo2.get(context, "foo"));
 
         actual = repo2.get(context, "bar");
         assertEquals("Hello World", actual.getIn().getBody());
-        assertEquals(null, repo1.get(context, "bar"));
+        assertNull(repo1.get(context, "bar"));
     }
 
     @Test
     public void testMultipeRepoSameKeyDifferentContent() {
-        LevelDBAggregationRepository repo1 = new LevelDBAggregationRepository();
+        LevelDBAggregationRepository repo1 = createRepo();
         repo1.setLevelDBFile(levelDBFile);
         repo1.setRepositoryName("repo1");
 
-        LevelDBAggregationRepository repo2 = new LevelDBAggregationRepository();
+        LevelDBAggregationRepository repo2 = createRepo();
         repo2.setLevelDBFile(levelDBFile);
         repo2.setRepositoryName("repo2");
 

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -32,7 +32,8 @@ public class MllpJUnitResourceCorruptFrameException extends MllpJUnitResourceExc
         super(cause);
     }
 
-    public MllpJUnitResourceCorruptFrameException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
+    public MllpJUnitResourceCorruptFrameException(String message, Throwable cause, boolean enableSuppression,
+                                                  boolean writableStackTrace) {
         super(message, cause, enableSuppression, writableStackTrace);
     }
 }

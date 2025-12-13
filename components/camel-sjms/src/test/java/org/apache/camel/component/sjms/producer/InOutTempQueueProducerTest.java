@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,21 +18,26 @@ package org.apache.camel.component.sjms.producer;
 
 import java.util.UUID;
 
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.TextMessage;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.TextMessage;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
 import org.apache.camel.component.sjms.support.JmsTestSupport;
+import org.junit.jupiter.api.Test;
 
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class InOutTempQueueProducerTest extends JmsTestSupport {
-    
+
+    private static final String QUEUE_NAME = "in.out.queue.producer.test.request.InOutTempQueueProducerTest";
+
     @Override
     protected boolean useJmx() {
         return true;
@@ -40,13 +45,12 @@ public class InOutTempQueueProducerTest extends JmsTestSupport {
 
     @Test
     public void testInOutQueueProducer() throws Exception {
-        String queueName = "in.out.queue.producer.test.request";
-        MessageConsumer mc = createQueueConsumer(queueName);
+        MessageConsumer mc = createQueueConsumer(QUEUE_NAME);
         assertNotNull(mc);
         final String requestText = "Hello World!";
         final String responseText = "How are you";
         mc.setMessageListener(new MyMessageListener(requestText, responseText));
-        Object responseObject = template.requestBody("sjms:queue:" + queueName + "?exchangePattern=InOut", requestText);
+        Object responseObject = template.requestBody("sjms:queue:" + QUEUE_NAME + "?exchangePattern=InOut", requestText);
         assertNotNull(responseObject);
         assertTrue(responseObject instanceof String);
         assertEquals(responseText, responseObject);
@@ -56,38 +60,33 @@ public class InOutTempQueueProducerTest extends JmsTestSupport {
 
     @Test
     public void testInOutQueueProducerWithCorrelationId() throws Exception {
-        String queueName = "in.out.queue.producer.test.request";
-        MessageConsumer mc = createQueueConsumer(queueName);
+        MessageConsumer mc = createQueueConsumer(QUEUE_NAME);
         assertNotNull(mc);
         final String requestText = "Hello World!";
         final String responseText = "How are you";
         mc.setMessageListener(new MyMessageListener(requestText, responseText));
         final String correlationId = UUID.randomUUID().toString().replace("-", "");
-        Exchange exchange = template.request("sjms:queue:" + queueName + "?exchangePattern=InOut", new Processor() {
-            
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setBody(requestText);
-                exchange.getIn().setHeader("JMSCorrelationID", correlationId);
-            }
+        Exchange exchange = template.request("sjms:queue:" + QUEUE_NAME + "?exchangePattern=InOut", exchange1 -> {
+            exchange1.getIn().setBody(requestText);
+            exchange1.getIn().setHeader("JMSCorrelationID", correlationId);
         });
         assertNotNull(exchange);
         assertTrue(exchange.getIn().getBody() instanceof String);
-        assertEquals(responseText, exchange.getOut().getBody());
-        assertEquals(correlationId, exchange.getOut().getHeader("JMSCorrelationID", String.class));
+        assertEquals(responseText, exchange.getMessage().getBody());
+        assertEquals(correlationId, exchange.getMessage().getHeader("JMSCorrelationID", String.class));
         mc.close();
 
     }
-    
+
     protected class MyMessageListener implements MessageListener {
         private String requestText;
         private String responseText;
-        
+
         public MyMessageListener(String request, String response) {
             this.requestText = request;
             this.responseText = response;
         }
-        
+
         @Override
         public void onMessage(Message message) {
             try {
@@ -95,7 +94,7 @@ public class InOutTempQueueProducerTest extends JmsTestSupport {
                 assertNotNull(request);
                 String text = request.getText();
                 assertEquals(requestText, text);
-                
+
                 TextMessage response = getSession().createTextMessage();
                 response.setText(responseText);
                 response.setJMSCorrelationID(request.getJMSCorrelationID());

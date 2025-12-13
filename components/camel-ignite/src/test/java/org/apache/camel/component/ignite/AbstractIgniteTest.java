@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,48 +16,57 @@
  */
 package org.apache.camel.component.ignite;
 
-import java.util.Collections;
 import java.util.UUID;
 
 import org.apache.camel.CamelContext;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.test.infra.common.TestEntityNameGenerator;
+import org.apache.camel.test.infra.ignite.services.IgniteService;
+import org.apache.camel.test.infra.ignite.services.IgniteServiceFactory;
+import org.apache.camel.test.junit5.CamelTestSupport;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.configuration.IgniteConfiguration;
-import org.apache.ignite.events.EventType;
-import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
-import org.apache.ignite.spi.discovery.tcp.ipfinder.TcpDiscoveryIpFinder;
-import org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-public class AbstractIgniteTest extends CamelTestSupport {
-    
-    /** Ip finder for TCP discovery. */
-    private static final TcpDiscoveryIpFinder LOCAL_IP_FINDER = new TcpDiscoveryVmIpFinder(false) { {
-            setAddresses(Collections.singleton("127.0.0.1:47500..47509"));
-        } };
-    
+public abstract class AbstractIgniteTest extends CamelTestSupport {
+
+    @RegisterExtension
+    public static IgniteService igniteService = IgniteServiceFactory.createService();
+
+    @RegisterExtension
+    public static TestEntityNameGenerator nameGenerator = new TestEntityNameGenerator();
+
+    /**
+     * A unique identifier for the ignite resource (cache, queue, set...) being tested.
+     */
+    protected String resourceUid;
+
     private Ignite ignite;
 
     @Override
     protected CamelContext createCamelContext() throws Exception {
         CamelContext context = super.createCamelContext();
-        context.addComponent("ignite", buildComponent());
+        context.addComponent(getScheme(), createComponent());
         return context;
     }
 
-    protected IgniteComponent buildComponent() {
-        IgniteConfiguration config = new IgniteConfiguration();
-        config.setGridName(UUID.randomUUID().toString());
-        config.setIncludeEventTypes(EventType.EVT_JOB_FINISHED, EventType.EVT_JOB_RESULTED);
-        config.setDiscoverySpi(new TcpDiscoverySpi().setIpFinder(LOCAL_IP_FINDER));
-        
-        return IgniteComponent.fromConfiguration(config);
+    protected IgniteConfiguration createConfiguration() {
+        return igniteService.createConfiguration();
     }
+
+    protected abstract String getScheme();
+
+    protected abstract AbstractIgniteComponent createComponent();
 
     protected Ignite ignite() {
         if (ignite == null) {
-            ignite = context.getComponent("ignite", IgniteComponent.class).getIgnite();
+            ignite = context.getComponent(getScheme(), AbstractIgniteComponent.class).getIgnite();
         }
         return ignite;
     }
 
+    @BeforeEach
+    void updateUid() {
+        resourceUid = nameGenerator.getName() + UUID.randomUUID();
+    }
 }

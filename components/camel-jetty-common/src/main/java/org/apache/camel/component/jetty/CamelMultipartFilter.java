@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,16 +16,16 @@
  */
 package org.apache.camel.component.jetty;
 
-import javax.servlet.Filter;
+import jakarta.servlet.Filter;
 
 /**
  * Please use the CamelFilterWrapper instead of using this classs
  */
-@Deprecated 
+@Deprecated
 public class CamelMultipartFilter extends CamelFilterWrapper {
-    
+
     public CamelMultipartFilter(Filter wrapped) {
         super(wrapped);
     }
-   
+
 }

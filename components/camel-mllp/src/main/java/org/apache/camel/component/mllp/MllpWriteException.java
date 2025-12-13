@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,40 +20,19 @@ package org.apache.camel.component.mllp;
  * Raised when a MLLP Producer or consumer encounter an error transmitting data
  */
 public class MllpWriteException extends MllpException {
-    private final byte[] mllpPayload;
-
-    public MllpWriteException(String message, byte[] mllpPayload) {
-        super(message);
-        this.mllpPayload = mllpPayload;
+    public MllpWriteException(String message, byte[] hl7Message, boolean logPhi) {
+        super(message, hl7Message, logPhi);
     }
 
-    public MllpWriteException(String message, byte[] mllpPayload, Throwable cause) {
-        super(message, cause);
-        this.mllpPayload = mllpPayload;
+    public MllpWriteException(String message, byte[] hl7Message, byte[] hl7Acknowledgement, boolean logPhi) {
+        super(message, hl7Message, hl7Acknowledgement, logPhi);
     }
 
-    public byte[] getMllpPayload() {
-        return mllpPayload;
+    public MllpWriteException(String message, byte[] hl7Message, Throwable cause, boolean logPhi) {
+        super(message, hl7Message, cause, logPhi);
     }
 
-    @Override
-    public String getMessage() {
-        if (isLogPhi()) {
-            return String.format("%s:\n\tMLLP Payload: %s", super.getMessage(), covertBytesToPrintFriendlyString(mllpPayload));
-        } else {
-            return super.getMessage();
-        }
+    public MllpWriteException(String message, byte[] hl7Message, byte[] hl7Acknowledgement, Throwable cause, boolean logPhi) {
+        super(message, hl7Message, hl7Acknowledgement, cause, logPhi);
     }
-
-    @Override
-    public String toString() {
-        StringBuilder stringBuilder = new StringBuilder(this.getClass().getName());
-
-        stringBuilder.append(": {mllpPayload=")
-                .append(covertBytesToPrintFriendlyString(mllpPayload))
-                .append("}");
-
-        return stringBuilder.toString();
-    }
-
 }

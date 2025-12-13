@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,7 +20,11 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class JdbcAggregateNotLostTest extends AbstractJdbcAggregationTestSupport {
 
@@ -35,9 +39,7 @@ public class JdbcAggregateNotLostTest extends AbstractJdbcAggregationTestSupport
         template.sendBodyAndHeader("direct:start", "D", "id", 123);
         template.sendBodyAndHeader("direct:start", "E", "id", 123);
 
-        assertMockEndpointsSatisfied(30, TimeUnit.SECONDS);
-
-        Thread.sleep(1000);
+        MockEndpoint.assertIsSatisfied(context, 5, TimeUnit.SECONDS);
 
         String exchangeId = getMockEndpoint("mock:aggregated").getReceivedExchanges().get(0).getExchangeId();
 
@@ -56,16 +58,18 @@ public class JdbcAggregateNotLostTest extends AbstractJdbcAggregationTestSupport
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
+                configureJdbcAggregationRepository();
+
                 from("direct:start")
                         .aggregate(header("id"), new MyAggregationStrategy())
                         .completionSize(5).aggregationRepository(repo)
                         .log("aggregated exchange id ${exchangeId} with ${body}")
                         .to("mock:aggregated")
-                                // throw an exception to fail, which we then will loose this message
+                        // throw an exception to fail, which we then will loose this message
                         .throwException(new IllegalArgumentException("Damn"))
                         .to("mock:result")
                         .end();

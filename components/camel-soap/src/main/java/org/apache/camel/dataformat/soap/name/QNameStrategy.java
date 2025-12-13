@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,17 +19,15 @@ package org.apache.camel.dataformat.soap.name;
 import javax.xml.namespace.QName;
 
 /**
- * Simply ElementNameStrategy that returns one preset QName. This can be handy
- * for simple asynchronous calls
+ * Simply ElementNameStrategy that returns one preset QName. This can be handy for simple asynchronous calls
  */
 public class QNameStrategy implements ElementNameStrategy {
     private QName elementName;
 
     /**
      * Initialize with one QName
-     * 
-     * @param elmentName
-     *            QName to be used for all finds
+     *
+     * @param elmentName QName to be used for all finds
      */
     public QNameStrategy(QName elmentName) {
         this.elementName = elmentName;
@@ -38,11 +36,18 @@ public class QNameStrategy implements ElementNameStrategy {
     /**
      * @return preset element name
      */
+    @Override
     public QName findQNameForSoapActionOrType(String soapAction, Class<?> type) {
         return elementName;
     }
 
+    @Override
     public Class<? extends Exception> findExceptionForFaultName(QName faultName) {
+        throw new UnsupportedOperationException("Exception lookup is not supported for QNameStrategy");
+    }
+
+    @Override
+    public Class<? extends Exception> findExceptionForSoapActionAndFaultName(String soapAction, QName faultName) {
         throw new UnsupportedOperationException("Exception lookup is not supported for QNameStrategy");
     }
 

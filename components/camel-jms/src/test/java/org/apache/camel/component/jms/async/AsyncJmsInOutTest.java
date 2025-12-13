@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,30 +17,39 @@
 package org.apache.camel.component.jms.async;
 
 import java.util.concurrent.TimeUnit;
-import javax.jms.ConnectionFactory;
 
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ExchangePattern;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.jms.CamelJmsTestHelper;
+import org.apache.camel.component.jms.AbstractJMSTest;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
 import org.apache.camel.util.StopWatch;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.apache.camel.test.junit5.TestSupport.body;
 
-/**
- * @version 
- */
-public class AsyncJmsInOutTest extends CamelTestSupport {
+public class AsyncJmsInOutTest extends AbstractJMSTest {
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    private static final Logger LOG = LoggerFactory.getLogger(AsyncJmsInOutTest.class);
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-
-        return camelContext;
+    @Override
+    protected String getComponentName() {
+        return "activemq";
     }
 
     @Test
@@ -52,20 +61,20 @@ public class AsyncJmsInOutTest extends CamelTestSupport {
         StopWatch watch = new StopWatch();
 
         for (int i = 0; i < 100; i++) {
-            template.sendBody("seda:start", "" + i);
+            template.sendBody("seda:start", Integer.toString(i));
         }
 
         // just in case we run on slow boxes
-        assertMockEndpointsSatisfied(20, TimeUnit.SECONDS);
+        MockEndpoint.assertIsSatisfied(context, 20, TimeUnit.SECONDS);
 
-        log.info("Took " + watch.stop() + " ms. to process 100 messages request/reply over JMS");
+        LOG.info("Took {} ms. to process 100 messages request/reply over JMS", watch.taken());
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // in a fully sync mode it would take at least 5 + 5 sec to process the 100 messages
                 // (there are delays in both routes)
                 // however due async routing, we can leverage the fact to let threads non blocked
@@ -74,17 +83,29 @@ public class AsyncJmsInOutTest extends CamelTestSupport {
                 // this means the async processing model is about 2x faster
 
                 from("seda:start")
-                    // we can only send at fastest the 100 msg in 5 sec due the delay
-                    .delay(50)
-                    .inOut("activemq:queue:bar")
-                    .to("mock:result");
+                        // we can only send at fastest the 100 msg in 5 sec due the delay
+                        .delay(50)
+                        .to(ExchangePattern.InOut, "activemq:queue:bar")
+                        .to("mock:result");
 
                 from("activemq:queue:bar")
-                    .log("Using ${threadName} to process ${body}")
-                    // we can only process at fastest the 100 msg in 5 sec due the delay
-                    .delay(50)
-                    .transform(body().prepend("Bye "));
+                        .log("Using ${threadName} to process ${body}")
+                        // we can only process at fastest the 100 msg in 5 sec due the delay
+                        .delay(50)
+                        .transform(body().prepend("Bye "));
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
     }
 }

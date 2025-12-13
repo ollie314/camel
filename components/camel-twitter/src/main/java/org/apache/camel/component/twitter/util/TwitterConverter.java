@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,19 +16,17 @@
  */
 package org.apache.camel.component.twitter.util;
 
-import java.text.ParseException;
-
 import org.apache.camel.Converter;
-import twitter4j.DirectMessage;
-import twitter4j.Status;
-import twitter4j.Trend;
-import twitter4j.Trends;
-import twitter4j.UserList;
+import twitter4j.v1.DirectMessage;
+import twitter4j.v1.Status;
+import twitter4j.v1.Trend;
+import twitter4j.v1.Trends;
+import twitter4j.v1.UserList;
 
 /**
  * Utility for converting between Twitter4J and camel-twitter data layers.
  */
-@Converter
+@Converter(generateLoader = true)
 public final class TwitterConverter {
 
     private TwitterConverter() {
@@ -36,30 +34,31 @@ public final class TwitterConverter {
     }
 
     @Converter
-    public static String toString(Status status) throws ParseException {
-        return new StringBuilder()
-            .append(status.getCreatedAt()).append(" (").append(status.getUser().getScreenName()).append(") ")
-            .append(status.getText())
-            .toString();
+    public static String toString(Status status) {
+        return status.getCreatedAt() + " (" +
+               status.getUser().getScreenName() + ") " +
+               status.getText();
     }
 
     @Converter
-    public static String toString(DirectMessage dm) throws ParseException {
-        return new StringBuilder()
-            .append(dm.getCreatedAt()).append(" (").append(dm.getSenderScreenName()).append(") ")
-            .append(dm.getText())
-            .toString();
+    public static String toString(DirectMessage dm) {
+        return dm.getCreatedAt() +
+               " (" + dm.getSenderId() + ") " +
+               dm.getText();
     }
 
     @Converter
-    public static String toString(Trend trend) throws ParseException {
+    public static String toString(Trend trend) {
         return trend.getName();
     }
 
     @Converter
-    public static String toString(Trends trends) throws ParseException {
+    public static String toString(Trends trends) {
         StringBuilder s = new StringBuilder();
-        s.append("(" + trends.getTrendAt().toString() + ") ");
+        s.append("(")
+                .append(trends.getTrendAt().toString())
+                .append(") ");
+
         boolean first = true;
         for (Trend trend : trends.getTrends()) {
             if (first) {
@@ -73,13 +72,12 @@ public final class TwitterConverter {
     }
 
     @Converter
-    public static String toString(UserList userList) throws ParseException {
-        return new StringBuilder()
-             .append(userList.getCreatedAt()).append(" (").append(userList.getUser().getScreenName()).append(") ")
-             .append(userList.getFullName())
-             .append(',')
-             .append(userList.getURI())
-             .append(',')
-             .toString();
+    public static String toString(UserList userList) {
+        return userList.getCreatedAt() +
+               " (" + userList.getUser().getScreenName() + ") " +
+               userList.getFullName() +
+               ',' +
+               userList.getURI() +
+               ',';
     }
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,30 +16,47 @@
  */
 package org.apache.camel.component.weather;
 
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
-import org.apache.camel.impl.DefaultPollingEndpoint;
+import org.apache.camel.spi.EndpointServiceLocation;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
+import org.apache.camel.support.DefaultPollingEndpoint;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 
 /**
- * Polls the weather information from Open Weather Map.
+ * Poll the weather information from Open Weather Map.
  */
-@UriEndpoint(scheme = "weather", title = "Weather", syntax = "weather:name", consumerClass = WeatherConsumer.class, label = "api")
-public class WeatherEndpoint extends DefaultPollingEndpoint {
+@UriEndpoint(firstVersion = "2.12.0", scheme = "weather", title = "Weather", syntax = "weather:name",
+             category = { Category.API }, headersClass = WeatherConstants.class)
+public class WeatherEndpoint extends DefaultPollingEndpoint implements EndpointServiceLocation {
 
     @UriParam
-    private WeatherConfiguration configuration;
+    private final WeatherConfiguration configuration;
+
+    private final WeatherQuery weatherQuery;
 
     public WeatherEndpoint(String uri, WeatherComponent component, WeatherConfiguration properties) {
         super(uri, component);
         this.configuration = properties;
+        this.weatherQuery = new WeatherQuery(getConfiguration());
+    }
+
+    @Override
+    public String getServiceUrl() {
+        return "http://api.openweathermap.org/data/2.5";
+    }
+
+    @Override
+    public String getServiceProtocol() {
+        return "http";
     }
 
     @Override
     public Consumer createConsumer(Processor processor) throws Exception {
-        WeatherConsumer answer = new WeatherConsumer(this, processor, this.configuration.getQuery());
+        WeatherConsumer answer = new WeatherConsumer(this, processor);
 
         // ScheduledPollConsumer default delay is 500 millis and that is too often for polling a feed, so we override
         // with a new default value. End user can override this value by providing a consumer.delay parameter
@@ -50,15 +67,25 @@ public class WeatherEndpoint extends DefaultPollingEndpoint {
 
     @Override
     public Producer createProducer() throws Exception {
-        return new WeatherProducer(this, configuration.getQuery());
-    }
-
-    @Override
-    public boolean isSingleton() {
-        return true;
+        return new WeatherProducer(this, getWeatherQuery().getQuery());
     }
 
     public WeatherConfiguration getConfiguration() {
         return configuration;
     }
+
+    public WeatherQuery getWeatherQuery() {
+        return this.weatherQuery;
+    }
+
+    @Override
+    protected void doStop() throws Exception {
+        super.doStop();
+
+        CloseableHttpClient client = getConfiguration().getHttpClient();
+        if (client != null) {
+            client.close();
+        }
+    }
+
 }

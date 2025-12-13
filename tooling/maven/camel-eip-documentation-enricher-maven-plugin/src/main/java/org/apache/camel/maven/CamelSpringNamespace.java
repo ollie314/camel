@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,6 +17,7 @@
 package org.apache.camel.maven;
 
 import java.util.Iterator;
+
 import javax.xml.namespace.NamespaceContext;
 
 /**
@@ -41,7 +42,7 @@ public class CamelSpringNamespace implements NamespaceContext {
     }
 
     @Override
-    public Iterator getPrefixes(String namespaceURI) {
+    public Iterator<String> getPrefixes(String namespaceURI) {
         throw new UnsupportedOperationException("Operation not supported");
     }
 }

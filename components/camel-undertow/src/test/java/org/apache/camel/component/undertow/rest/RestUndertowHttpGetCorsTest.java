@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,62 +17,103 @@
 package org.apache.camel.component.undertow.rest;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.component.undertow.BaseUndertowTest;
 import org.apache.camel.spi.RestConfiguration;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class RestUndertowHttpGetCorsTest extends BaseUndertowTest {
 
     @Test
-    public void testCors() throws Exception {
+    public void testCorsGet() throws Exception {
         // send OPTIONS first which should not be routed
-        getMockEndpoint("mock:input").expectedMessageCount(0);
+        getMockEndpoint("mock:inputGet").expectedMessageCount(0);
 
-        Exchange out = template.request("http://localhost:" + getPort() + "/users/123/basic", new Processor() {
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(Exchange.HTTP_METHOD, "OPTIONS");
-            }
-        });
+        Exchange out = template.request("http://localhost:" + getPort() + "/users/123/basic",
+                exchange -> exchange.getIn().setHeader(Exchange.HTTP_METHOD, "OPTIONS"));
 
-        assertEquals(RestConfiguration.CORS_ACCESS_CONTROL_ALLOW_ORIGIN, out.getOut().getHeader("Access-Control-Allow-Origin"));
-        assertEquals(RestConfiguration.CORS_ACCESS_CONTROL_ALLOW_METHODS, out.getOut().getHeader("Access-Control-Allow-Methods"));
-        assertEquals(RestConfiguration.CORS_ACCESS_CONTROL_ALLOW_HEADERS, out.getOut().getHeader("Access-Control-Allow-Headers"));
-        assertEquals(RestConfiguration.CORS_ACCESS_CONTROL_MAX_AGE, out.getOut().getHeader("Access-Control-Max-Age"));
+        assertEquals(RestConfiguration.CORS_ACCESS_CONTROL_ALLOW_ORIGIN,
+                out.getMessage().getHeader("Access-Control-Allow-Origin"));
+        assertEquals(RestConfiguration.CORS_ACCESS_CONTROL_ALLOW_METHODS,
+                out.getMessage().getHeader("Access-Control-Allow-Methods"));
+        assertEquals(RestConfiguration.CORS_ACCESS_CONTROL_ALLOW_HEADERS,
+                out.getMessage().getHeader("Access-Control-Allow-Headers"));
+        assertEquals(RestConfiguration.CORS_ACCESS_CONTROL_MAX_AGE, out.getMessage().getHeader("Access-Control-Max-Age"));
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
-        resetMocks();
-        getMockEndpoint("mock:input").expectedMessageCount(1);
+        MockEndpoint.resetMocks(context);
+        getMockEndpoint("mock:inputGet").expectedMessageCount(1);
 
         // send GET request which should be routed
 
-        String out2 = template.requestBody("http://localhost:" + getPort() + "/users/123/basic", null, String.class);
+        String out2 = fluentTemplate.to("http://localhost:" + getPort() + "/users/123/basic")
+                .withHeader(Exchange.HTTP_METHOD, "GET")
+                .request(String.class);
         assertEquals("123;Donald Duck", out2);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
+    }
+
+    @Test
+    public void testCorsPut() throws Exception {
+        // send OPTIONS first which should not be routed
+        getMockEndpoint("mock:inputPut").expectedMessageCount(0);
+
+        Exchange out = template.request("http://localhost:" + getPort() + "/users/123/basic",
+                exchange -> exchange.getIn().setHeader(Exchange.HTTP_METHOD, "OPTIONS"));
+
+        assertEquals(RestConfiguration.CORS_ACCESS_CONTROL_ALLOW_ORIGIN,
+                out.getMessage().getHeader("Access-Control-Allow-Origin"));
+        assertEquals(RestConfiguration.CORS_ACCESS_CONTROL_ALLOW_METHODS,
+                out.getMessage().getHeader("Access-Control-Allow-Methods"));
+        assertEquals(RestConfiguration.CORS_ACCESS_CONTROL_ALLOW_HEADERS,
+                out.getMessage().getHeader("Access-Control-Allow-Headers"));
+        assertEquals(RestConfiguration.CORS_ACCESS_CONTROL_MAX_AGE, out.getMessage().getHeader("Access-Control-Max-Age"));
+
+        MockEndpoint.assertIsSatisfied(context);
+
+        MockEndpoint.resetMocks(context);
+        getMockEndpoint("mock:inputPut").expectedMessageCount(1);
+
+        // send PUT request which should be routed
+
+        String out2 = fluentTemplate.to("http://localhost:" + getPort() + "/users/123/basic")
+                .withHeader(Exchange.HTTP_METHOD, "PUT")
+                .request(String.class);
+        assertEquals("123;Donald Duck", out2);
+
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // configure to use undertow on localhost with the given port
                 restConfiguration().component("undertow").host("localhost").port(getPort()).enableCORS(true);
 
                 // use the rest DSL to define the rest services
                 rest("/users/")
-                    .get("{id}/basic")
-                        .route()
-                        .to("mock:input")
-                        .process(new Processor() {
-                            public void process(Exchange exchange) throws Exception {
-                                String id = exchange.getIn().getHeader("id", String.class);
-                                exchange.getOut().setBody(id + ";Donald Duck");
-                            }
+                        .get("{id}/basic").to("direct:get-basic")
+                        .put("{id}/basic").to("direct:put-basic");
+
+                from("direct:get-basic")
+                        .to("mock:inputGet")
+                        .process(exchange -> {
+                            String id = exchange.getIn().getHeader("id", String.class);
+                            exchange.getMessage().setBody(id + ";Donald Duck");
+                        });
+
+                from("direct:put-basic")
+                        .to("mock:inputPut")
+                        .process(exchange -> {
+                            String id = exchange.getIn().getHeader("id", String.class);
+                            exchange.getMessage().setBody(id + ";Donald Duck");
                         });
             }
         };

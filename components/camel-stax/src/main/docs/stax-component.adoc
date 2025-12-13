@@ -1,14 +1,23 @@
-[[StAX-StAXComponent]]
-StAX Component
-~~~~~~~~~~~~~~
+= StAX Component
+:doctitle: StAX
+:shortname: stax
+:artifactid: camel-stax
+:description: Process XML payloads by a SAX ContentHandler.
+:since: 2.9
+:supportlevel: Stable
+:tabs-sync-option:
+:component-header: Only producer is supported
+//Manually maintained attributes
+:camel-spring-boot-name: stax
 
-*Available as of Camel 2.9*
+*Since Camel {since}*
 
-The StAX component allows messages to be process through a SAX
+*{component-header}*
+
+The StAX component allows messages to be processed through a SAX
 http://download.oracle.com/javase/6/docs/api/org/xml/sax/ContentHandler.html[ContentHandler]. +
-Another feature of this component is to allow to iterate over JAXB
-records using StAX, for example using the link:splitter.html[Splitter]
-EIP.
+Another feature of this component is to allow iterating over JAXB
+records using StAX, for example, using the xref:eips:split-eip.adoc[Split EIP].
 
 Maven users will need to add the following dependency to their `pom.xml`
 for this component:
@@ -23,63 +32,40 @@ for this component:
 </dependency>
 ------------------------------------------------------------
 
-[[StAX-URIformat]]
-URI format
-^^^^^^^^^^
+== URI format
 
-[source,java]
 --------------------------
 stax:content-handler-class
 --------------------------
 
 example:
 
-[source,java]
 -----------------------------------
 stax:org.superbiz.FooContentHandler
 -----------------------------------
 
-From *Camel 2.11.1* onwards you can lookup a
-`org.xml.sax.ContentHandler` bean from the link:registry.html[Registry]
+You can look up a `org.xml.sax.ContentHandler` bean from the Registry
 using the # syntax as shown:
 
-[source,java]
 ---------------
 stax:#myHandler
 ---------------
 
-[[Stax-Options]]
-Options
-~~~~~~~
 
 
 // component options: START
-The StAX component has no options.
+include::partial$component-configure-options.adoc[]
+include::partial$component-endpoint-options.adoc[]
+include::partial$component-endpoint-headers.adoc[]
 // component options: END
 
+== Usage
 
-
-// endpoint options: START
-The StAX component supports 2 endpoint options which are listed below:
-
-{% raw %}
-[width="100%",cols="2,1,1m,1m,5",options="header"]
-|=======================================================================
-| Name | Group | Default | Java Type | Description
-| contentHandlerClass | producer |  | String | *Required* The FQN class name for the ContentHandler implementation to use.
-| synchronous | advanced | false | boolean | Sets whether synchronous processing should be strictly used or Camel is allowed to use asynchronous processing (if supported).
-|=======================================================================
-{% endraw %}
-// endpoint options: END
-
-
-[[StAX-UsageofacontenthandlerasStAXparser]]
-Usage of a content handler as StAX parser
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+=== Usage of a content handler as StAX parser
 
 The message body after the handling is the handler itself.
 
-Here an example:
+Here is an example:
 
 [source,java]
 --------------------------------------------------------------------------------------------------------
@@ -95,13 +81,11 @@ from("file:target/in")
   });
 --------------------------------------------------------------------------------------------------------
 
-[[StAX-IterateoveracollectionusingJAXBandStAX]]
-Iterate over a collection using JAXB and StAX
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+=== Iterate over a collection using JAXB and StAX
 
-First we suppose you have JAXB objects.
+First, we suppose you have JAXB objects.
 
-For instance a list of records in a wrapper object:
+For instance, a list of records in a wrapper object:
 
 [source,java]
 -------------------------------------------------
@@ -163,7 +147,7 @@ public class Record {
 }
 ---------------------------------------------------------
 
-Then you get a XML file to process:
+Then you get an XML file to process:
 
 [source,xml]
 -------------------------------------------------------
@@ -179,7 +163,7 @@ Then you get a XML file to process:
 -------------------------------------------------------
 
 The StAX component provides an `StAXBuilder` which can be used when
-iterating XML elements with the Camel link:splitter.html[Splitter]
+iterating XML elements with the Camel Splitter
 
 [source,java]
 ------------------------------------------
@@ -189,9 +173,9 @@ from("file:target/in")
 ------------------------------------------
 
 Where `stax` is a static method on
-`org.apache.camel.component.stax.StAXBuilder` which you can static
+`org.apache.camel.component.stax.StAXBuilder` which you can have static
 import in the Java code. The stax builder is by default namespace aware
-on the XMLReader it uses. From *Camel 2.11.1* onwards you can turn this
+on the XMLReader it uses. You can turn this
 off by setting the boolean parameter to false, as shown below:
 
 [source,java]
@@ -201,18 +185,32 @@ from("file:target/in")
         .to("mock:records");
 -------------------------------------------------
 
-[[StAX-ThepreviousexamplewithXMLDSL]]
-The previous example with XML DSL
-+++++++++++++++++++++++++++++++++
+Alternatively, the example above could be implemented as follows in Spring XML
 
-The example above could be implemented as follows in XML DSL
+[source,xml]
+----
+  <!-- use STaXBuilder to create the expression we want to use in the route below for splitting the XML file -->
+  <!-- notice we use the factory-method to define the stax method, and to pass in the parameter as a constructor-arg -->
+  <bean id="staxRecord" class="org.apache.camel.component.stax.StAXBuilder" factory-method="stax">
+    <!-- FQN class name of the POJO with the JAXB annotations -->
+    <constructor-arg index="0" value="org.apache.camel.component.stax.model.Record"/>
+  </bean>
 
-[[StAX-SeeAlso]]
-See Also
-^^^^^^^^
+  <camelContext xmlns="http://camel.apache.org/schema/spring">
+    <route>
+      <!-- pickup XML files -->
+      <from uri="file:target/in"/>
+      <split streaming="true">
+        <!-- split the file using StAX (ref to bean above) -->
+        <!-- and use streaming mode in the splitter -->
+        <ref>staxRecord</ref>
+        <!-- and send each split to a mock endpoint, which will be a Record POJO instance -->
+        <to uri="mock:records"/>
+      </split>
+    </route>
+  </camelContext>
+----
 
-* link:configuring-camel.html[Configuring Camel]
-* link:component.html[Component]
-* link:endpoint.html[Endpoint]
-* link:getting-started.html[Getting Started]
 
+
+include::spring-boot:partial$starter.adoc[]

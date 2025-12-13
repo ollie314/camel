@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,34 +18,40 @@ package org.apache.camel.component.file.remote;
 
 import java.net.URI;
 import java.util.Map;
+import java.util.TreeMap;
 
-import com.jcraft.jsch.ChannelSftp;
+import com.jcraft.jsch.JSch;
 import org.apache.camel.CamelContext;
+import org.apache.camel.api.management.ManagedOperation;
+import org.apache.camel.api.management.ManagedResource;
 import org.apache.camel.component.file.GenericFileEndpoint;
+import org.apache.camel.spi.annotations.Component;
+import org.apache.camel.util.StringHelper;
 
 /**
  * Secure FTP Component
  */
-public class SftpComponent extends RemoteFileComponent<ChannelSftp.LsEntry> {
+@Component("sftp")
+@ManagedResource(description = "Managed SFTP Component")
+public class SftpComponent extends RemoteFileComponent<SftpRemoteFile> {
 
     public SftpComponent() {
-        setEndpointClass(SftpEndpoint.class);
     }
 
     public SftpComponent(CamelContext context) {
         super(context);
-        setEndpointClass(SftpEndpoint.class);
     }
 
     @Override
-    protected GenericFileEndpoint<ChannelSftp.LsEntry> buildFileEndpoint(String uri, String remaining, Map<String, Object> parameters) throws Exception {
-        // get the base uri part before the options as they can be non URI valid such as the expression using $ chars
-        // and the URI constructor will regard $ as an illegal character and we dont want to enforce end users to
+    protected GenericFileEndpoint<SftpRemoteFile> buildFileEndpoint(
+            String uri, String remaining, Map<String, Object> parameters)
+            throws Exception {
+        // get the base uri part before the options as they can be non URI valid
+        // such as the expression using $ chars
+        // and the URI constructor will regard $ as an illegal character and we
+        // dont want to enforce end users to
         // to escape the $ for the expression (file language)
-        String baseUri = uri;
-        if (uri.indexOf("?") != -1) {
-            baseUri = uri.substring(0, uri.indexOf("?"));
-        }
+        String baseUri = StringHelper.before(uri, "?", uri);
 
         // lets make sure we create a new configuration as each endpoint can
         // customize its own version
@@ -56,9 +62,23 @@ public class SftpComponent extends RemoteFileComponent<ChannelSftp.LsEntry> {
         return new SftpEndpoint(uri, this, config);
     }
 
-    protected void afterPropertiesSet(GenericFileEndpoint<ChannelSftp.LsEntry> endpoint) throws Exception {
+    @Override
+    protected void afterPropertiesSet(GenericFileEndpoint<SftpRemoteFile> endpoint) throws Exception {
         // noop
     }
 
-}
+    @ManagedOperation(description = "Dump JSCH Configuration")
+    public String dumpConfiguration() {
+        StringBuilder sb = new StringBuilder();
 
+        Map<String, String> map = new TreeMap<>(String::compareToIgnoreCase);
+        map.putAll(JSch.getConfig());
+        for (var e : map.entrySet()) {
+            String v = e.getValue() != null ? e.getValue() : "";
+            sb.append(String.format("%s = %s%n", e.getKey(), v));
+        }
+
+        return sb.toString();
+    }
+
+}

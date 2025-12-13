@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,28 +17,122 @@
 package org.apache.camel.component.jcache;
 
 import java.util.Map;
+import java.util.Properties;
+
+import javax.cache.Cache;
+import javax.cache.CacheManager;
+import javax.cache.configuration.Configuration;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
-import org.apache.camel.impl.UriEndpointComponent;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.spi.annotations.Component;
+import org.apache.camel.support.CamelContextHelper;
+import org.apache.camel.support.DefaultComponent;
 
-/**
- * Represents the component that manages {@link JCacheEndpoint}.
- */
-public class JCacheComponent extends UriEndpointComponent {
+@Component("jcache")
+public class JCacheComponent extends DefaultComponent {
+
+    @Metadata
+    private String cachingProvider;
+    @Metadata
+    private Configuration cacheConfiguration;
+    @Metadata
+    private String cacheConfigurationPropertiesRef;
+    @Metadata
+    private Map cacheConfigurationProperties;
+    @Metadata
+    private String configurationUri;
+
     public JCacheComponent() {
-        super(JCacheEndpoint.class);
     }
 
     public JCacheComponent(CamelContext context) {
-        super(context, JCacheEndpoint.class);
+        super(context);
     }
 
     @Override
     protected Endpoint createEndpoint(String uri, String remaining, Map<String, Object> parameters) throws Exception {
         JCacheConfiguration configuration = new JCacheConfiguration(getCamelContext(), remaining);
-        setProperties(configuration, parameters);
 
-        return new JCacheEndpoint(uri, this, configuration);
+        configuration.setCachingProvider(cachingProvider);
+        configuration.setCacheConfiguration(cacheConfiguration);
+        configuration.setCacheConfigurationProperties(loadProperties());
+        configuration.setConfigurationUri(configurationUri);
+
+        JCacheEndpoint endpoint = new JCacheEndpoint(uri, this, configuration);
+        setProperties(endpoint, parameters);
+        return endpoint;
     }
+
+    private Properties loadProperties() {
+        Properties answer = null;
+        if (cacheConfigurationProperties != null) {
+            answer = new Properties();
+            answer.putAll(cacheConfigurationProperties);
+        }
+        if (answer == null && cacheConfigurationPropertiesRef != null) {
+            Map map = CamelContextHelper.mandatoryLookup(getCamelContext(), cacheConfigurationPropertiesRef, Map.class);
+            answer = new Properties();
+            answer.putAll(map);
+        }
+        return answer;
+    }
+
+    /**
+     * The fully qualified class name of the {@link javax.cache.spi.CachingProvider}
+     */
+    public String getCachingProvider() {
+        return cachingProvider;
+    }
+
+    public void setCachingProvider(String cachingProvider) {
+        this.cachingProvider = cachingProvider;
+    }
+
+    /**
+     * A {@link Configuration} for the {@link Cache}
+     */
+    public Configuration getCacheConfiguration() {
+        return cacheConfiguration;
+    }
+
+    public void setCacheConfiguration(Configuration cacheConfiguration) {
+        this.cacheConfiguration = cacheConfiguration;
+    }
+
+    /**
+     * Properties to configure jcache
+     */
+    public Map getCacheConfigurationProperties() {
+        return cacheConfigurationProperties;
+    }
+
+    public void setCacheConfigurationProperties(Map cacheConfigurationProperties) {
+        this.cacheConfigurationProperties = cacheConfigurationProperties;
+    }
+
+    public String getCacheConfigurationPropertiesRef() {
+        return cacheConfigurationPropertiesRef;
+    }
+
+    /**
+     * References to an existing {@link Properties} or {@link Map} to lookup in the registry to use for configuring
+     * jcache.
+     */
+    public void setCacheConfigurationPropertiesRef(String cacheConfigurationPropertiesRef) {
+        this.cacheConfigurationPropertiesRef = cacheConfigurationPropertiesRef;
+    }
+
+    /**
+     * An implementation specific URI for the {@link CacheManager}
+     */
+    public String getConfigurationUri() {
+        return configurationUri;
+    }
+
+    public void setConfigurationUri(String configurationUri) {
+        this.configurationUri = configurationUri;
+    }
+
 }

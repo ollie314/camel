@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,26 +16,45 @@
  */
 package org.apache.camel.language.mvel;
 
+import java.io.Serializable;
+import java.util.Map;
+
 import org.apache.camel.Expression;
+import org.apache.camel.ExpressionIllegalSyntaxException;
 import org.apache.camel.Predicate;
-import org.apache.camel.spi.Language;
-import org.apache.camel.support.LanguageSupport;
+import org.apache.camel.spi.ScriptingLanguage;
+import org.apache.camel.spi.annotations.Language;
+import org.apache.camel.support.TypedLanguageSupport;
 
 /**
- * An <a href="http://mvel.codehaus.org/">MVEL</a> {@link Language} plugin
- * 
- * @version 
+ * An <a href="http://mvel.codehaus.org/">MVEL</a> {@link org.apache.camel.spi.Language} plugin
  */
-public class MvelLanguage extends LanguageSupport {
+@Language("mvel")
+public class MvelLanguage extends TypedLanguageSupport implements ScriptingLanguage {
 
+    @Override
     public Predicate createPredicate(String expression) {
-        expression = loadResource(expression);
-        return new MvelExpression(this, expression, Boolean.class);
+        return createMvelExpression(expression, Boolean.class);
     }
 
+    @Override
     public Expression createExpression(String expression) {
-        expression = loadResource(expression);
-        return new MvelExpression(this, expression, Object.class);
+        return createMvelExpression(expression, Object.class);
     }
 
+    private MvelExpression createMvelExpression(String expression, Class<?> type) {
+        return new MvelExpression(loadResource(expression), type);
+    }
+
+    @Override
+    public <T> T evaluate(String script, Map<String, Object> bindings, Class<T> resultType) {
+        script = loadResource(script);
+        try {
+            Serializable compiled = org.mvel2.MVEL.compileExpression(script);
+            Object value = org.mvel2.MVEL.executeExpression(compiled, bindings);
+            return getCamelContext().getTypeConverter().convertTo(resultType, value);
+        } catch (Exception e) {
+            throw new ExpressionIllegalSyntaxException(script, e);
+        }
+    }
 }

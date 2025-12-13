@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -32,8 +32,7 @@ import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
 /**
  * Jackson deserializer base class for reading ';' separated strings for MultiSelect pick-lists.
  */
-public class MultiSelectPicklistDeserializer
-    extends StdDeserializer<Object> implements ContextualDeserializer {
+public class MultiSelectPicklistDeserializer extends StdDeserializer<Object> implements ContextualDeserializer {
 
     private static final long serialVersionUID = -4568286926393043366L;
 
@@ -80,13 +79,14 @@ public class MultiSelectPicklistDeserializer
 
             return resultArray;
         } catch (Exception e) {
-            throw new JsonParseException(jp, "Exception reading multi-select pick list value", jp.getCurrentLocation());
+            throw new JsonParseException(jp, "Exception reading multi-select pick list value", jp.currentLocation());
         }
     }
 
     @SuppressWarnings("unchecked")
     @Override
-    public JsonDeserializer<?> createContextual(DeserializationContext context, BeanProperty property) throws JsonMappingException {
+    public JsonDeserializer<?> createContextual(DeserializationContext context, BeanProperty property)
+            throws JsonMappingException {
         final Class<?> rawClass = property.getType().getRawClass();
         final Class<?> componentType = rawClass.getComponentType();
         if (componentType == null || !componentType.isEnum()) {

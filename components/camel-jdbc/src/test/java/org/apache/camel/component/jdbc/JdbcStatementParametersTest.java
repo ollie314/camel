@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,13 +19,15 @@ package org.apache.camel.component.jdbc;
 import java.util.List;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class JdbcStatementParametersTest extends AbstractJdbcTestSupport {
-    
+
     @SuppressWarnings("rawtypes")
     @Test
-    public void testMax2Rows() throws Exception {
+    public void testMax2Rows() {
         List rows = template.requestBody("direct:hello", "select * from customer order by id", List.class);
 
         assertEquals(2, rows.size());
@@ -34,8 +36,9 @@ public class JdbcStatementParametersTest extends AbstractJdbcTestSupport {
 
     @SuppressWarnings("rawtypes")
     @Test
-    public void testMax5Rows() throws Exception {
-        List rows = template.requestBody("jdbc:testdb?statement.maxRows=5&statement.fetchSize=50", "select * from customer order by id", List.class);
+    public void testMax5Rows() {
+        List rows = template.requestBody("jdbc:testdb?statement.maxRows=5&statement.fetchSize=50",
+                "select * from customer order by id", List.class);
 
         assertEquals(3, rows.size());
         assertEquals(3, context.getEndpoints().size());
@@ -43,7 +46,7 @@ public class JdbcStatementParametersTest extends AbstractJdbcTestSupport {
 
     @SuppressWarnings("rawtypes")
     @Test
-    public void testNoParameters() throws Exception {
+    public void testNoParameters() {
         List rows = template.requestBody("jdbc:testdb", "select * from customer order by id", List.class);
 
         assertEquals(3, rows.size());
@@ -51,9 +54,9 @@ public class JdbcStatementParametersTest extends AbstractJdbcTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:hello").to("jdbc:testdb?statement.maxRows=2");
             }
         };

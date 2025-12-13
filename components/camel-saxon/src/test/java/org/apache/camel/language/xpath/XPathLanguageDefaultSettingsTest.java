@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,53 +19,47 @@ package org.apache.camel.language.xpath;
 import javax.xml.xpath.XPathFactory;
 
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.spring.CamelSpringTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.spring.junit5.CamelSpringTestSupport;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledIfSystemProperty;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 import org.springframework.context.support.AbstractXmlApplicationContext;
-import org.springframework.context.support.ClassPathXmlApplicationContext;
 
 /**
- * Tests that verify the usage of default settings in the XPath language by declaring a bean called xpath in the registry
+ * Tests that verify the usage of default settings in the XPath language by declaring a bean called xpath in the
+ * registry
  */
+@ResourceLock(Resources.SYSTEM_PROPERTIES)
+@DisabledIfSystemProperty(named = "java.vendor", matches = ".*ibm.*")
 public class XPathLanguageDefaultSettingsTest extends CamelSpringTestSupport {
 
     private static final String KEY = XPathFactory.DEFAULT_PROPERTY_NAME + ":" + "http://java.sun.com/jaxp/xpath/dom";
-    private boolean jvmAdequate = true;
     private String oldPropertyValue;
 
     @Override
-    public void setUp() throws Exception {
-        if (!isJavaVendor("ibm")) {
-            // Force using the JAXP default implementation, because having Saxon in the classpath will automatically make JAXP use it
-            // because of Service Provider discovery (this does not happen in OSGi because the META-INF/services package is not exported
-            oldPropertyValue = System.setProperty(KEY, "com.sun.org.apache.xpath.internal.jaxp.XPathFactoryImpl");
-        } else {
-            jvmAdequate = false;
-        }
-        super.setUp();
+    public void setupResources() {
+        // Force using the JAXP default implementation, because having Saxon in the classpath will automatically make JAXP use it
+        // because of Service Provider discovery (this does not happen in OSGi because the META-INF/services package is not exported
+        oldPropertyValue = System.setProperty(KEY, "com.sun.org.apache.xpath.internal.jaxp.XPathFactoryImpl");
     }
 
     @Override
-    public void tearDown() throws Exception {
+    public void doPostTearDown() {
         if (oldPropertyValue != null) {
             System.setProperty(KEY, oldPropertyValue);
         } else {
             System.clearProperty(KEY);
         }
-        super.tearDown();
     }
 
     @Override
     protected AbstractXmlApplicationContext createApplicationContext() {
-        return new ClassPathXmlApplicationContext("org/apache/camel/language/xpath/XPathLanguageDefaultSettingsTest.xml");
+        return newAppContext("XPathLanguageDefaultSettingsTest.xml");
     }
 
     @Test
     public void testSpringDSLXPathLanguageDefaultSettings() throws Exception {
-        if (!jvmAdequate) {
-            return;
-        }
-
         MockEndpoint mockEndpointResult = getMockEndpoint("mock:testDefaultXPathSettingsResult");
         MockEndpoint mockEndpointException = getMockEndpoint("mock:testDefaultXPathSettingsResultException");
 
@@ -74,7 +68,7 @@ public class XPathLanguageDefaultSettingsTest extends CamelSpringTestSupport {
 
         template.sendBody("seda:testDefaultXPathSettings", "<a>Hello|there|Camel</a>");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
 }

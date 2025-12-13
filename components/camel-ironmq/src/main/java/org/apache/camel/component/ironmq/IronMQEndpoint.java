@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,26 +20,25 @@ import java.net.MalformedURLException;
 
 import io.iron.ironmq.Client;
 import io.iron.ironmq.Cloud;
-
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
-import org.apache.camel.Exchange;
-import org.apache.camel.ExchangePattern;
-import org.apache.camel.Message;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
-import org.apache.camel.impl.DefaultExchange;
-import org.apache.camel.impl.DefaultScheduledPollConsumerScheduler;
-import org.apache.camel.impl.ScheduledPollEndpoint;
+import org.apache.camel.spi.EndpointServiceLocation;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
+import org.apache.camel.support.ScheduledPollEndpoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The ironmq provides integration with <a href="https://www.iron.io/">IronMQ</a> an elastic and durable hosted message queue as a service.
+ * Send and receive messages to/from <a href="https://www.iron.io/">IronMQ</a> an elastic and durable hosted message
+ * queue as a service.
  */
-@UriEndpoint(scheme = "ironmq", syntax = "ironmq:queueName", title = "ironmq", consumerClass = IronMQConsumer.class, label = "cloud,messaging")
-public class IronMQEndpoint extends ScheduledPollEndpoint {
+@UriEndpoint(firstVersion = "2.17.0", scheme = "ironmq", syntax = "ironmq:queueName", title = "IronMQ",
+             category = { Category.CLOUD, Category.MESSAGING }, headersClass = IronMQConstants.class)
+public class IronMQEndpoint extends ScheduledPollEndpoint implements EndpointServiceLocation {
+
     private static final Logger LOG = LoggerFactory.getLogger(IronMQEndpoint.class);
 
     @UriParam
@@ -52,41 +51,17 @@ public class IronMQEndpoint extends ScheduledPollEndpoint {
         this.configuration = ironMQConfiguration;
     }
 
+    @Override
     public Producer createProducer() throws Exception {
         return new IronMQProducer(this, getClient().queue(configuration.getQueueName()));
     }
 
+    @Override
     public Consumer createConsumer(Processor processor) throws Exception {
-        IronMQConsumer ironMQConsumer = new IronMQConsumer(this, processor, getClient().queue(configuration.getQueueName()));
-        configureConsumer(ironMQConsumer);
-        ironMQConsumer.setMaxMessagesPerPoll(configuration.getMaxMessagesPerPoll());
-        DefaultScheduledPollConsumerScheduler scheduler = new DefaultScheduledPollConsumerScheduler();
-        scheduler.setConcurrentTasks(configuration.getConcurrentConsumers());
-        ironMQConsumer.setScheduler(scheduler);
-
-        return ironMQConsumer;
-    }
-
-    public Exchange createExchange(io.iron.ironmq.Message msg) {
-        return createExchange(getExchangePattern(), msg);
-    }
-
-    private Exchange createExchange(ExchangePattern pattern, io.iron.ironmq.Message msg) {
-        Exchange exchange = super.createExchange(pattern);
-        Message message = exchange.getIn();
-        if (configuration.isPreserveHeaders()) {
-            GsonUtil.copyFrom(msg, message);
-        } else {
-            message.setBody(msg.getBody());
-        }
-        message.setHeader(IronMQConstants.MESSAGE_ID, msg.getId());
-        message.setHeader(IronMQConstants.MESSAGE_RESERVATION_ID, msg.getReservationId());
-        message.setHeader(IronMQConstants.MESSAGE_RESERVED_COUNT, msg.getReservedCount());
-        return exchange;
-    }
-
-    public boolean isSingleton() {
-        return true;
+        IronMQConsumer consumer = new IronMQConsumer(this, processor);
+        configureConsumer(consumer);
+        consumer.setMaxMessagesPerPoll(configuration.getMaxMessagesPerPoll());
+        return consumer;
     }
 
     @Override
@@ -101,6 +76,16 @@ public class IronMQEndpoint extends ScheduledPollEndpoint {
         super.doStop();
     }
 
+    @Override
+    public String getServiceUrl() {
+        return configuration.getIronMQCloud();
+    }
+
+    @Override
+    public String getServiceProtocol() {
+        return "ironmq";
+    }
+
     public Client getClient() {
         if (client == null) {
             client = createClient();
@@ -113,9 +98,8 @@ public class IronMQEndpoint extends ScheduledPollEndpoint {
     }
 
     /**
-     * Provide the possibility to override this method for an mock
-     * implementation
-     * 
+     * Provide the possibility to override this method for an mock implementation
+     *
      * @return Client
      */
     Client createClient() {

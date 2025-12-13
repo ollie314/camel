@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,21 +16,86 @@
  */
 package org.apache.camel.language.groovy;
 
-import org.apache.camel.test.junit4.LanguageTestSupport;
-import org.junit.Test;
+import java.io.File;
 
-/**
- * @version 
- */
+import jakarta.activation.DataHandler;
+
+import org.apache.camel.attachment.AttachmentMessage;
+import org.apache.camel.attachment.CamelFileDataSource;
+import org.apache.camel.attachment.DefaultAttachment;
+import org.apache.camel.test.junit5.LanguageTestSupport;
+import org.codehaus.groovy.control.MultipleCompilationErrorsException;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 public class GroovyLanguageTest extends LanguageTestSupport {
 
     @Test
-    public void testGroovyExpressions() throws Exception {
+    public void testGroovyExpressions() {
         assertExpression("exchange.in.headers.foo", "abc");
         assertExpression("request.headers.foo", "abc");
         assertExpression("headers.foo", "abc");
+        assertExpression("header.foo", "abc");
     }
 
+    @Test
+    public void testGroovyExchangeProperty() {
+        exchange.setProperty("myProp1", "myValue");
+        exchange.setProperty("myProp2", 123);
+
+        assertExpression("exchange.properties.myProp1", "myValue");
+        assertExpression("exchange.properties.myProp2", 123);
+
+        assertExpression("exchangeProperties.myProp1", "myValue");
+        assertExpression("exchangeProperties.myProp2", 123);
+        assertExpression("exchangeProperty.myProp1", "myValue");
+        assertExpression("exchangeProperty.myProp2", 123);
+    }
+
+    @Test
+    public void testValidateExpression() throws Exception {
+        try (GroovyLanguage g = new GroovyLanguage()) {
+            g.setCamelContext(context);
+
+            assertTrue(g.validateExpression("2 * 3"));
+            assertTrue(g.validateExpression("exchange.getExchangeId()"));
+            assertTrue(g.validatePredicate("2 * 3 > 4"));
+
+            try {
+                g.validateExpression("""
+                        var a = 123;
+                        println a */ 2;
+                        """);
+                fail("Should throw error");
+            } catch (GroovyValidationException e) {
+                assertEquals(23, e.getIndex());
+                assertInstanceOf(MultipleCompilationErrorsException.class, e.getCause());
+            }
+        }
+    }
+
+    @Test
+    public void testGroovyAttachments() throws Exception {
+        DefaultAttachment da
+                = new DefaultAttachment(new DataHandler(new CamelFileDataSource(new File("src/test/data/message1.xml"))));
+        da.addHeader("orderId", "123");
+        exchange.getIn(AttachmentMessage.class).addAttachmentObject("message1.xml", da);
+
+        var map = exchange.getMessage(AttachmentMessage.class).getAttachments();
+        Object is1 = map.get("message1.xml").getContent();
+        String xml1 = context.getTypeConverter().convertTo(String.class, is1);
+
+        assertExpression("attachments.size()", 1);
+        assertExpression("attachments.get('message1.xml').getName()", "message1.xml");
+        assertExpression("attachments.get('message1.xml').getContentType()", "application/xml");
+        assertExpression("attachments.get('message1.xml').getContent()", xml1);
+    }
+
+    @Override
     protected String getLanguageName() {
         return "groovy";
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,13 +22,16 @@ import java.util.Map;
 import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class JdbcRouteUsingSqlSelectAliasTest extends AbstractJdbcTestSupport {
 
     @SuppressWarnings("unchecked")
     @Test
-    public void testJdbcRoutes() throws Exception {
+    public void testJdbcRoutes() {
         // START SNIPPET: invoke
         // first we create our exchange using the endpoint
         Endpoint endpoint = context.getEndpoint("direct:hello");
@@ -41,10 +44,8 @@ public class JdbcRouteUsingSqlSelectAliasTest extends AbstractJdbcTestSupport {
 
         // assertions of the response
         assertNotNull(out);
-        assertNotNull(out.getOut());
-        List<Map<String, Object>> data = out.getOut().getBody(List.class);
-        assertNotNull("out body could not be converted to a List - was: "
-            + out.getOut().getBody(), data);
+        List<Map<String, Object>> data = out.getMessage().getBody(List.class);
+        assertNotNull(data, "out body could not be converted to a List - was: " + out.getMessage().getBody());
         assertEquals(3, data.size());
         Map<String, Object> row = data.get(0);
         assertEquals("cust1", row.get("IDENTIFIER"));
@@ -55,11 +56,12 @@ public class JdbcRouteUsingSqlSelectAliasTest extends AbstractJdbcTestSupport {
         // END SNIPPET: invoke
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             // START SNIPPET: route
             // lets add simple route
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:hello").to("jdbc:testdb?readSize=100");
             }
             // END SNIPPET: route

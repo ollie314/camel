@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,7 +22,10 @@ import java.util.Map;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class JdbcParameterizedQueryTest extends AbstractJdbcTestSupport {
 
@@ -32,13 +35,14 @@ public class JdbcParameterizedQueryTest extends AbstractJdbcTestSupport {
         mock.expectedMessageCount(1);
 
         // The linkedHashMap values has different order in JDK7 and JDK8
-        // so I had to reduce the parameters size 
-        Map<String, Object> jdbcParams = new HashMap<String, Object>();
+        // so I had to reduce the parameters size
+        Map<String, Object> jdbcParams = new HashMap<>();
         jdbcParams.put("name", "jstrachan");
 
-        template.sendBodyAndHeaders("direct:start", "select * from customer where id = 'cust1' and name = ? order by ID", jdbcParams);
+        template.sendBodyAndHeaders("direct:start", "select * from customer where id = 'cust1' and name = ? order by ID",
+                jdbcParams);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         List<?> received = assertIsInstanceOf(List.class, mock.getReceivedExchanges().get(0).getIn().getBody());
         assertEquals(1, received.size());
@@ -51,14 +55,14 @@ public class JdbcParameterizedQueryTest extends AbstractJdbcTestSupport {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMessageCount(1);
 
-        Map<String, Object> jdbcParams = new HashMap<String, Object>();
+        Map<String, Object> jdbcParams = new HashMap<>();
         jdbcParams.put("name", "jstrachan");
         jdbcParams.put("id", "cust1");
-        
 
-        template.sendBodyAndHeaders("direct:start", "select * from customer where id = :?id and name = :?name order by ID", jdbcParams);
+        template.sendBodyAndHeaders("direct:start", "select * from customer where id = :?id and name = :?name order by ID",
+                jdbcParams);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         List<?> received = assertIsInstanceOf(List.class, mock.getReceivedExchanges().get(0).getIn().getBody());
         assertEquals(1, received.size());
@@ -71,18 +75,19 @@ public class JdbcParameterizedQueryTest extends AbstractJdbcTestSupport {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMessageCount(1);
 
-        Map<String, Object> jdbcParams = new HashMap<String, Object>();
+        Map<String, Object> jdbcParams = new HashMap<>();
         jdbcParams.put("id", "cust1");
         jdbcParams.put("name", "jstrachan");
 
-        Map<String, Object> headers = new HashMap<String, Object>();
+        Map<String, Object> headers = new HashMap<>();
         headers.put("id", "cust2");
         // this header should take precedence so we will not get cust2
         headers.put(JdbcConstants.JDBC_PARAMETERS, jdbcParams);
 
-        template.sendBodyAndHeaders("direct:start", "select * from customer where id = :?id and name = :?name order by ID", headers);
+        template.sendBodyAndHeaders("direct:start", "select * from customer where id = :?id and name = :?name order by ID",
+                headers);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         List<?> received = assertIsInstanceOf(List.class, mock.getReceivedExchanges().get(0).getIn().getBody());
         assertEquals(1, received.size());
@@ -91,7 +96,7 @@ public class JdbcParameterizedQueryTest extends AbstractJdbcTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
                 getContext().setUseBreadcrumb(false);
@@ -105,4 +110,4 @@ public class JdbcParameterizedQueryTest extends AbstractJdbcTestSupport {
         };
     }
 
-}       
+}

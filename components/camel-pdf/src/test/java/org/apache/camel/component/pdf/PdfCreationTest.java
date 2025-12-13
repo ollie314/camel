@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,29 +23,29 @@ import java.io.IOException;
 import org.apache.camel.EndpointInject;
 import org.apache.camel.Exchange;
 import org.apache.camel.Predicate;
+import org.apache.camel.RuntimeCamelException;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.AccessPermission;
 import org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy;
-import org.apache.pdfbox.util.PDFTextStripper;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.junit.jupiter.api.Test;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.instanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class PdfCreationTest extends CamelTestSupport {
 
-    @EndpointInject(uri = "mock:result")
+    @EndpointInject("mock:result")
     protected MockEndpoint resultEndpoint;
-
-    @Override
-    @Before
-    public void setUp() throws Exception {
-        super.setUp();
-    }
 
     @Test
     public void testPdfCreation() throws Exception {
@@ -58,13 +58,14 @@ public class PdfCreationTest extends CamelTestSupport {
                 Object body = exchange.getIn().getBody();
                 assertThat(body, instanceOf(ByteArrayOutputStream.class));
                 try {
-                    PDDocument doc = PDDocument.load(new ByteArrayInputStream(((ByteArrayOutputStream) body).toByteArray()));
+                    PDDocument doc = Loader.loadPDF(
+                            new RandomAccessReadBuffer(new ByteArrayInputStream(((ByteArrayOutputStream) body).toByteArray())));
                     PDFTextStripper pdfTextStripper = new PDFTextStripper();
                     String text = pdfTextStripper.getText(doc);
                     assertEquals(1, doc.getNumberOfPages());
                     assertThat(text, containsString(expectedText));
                 } catch (IOException e) {
-                    throw new RuntimeException(e);
+                    throw new RuntimeCamelException(e);
                 }
                 return true;
             }
@@ -93,16 +94,17 @@ public class PdfCreationTest extends CamelTestSupport {
                 Object body = exchange.getIn().getBody();
                 assertThat(body, instanceOf(ByteArrayOutputStream.class));
                 try {
-                    PDDocument doc = PDDocument.load(new ByteArrayInputStream(((ByteArrayOutputStream) body).toByteArray()));
-                    assertTrue("Expected encrypted document", doc.isEncrypted());
-                    doc.decrypt(userPass);
-                    assertFalse("Printing should not be permitted", doc.getCurrentAccessPermission().canPrint());
+                    PDDocument doc
+                            = Loader.loadPDF(new RandomAccessReadBuffer(
+                                    new ByteArrayInputStream(((ByteArrayOutputStream) body).toByteArray())), userPass);
+                    assertTrue(doc.isEncrypted(), "Expected encrypted document");
+                    assertFalse(doc.getCurrentAccessPermission().canPrint(), "Printing should not be permitted");
                     PDFTextStripper pdfTextStripper = new PDFTextStripper();
                     String text = pdfTextStripper.getText(doc);
                     assertEquals(1, doc.getNumberOfPages());
                     assertThat(text, containsString(expectedText));
                 } catch (Exception e) {
-                    throw new RuntimeException(e);
+                    throw new RuntimeCamelException(e);
                 }
                 return true;
             }
@@ -111,12 +113,12 @@ public class PdfCreationTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                        .to("pdf:create")
+                        .to("pdf:create?fontSize=6&font=COURIER&pageSize=PAGE_SIZE_A1")
                         .to("mock:result");
             }
         };

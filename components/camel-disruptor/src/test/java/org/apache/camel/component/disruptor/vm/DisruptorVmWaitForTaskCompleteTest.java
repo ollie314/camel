@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,43 +20,45 @@ import org.apache.camel.Exchange;
 import org.apache.camel.ExchangePattern;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.vm.AbstractVmTestSupport;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version
- */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 public class DisruptorVmWaitForTaskCompleteTest extends AbstractVmTestSupport {
 
-    public void testInOut() throws Exception {
+    @Test
+    void testInOut() throws Exception {
         getMockEndpoint("mock:result").expectedBodiesReceived("Bye World");
 
         String out = template2.requestBody("direct:start", "Hello World", String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
-    public void testInOnly() throws Exception {
+    @Test
+    void testInOnly() throws Exception {
         getMockEndpoint("mock:result").expectedBodiesReceived("Bye World");
 
         // we send an in only but we use Always to wait for it to complete
         // and since the route changes the payload we can get the response anyway
         Exchange out = template2.send("direct:start", new Processor() {
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setBody("Hello World");
                 exchange.setPattern(ExchangePattern.InOnly);
             }
         });
         assertEquals("Bye World", out.getIn().getBody());
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("disruptor-vm:foo?waitForTaskToComplete=Always").transform(constant("Bye World"))
                         .to("mock:result");
             }
@@ -64,10 +66,10 @@ public class DisruptorVmWaitForTaskCompleteTest extends AbstractVmTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilderForSecondContext() throws Exception {
+    protected RouteBuilder createRouteBuilderForSecondContext() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start").to("disruptor-vm:foo?waitForTaskToComplete=Always");
             }
         };

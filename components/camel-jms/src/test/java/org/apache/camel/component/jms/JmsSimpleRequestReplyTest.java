@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,75 +16,95 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
-
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
 import org.apache.camel.Exchange;
 import org.apache.camel.ExchangePattern;
-import org.apache.camel.Processor;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.RegisterExtension;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * A simple request / reply test
  */
-public class JmsSimpleRequestReplyTest extends CamelTestSupport {
+@Timeout(30)
+@TestInstance(TestInstance.Lifecycle.PER_METHOD)
+public class JmsSimpleRequestReplyTest extends AbstractJMSTest {
 
-    protected String componentName = "activemq";
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected final String componentName = "activemq";
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
-    public void testRequetReply() throws Exception {
+    public void testRequestReply() throws Exception {
         MockEndpoint result = getMockEndpoint("mock:result");
         result.expectedMessageCount(1);
 
-        Exchange out = template.send("activemq:queue:hello", ExchangePattern.InOut, new Processor() {
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setBody("Hello World");
-                exchange.getIn().setHeader("foo", 123);
-            }
+        Exchange out = template.send("activemq:queue:JmsSimpleRequestReplyTest", ExchangePattern.InOut, exchange -> {
+            exchange.getIn().setBody("Hello World");
+            exchange.getIn().setHeader("foo", 123);
         });
 
         result.assertIsSatisfied();
 
         assertNotNull(out);
 
-        assertEquals("Bye World", out.getOut().getBody(String.class));
-        assertEquals(123, out.getOut().getHeader("foo"));
+        assertEquals("Bye World", out.getMessage().getBody(String.class));
+        assertEquals(123, out.getMessage().getHeader("foo"));
     }
 
     @Test
-    public void testRequetReply2Messages() throws Exception {
+    public void testRequestReply2Messages() throws Exception {
         MockEndpoint result = getMockEndpoint("mock:result");
         result.expectedMessageCount(2);
 
-        template.requestBody("activemq:queue:hello", "Hello World");
-        template.requestBody("activemq:queue:hello", "Gooday World");
+        template.requestBody("activemq:queue:JmsSimpleRequestReplyTest", "Hello World");
+        template.requestBody("activemq:queue:JmsSimpleRequestReplyTest", "Gooday World");
 
         result.assertIsSatisfied();
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent(componentName, jmsComponentAutoAcknowledge(connectionFactory));
-
-        return camelContext;
+    @Override
+    public String getComponentName() {
+        return componentName;
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("activemq:queue:hello").process(new Processor() {
-                    public void process(Exchange exchange) throws Exception {
-                        exchange.getIn().setBody("Bye World");
-                        assertNotNull(exchange.getIn().getHeader("JMSReplyTo"));
-                    }
+            public void configure() {
+                from("activemq:queue:JmsSimpleRequestReplyTest").process(exchange -> {
+                    exchange.getIn().setBody("Bye World");
+                    assertNotNull(exchange.getIn().getHeader("JMSReplyTo"));
                 }).to("mock:result");
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
     }
 }

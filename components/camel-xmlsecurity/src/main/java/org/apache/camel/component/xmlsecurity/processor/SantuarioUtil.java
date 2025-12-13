@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,15 +17,11 @@
 package org.apache.camel.component.xmlsecurity.processor;
 
 import java.lang.reflect.Field;
-import java.security.AccessController;
-import java.security.PrivilegedAction;
-import java.security.PrivilegedExceptionAction;
 import java.security.Provider;
 import java.security.Security;
 
 import org.apache.jcp.xml.dsig.internal.dom.XMLDSigRI;
 import org.apache.xml.security.utils.XMLUtils;
-
 
 public final class SantuarioUtil {
     private SantuarioUtil() {
@@ -37,47 +33,36 @@ public final class SantuarioUtil {
         boolean wasSet = false;
         try {
             // Don't override if it was set explicitly
-            wasSet = AccessController.doPrivileged(new PrivilegedAction<Boolean>() {
-                public Boolean run() {
-                    String lineBreakPropName = "org.apache.xml.security.ignoreLineBreaks";
-                    if (System.getProperty(lineBreakPropName) == null) {
-                        System.setProperty(lineBreakPropName, "true");
-                        return false;
-                    }
-                    return true; 
-                }
-            });
-        } catch (Throwable t) { //NOPMD
+            String lineBreakPropName = "org.apache.xml.security.ignoreLineBreaks";
+            if (System.getProperty(lineBreakPropName) == null) {
+                System.setProperty(lineBreakPropName, "true");
+                wasSet = false;
+            } else {
+                wasSet = true;
+            }
+        } catch (Exception t) {
             //ignore
         }
+
         org.apache.xml.security.Init.init();
+
         if (!wasSet) {
             try {
-                AccessController.doPrivileged(new PrivilegedExceptionAction<Boolean>() {
-                    public Boolean run() throws Exception {
-                        Field f = XMLUtils.class.getDeclaredField("ignoreLineBreaks");
-                        f.setAccessible(true);
-                        f.set(null, Boolean.TRUE);
-                        return false;
-                    }
-                });
-            } catch (Throwable t) { //NOPMD
+                Field f = XMLUtils.class.getDeclaredField("ignoreLineBreaks");
+                f.setAccessible(true);
+                f.set(null, Boolean.TRUE);
+            } catch (Exception t) {
                 //ignore
             }
         }
     }
-    
+
     public static void addSantuarioJSR105Provider() {
-        AccessController.doPrivileged(new PrivilegedAction<Boolean>() {
-            public Boolean run() {
-                String providerName = "ApacheXMLDSig";
-                Provider currentProvider = Security.getProvider(providerName);
-                if (currentProvider == null) {
-                    Security.addProvider(new XMLDSigRI());
-                }
-                return true;
-            }
-        });
+        String providerName = "ApacheXMLDSig";
+        Provider currentProvider = Security.getProvider(providerName);
+        if (currentProvider != null) {
+            Security.removeProvider(currentProvider.getName());
+        }
+        Security.addProvider(new XMLDSigRI());
     }
-    
 }

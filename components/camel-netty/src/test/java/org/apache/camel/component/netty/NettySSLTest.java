@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,24 +18,32 @@ package org.apache.camel.component.netty;
 
 import java.io.File;
 import java.security.Principal;
+import java.security.cert.X509Certificate;
+
 import javax.net.ssl.SSLSession;
 
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.impl.JndiRegistry;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledIfSystemProperty;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+@DisabledIfSystemProperty(named = "java.vendor", matches = ".*ibm.*")
 public class NettySSLTest extends BaseNettyTest {
 
-    @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry registry = super.createRegistry();
-        registry.bind("ksf", new File("src/test/resources/keystore.jks"));
-        registry.bind("tsf", new File("src/test/resources/keystore.jks"));
-        return registry;
+    @BindToRegistry("ksf")
+    public File loadKeystoreKsf() {
+        return new File("src/test/resources/keystore.jks");
     }
-    
+
+    @BindToRegistry("tsf")
+    public File loadKeystoreTsf() {
+        return new File("src/test/resources/keystore.jks");
+    }
+
     @Override
     public boolean isUseRouteBuilder() {
         return false;
@@ -43,35 +51,34 @@ public class NettySSLTest extends BaseNettyTest {
 
     @Test
     public void testSSLInOutWithNettyConsumer() throws Exception {
-        // ibm jdks dont have sun security algorithms
-        if (isJavaVendor("ibm")) {
-            return;
-        }
-
         context.addRoutes(new RouteBuilder() {
             public void configure() {
-                // needClientAuth=true so we can get the client certificate details
-                from("netty:tcp://localhost:{{port}}?sync=true&ssl=true&passphrase=changeit&keyStoreFile=#ksf&trustStoreFile=#tsf&needClientAuth=true")
-                    .process(new Processor() {
-                        public void process(Exchange exchange) throws Exception {
-                            SSLSession session = exchange.getIn().getHeader(NettyConstants.NETTY_SSL_SESSION, SSLSession.class);
-                            if (session != null) {
-                                javax.security.cert.X509Certificate cert = session.getPeerCertificateChain()[0];
-                                Principal principal = cert.getSubjectDN();
-                                log.info("Client Cert SubjectDN: {}", principal.getName());
-                                exchange.getOut().setBody("When You Go Home, Tell Them Of Us And Say, For Your Tomorrow, We Gave Our Today.");
-                            } else {
-                                exchange.getOut().setBody("Cannot start conversion without SSLSession");
+                // needClientAuth=true so we can get the client certificate
+                // details
+                from("netty:tcp://127.0.0.1:{{port}}?sync=true&ssl=true&passphrase=changeit&keyStoreResource=#ksf&trustStoreResource=#tsf&needClientAuth=true")
+                        .process(new Processor() {
+                            public void process(Exchange exchange) throws Exception {
+                                SSLSession session
+                                        = exchange.getIn().getHeader(NettyConstants.NETTY_SSL_SESSION, SSLSession.class);
+                                if (session != null) {
+                                    X509Certificate cert = (X509Certificate) session.getPeerCertificates()[0];
+                                    Principal principal = cert.getSubjectDN();
+                                    log.info("Client Cert SubjectDN: {}", principal.getName());
+                                    exchange.getMessage().setBody(
+                                            "When You Go Home, Tell Them Of Us And Say, For Your Tomorrow, We Gave Our Today.");
+                                } else {
+                                    exchange.getMessage().setBody("Cannot start conversion without SSLSession");
+                                }
                             }
-                        }
-                    });
+                        });
             }
         });
         context.start();
 
         String response = template.requestBody(
-                "netty:tcp://localhost:{{port}}?sync=true&ssl=true&passphrase=changeit&keyStoreFile=#ksf&trustStoreFile=#tsf",
-                "Epitaph in Kohima, India marking the WWII Battle of Kohima and Imphal, Burma Campaign - Attributed to John Maxwell Edmonds", String.class);
+                "netty:tcp://localhost:{{port}}?sync=true&ssl=true&passphrase=changeit&keyStoreResource=#ksf&trustStoreResource=#tsf",
+                "Epitaph in Kohima, India marking the WWII Battle of Kohima and Imphal, Burma Campaign - Attributed to John Maxwell Edmonds",
+                String.class);
         assertEquals("When You Go Home, Tell Them Of Us And Say, For Your Tomorrow, We Gave Our Today.", response);
     }
 

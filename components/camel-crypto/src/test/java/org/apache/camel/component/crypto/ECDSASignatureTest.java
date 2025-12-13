@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,11 +17,8 @@
 package org.apache.camel.component.crypto;
 
 import java.io.InputStream;
-import java.lang.reflect.Constructor;
 import java.security.KeyStore;
 import java.security.PrivateKey;
-import java.security.Provider;
-import java.security.Security;
 import java.security.cert.X509Certificate;
 import java.util.Collections;
 import java.util.Map;
@@ -32,56 +29,46 @@ import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.impl.DefaultCamelContext;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledIfSystemProperty;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
+
+@DisabledIfSystemProperty(named = "java.vendor", matches = ".*ibm.*")
 public class ECDSASignatureTest extends CamelTestSupport {
 
+    private static final Logger LOG = LoggerFactory.getLogger(ECDSASignatureTest.class);
+
     private String payload = "Dear Alice, Rest assured it's me, signed Bob";
-    private boolean ibmJDK;
     private PrivateKey privateKey;
     private X509Certificate x509;
     private boolean canRun = true;
 
-    public ECDSASignatureTest() throws Exception {
-        // BouncyCastle is required for ECDSA support for JDK 1.6
-        if (isJava16()
-            && Security.getProvider("BC") == null) {
-            Constructor<?> cons;
-            Class<?> c = Class.forName("org.bouncycastle.jce.provider.BouncyCastleProvider");
-            cons = c.getConstructor(new Class[] {});
-            
-            Provider provider = (java.security.Provider)cons.newInstance();
-            Security.insertProviderAt(provider, 2);
-        }
-        
-        // This test fails with the IBM JDK
-        if (isJavaVendor("IBM")) {
-            ibmJDK = true;
-        }
-
+    public ECDSASignatureTest() {
         // see if we can load the keystore et all
         try {
             KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
             InputStream in = ECDSASignatureTest.class.getResourceAsStream("/org/apache/camel/component/crypto/ecdsa.jks");
             keyStore.load(in, "security".toCharArray());
             privateKey = (PrivateKey) keyStore.getKey("ECDSA", "security".toCharArray());
-            x509 = (X509Certificate)keyStore.getCertificate("ECDSA");
-        } catch (Throwable e) {
-            log.warn("Cannot setup keystore for running this test due " + e.getMessage() + ". This test is skipped.", e);
+            x509 = (X509Certificate) keyStore.getCertificate("ECDSA");
+        } catch (Exception e) {
+            LOG.warn("Cannot setup keystore for running this test due {}. This test is skipped.", e.getMessage(), e);
             canRun = false;
         }
     }
-    
+
     @Override
-    protected RouteBuilder[] createRouteBuilders() throws Exception {
-        if (ibmJDK || !canRun) {
+    protected RouteBuilder[] createRouteBuilders() {
+        if (!canRun) {
             return new RouteBuilder[] {};
         }
 
-        return new RouteBuilder[]{new RouteBuilder() {
-            public void configure() throws Exception {
+        return new RouteBuilder[] { new RouteBuilder() {
+            public void configure() {
                 // START SNIPPET: ecdsa-sha1
 
                 // we can set the keys explicitly on the endpoint instances.
@@ -91,25 +78,23 @@ public class ECDSASignatureTest extends CamelTestSupport {
                         .setPublicKey(x509.getPublicKey());
 
                 from("direct:ecdsa-sha1")
-                    .to("crypto:sign:ecdsa-sha1?algorithm=SHA1withECDSA")
-                    .to("crypto:verify:ecdsa-sha1?algorithm=SHA1withECDSA")
-                    .to("mock:result");
+                        .to("crypto:sign:ecdsa-sha1?algorithm=SHA1withECDSA")
+                        .to("crypto:verify:ecdsa-sha1?algorithm=SHA1withECDSA")
+                        .to("mock:result");
                 // END SNIPPET: ecdsa-sha1
             }
-        }};
+        } };
     }
 
     @Test
-    public void testECDSASHA1() throws Exception {
-        if (ibmJDK || !canRun) {
-            return;
-        }
+    void testECDSASHA1() throws Exception {
+        assumeFalse(!canRun, "Test preconditions failed: canRun=" + canRun);
 
         setupMock();
         sendBody("direct:ecdsa-sha1", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     private MockEndpoint setupMock() {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedBodiesReceived(payload);
@@ -117,12 +102,11 @@ public class ECDSASignatureTest extends CamelTestSupport {
     }
 
     public Exchange doTestSignatureRoute(RouteBuilder builder) throws Exception {
-        return doSignatureRouteTest(builder, null, Collections.<String, Object>emptyMap());
+        return doSignatureRouteTest(builder, null, Collections.<String, Object> emptyMap());
     }
 
     public Exchange doSignatureRouteTest(RouteBuilder builder, Exchange e, Map<String, Object> headers) throws Exception {
-        CamelContext context = new DefaultCamelContext();
-        try {
+        try (CamelContext context = new DefaultCamelContext()) {
             context.addRoutes(builder);
             context.start();
 
@@ -135,17 +119,10 @@ public class ECDSASignatureTest extends CamelTestSupport {
             } else {
                 template.sendBodyAndHeaders("direct:in", payload, headers);
             }
-            assertMockEndpointsSatisfied();
+            MockEndpoint.assertIsSatisfied(ECDSASignatureTest.this.context);
             return mock.getReceivedExchanges().get(0);
         } finally {
             context.stop();
         }
     }
-
-    @Before
-    public void setUp() throws Exception {
-        disableJMX();
-        super.setUp();
-    }
-
 }

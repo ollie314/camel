@@ -1,19 +1,30 @@
-[[InfluxDb-InfluxDbComponent]]
-InfluxDb Component
-~~~~~~~~~~~~~~~~~~~~
+= InfluxDB Component
+:doctitle: InfluxDB
+:shortname: influxdb
+:artifactid: camel-influxdb
+:description: Interact with InfluxDB v1, a time series database.
+:since: 2.18
+:supportlevel: Stable
+:tabs-sync-option:
+:component-header: Only producer is supported
+//Manually maintained attributes
+:camel-spring-boot-name: influxdb
 
-*Available as of Camel 2.18.0*
+*Since Camel {since}*
 
-This component allows you to interact with InfluxDB
-https://influxdata.com/time-series-platform/influxdb/ a time series database. The native body type for this component is
-Point (the native influxdb class), but it can also accept Map<String, Object> as message body and it will get converted
-to Point.class, please note that the map must contain an element with InfluxDbConstants.MEASUREMENT_NAME as key.
+*{component-header}*
 
-Aditionally of course you may register your own Converters to your data type to Point, or use the
-(un)marshalling tools provided by camel.
+This component allows you to interact with https://influxdata.com/time-series-platform/influxdb/[InfluxDB] v1,
+a time series database.
 
+The native body type for this component is `Point` (the native influxdb class).
+However, it can also accept `Map<String, Object>` as message body, and it will get converted to `Point.class`, please note that the map must contain an element with `InfluxDbConstants.MEASUREMENT_NAME` as key.
 
-From *Camel 2.18* onwards Influxdb requires Java 8.
+Additionally, you may register your own Converters to your data type to `Point`, or use the
+(un)marshalling tools provided by Camel.
+
+[NOTE]
+For InfluxDB v2 check the xref:influxdb2-component.adoc[InfluxDB2 component].
 
 Maven users will need to add the following dependency to their `pom.xml`
 for this component:
@@ -28,89 +39,38 @@ for this component:
 </dependency>
 ------------------------------------------------------------
 
-[[InfluxDb-URIformat]]
-URI format
-^^^^^^^^^^
+== URI format
 
-[source,java]
 -------------------------------
 influxdb://beanName?[options]
 -------------------------------
 
-[[InfluxDb-URIOptions]]
-URI Options
-^^^^^^^^^^^
-
-The producer allows sending messages to a influxdb
-configured in the registry, using the native java driver.
-
-
+The producer allows sending messages to an InfluxDB configured in the registry, using the native java driver.
 
 // component options: START
-The InfluxDB component has no options.
+include::partial$component-configure-options.adoc[]
+include::partial$component-endpoint-options.adoc[]
+include::partial$component-endpoint-headers.adoc[]
 // component options: END
 
-
-
-
-// endpoint options: START
-The InfluxDB component supports 4 endpoint options which are listed below:
-
-{% raw %}
-[width="100%",cols="2,1,1m,1m,5",options="header"]
-|=======================================================================
-| Name | Group | Default | Java Type | Description
-| connectionBean | producer |  | String | *Required* Name of org.influxdb.InfluxDB to use.
-| databaseName | producer |  | String | Setter for databaseName
-| retentionPolicy | producer | default | String | Setter for retentionPolicy
-| synchronous | advanced | false | boolean | Sets whether synchronous processing should be strictly used or Camel is allowed to use asynchronous processing (if supported).
-|=======================================================================
-{% endraw %}
-// endpoint options: END
-
-
-
-
-[[InfluxDb-MessageHeaders]]
-Message Headers
-^^^^^^^^^^^^^^^
-
-[width="100%",cols="10%,10%,10%,10%,60%",options="header",]
-|=======================================================================
-|Name |Default Value |Type |Context |Description
-
-
-|=======================================================================
-
-[[InfluxDb-Example]]
-Example
-^^^^^^^
-
+== Example
 
 Below is an example route that stores a point into the db (taking the db name from the URI)
 specific key:
 
 [source,java]
-------------------------------------------------------------------------------------
+----
 from("direct:start")
         .setHeader(InfluxDbConstants.DBNAME_HEADER, constant("myTimeSeriesDB"))
         .to("influxdb://connectionBean);
-------------------------------------------------------------------------------------
+----
 
 [source,java]
-------------------------------------------------------------------------------------
+----
 from("direct:start")
         .to("influxdb://connectionBean?databaseName=myTimeSeriesDB");
-------------------------------------------------------------------------------------
+----
 
-For more information, see these resources...
 
-[[InfluxDb-SeeAlso]]
-See Also
-^^^^^^^^
 
-* link:configuring-camel.html[Configuring Camel]
-* link:component.html[Component]
-* link:endpoint.html[Endpoint]
-* link:getting-started.html[Getting Started]
-
+include::spring-boot:partial$starter.adoc[]

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,64 +16,60 @@
  */
 package org.apache.camel.component.braintree;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.braintreegateway.BraintreeGateway;
 import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
 import org.apache.camel.component.braintree.internal.BraintreeApiCollection;
 import org.apache.camel.component.braintree.internal.BraintreeApiName;
-import org.apache.camel.util.component.AbstractApiComponent;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.spi.annotations.Component;
+import org.apache.camel.support.component.AbstractApiComponent;
 
 /**
  * Represents the component that manages {@link BraintreeEndpoint}.
  */
+@Component("braintree")
 public class BraintreeComponent extends AbstractApiComponent<BraintreeApiName, BraintreeConfiguration, BraintreeApiCollection> {
+
+    @Metadata
+    private BraintreeConfiguration configuration;
+
     private final Map<String, BraintreeGateway> gateways;
 
     public BraintreeComponent() {
-        super(BraintreeEndpoint.class, BraintreeApiName.class, BraintreeApiCollection.getCollection());
-        this.gateways = new HashMap<>();
+        super(BraintreeApiName.class, BraintreeApiCollection.getCollection());
+        this.gateways = new ConcurrentHashMap<>();
     }
 
     public BraintreeComponent(CamelContext context) {
-        super(context, BraintreeEndpoint.class, BraintreeApiName.class, BraintreeApiCollection.getCollection());
-        this.gateways = new HashMap<>();
+        super(context, BraintreeApiName.class, BraintreeApiCollection.getCollection());
+        this.gateways = new ConcurrentHashMap<>();
     }
 
     @Override
-    protected BraintreeApiName getApiName(String apiNameStr) throws IllegalArgumentException {
-        return BraintreeApiName.fromValue(apiNameStr);
+    protected BraintreeApiName getApiName(String apiNameStr) {
+        return getCamelContext().getTypeConverter().convertTo(BraintreeApiName.class, apiNameStr);
     }
 
     @Override
-    protected Endpoint createEndpoint(String uri, String methodName, BraintreeApiName apiName, BraintreeConfiguration endpointConfiguration) {
+    protected Endpoint createEndpoint(
+            String uri, String methodName, BraintreeApiName apiName, BraintreeConfiguration endpointConfiguration) {
         endpointConfiguration.setApiName(apiName);
         endpointConfiguration.setMethodName(methodName);
-        return new BraintreeEndpoint(uri, this, apiName, methodName, endpointConfiguration, getGateway(endpointConfiguration));
+        this.configuration = endpointConfiguration;
+        return new BraintreeEndpoint(uri, this, apiName, methodName, endpointConfiguration);
     }
 
-    /**
-     * To use the shared configuration
-     */
-    @Override
-    public void setConfiguration(BraintreeConfiguration configuration) {
-        super.setConfiguration(configuration);
-    }
-
-    @Override
-    public BraintreeConfiguration getConfiguration() {
-        return super.getConfiguration();
-    }
-
-    private synchronized BraintreeGateway getGateway(BraintreeConfiguration configuration) {
-        BraintreeGateway gateway = gateways.get(configuration.getMerchantId());
-        if (gateway == null) {
-            //TODO: review the key used to track gateways
-            gateways.put(configuration.getMerchantId(), gateway = configuration.newBraintreeGateway());
+    public BraintreeGateway getGateway(BraintreeConfiguration configuration) {
+        BraintreeGateway gateway;
+        if (configuration.getAccessToken() != null) {
+            gateway = gateways.computeIfAbsent(configuration.getAccessToken(), k -> configuration.newBraintreeGateway());
+        } else {
+            gateway = gateways.computeIfAbsent(configuration.getMerchantId(), k -> configuration.newBraintreeGateway());
         }
-
         return gateway;
     }
 }

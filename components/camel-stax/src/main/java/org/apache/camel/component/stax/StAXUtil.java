@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,13 +17,14 @@
 package org.apache.camel.component.stax;
 
 import java.util.Map;
-import javax.xml.bind.annotation.XmlRootElement;
-import javax.xml.bind.annotation.XmlType;
 
-import org.apache.camel.util.LRUSoftCache;
+import jakarta.xml.bind.annotation.XmlRootElement;
+import jakarta.xml.bind.annotation.XmlType;
+
+import org.apache.camel.support.LRUCacheFactory;
 
 public final class StAXUtil {
-    private static final Map<Class<?>, String> TAG_NAMES = new LRUSoftCache<Class<?>, String>(1000);
+    private static final Map<Class<?>, String> TAG_NAMES = LRUCacheFactory.newLRUSoftCache(1000);
 
     private StAXUtil() {
         // no-op
@@ -35,12 +36,12 @@ public final class StAXUtil {
         }
 
         XmlType xmlType = handled.getAnnotation(XmlType.class);
-        if (xmlType != null && xmlType.name() != null && xmlType.name().trim().length() > 0) {
+        if (xmlType != null && xmlType.name() != null && !xmlType.name().isBlank()) {
             TAG_NAMES.put(handled, xmlType.name());
             return xmlType.name();
         } else {
             XmlRootElement xmlRoot = handled.getAnnotation(XmlRootElement.class);
-            if (xmlRoot != null && xmlRoot.name() != null && xmlRoot.name().trim().length() > 0) {
+            if (xmlRoot != null && xmlRoot.name() != null && !xmlRoot.name().isBlank()) {
                 TAG_NAMES.put(handled, xmlRoot.name());
                 return xmlRoot.name();
             }

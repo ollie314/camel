@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,41 +16,49 @@
  */
 package org.apache.camel.component.mail;
 
+import java.util.concurrent.TimeUnit;
+
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mail.Mailbox.Protocol;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
-import org.jvnet.mock_javamail.Mailbox;
+import org.awaitility.Awaitility;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Unit test for idempotent repository.
  */
 public class MailIdempotentRepositoryDuplicateNotRemoveTest extends MailIdempotentRepositoryDuplicateTest {
 
+    @Override
     @Test
     public void testIdempotent() throws Exception {
         assertEquals(1, myRepo.getCacheSize());
 
         MockEndpoint mock = getMockEndpoint("mock:result");
         // no 3 is already in the idempotent repo
-        mock.expectedBodiesReceived("Message 0", "Message 1", "Message 2", "Message 4");
+        mock.expectedBodiesReceived("Message 0\r\n", "Message 1\r\n", "Message 2\r\n", "Message 4\r\n");
 
-        context.startRoute("foo");
+        context.getRouteController().startRoute("foo");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // windows need a little slack
-        Thread.sleep(500);
-
-        assertEquals(0, Mailbox.get("jones@localhost").getNewMessageCount());
+        Awaitility.await().atMost(500, TimeUnit.MILLISECONDS)
+                .untilAsserted(() -> assertEquals(0, jones.getInbox().getNewMessageCount()));
 
         // they are not removed so we should have all 5 in the repo now
         assertEquals(5, myRepo.getCacheSize());
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("imap://jones@localhost?password=secret&idempotentRepository=#myRepo&idempotentRepositoryRemoveOnCommit=false").routeId("foo").noAutoStartup()
+            public void configure() {
+                from(jones.uriPrefix(Protocol.pop3)
+                     + "&idempotentRepository=#myRepo&idempotentRepositoryRemoveOnCommit=false&initialDelay=100&delay=100")
+                        .routeId("foo").noAutoStartup()
                         .to("mock:result");
             }
         };

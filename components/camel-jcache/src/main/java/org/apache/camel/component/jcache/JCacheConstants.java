@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,13 +16,26 @@
  */
 package org.apache.camel.component.jcache;
 
+import org.apache.camel.spi.Metadata;
+
 public interface JCacheConstants {
-    String ACTION          = "CamelJCacheAction";
-    String RESULT          = "CamelJCacheResult";
-    String EVENT_TYPE      = "CamelJCacheEventType";
-    String KEY             = "CamelJCacheKey";
-    String KEYS            = "CamelJCacheKeys";
-    String OLD_VALUE       = "CamelJCacheOldValue";
+    @Metadata(label = "producer", description = "The cache operation to perform", javaType = "String")
+    String ACTION = "CamelJCacheAction";
+    @Metadata(label = "producer", description = "The result of the cache operation", javaType = "boolean")
+    String RESULT = "CamelJCacheResult";
+    @Metadata(label = "consumer", description = "The type of event received", javaType = "String")
+    String EVENT_TYPE = "CamelJCacheEventType";
+    @Metadata(description = "The key of the cache entry", javaType = "Object")
+    String KEY = "CamelJCacheKey";
+    @Metadata(label = "producer", description = "The collection of keys against which the action should be performed",
+              javaType = "Set<Object>")
+    String KEYS = "CamelJCacheKeys";
+    @Metadata(label = "consumer", description = "The old value of the cache entry", javaType = "Object")
+    String OLD_VALUE = "CamelJCacheOldValue";
+    @Metadata(label = "producer", description = "The EntryProcessor to invoke",
+              javaType = "EntryProcessor<Object, Object, Object>")
     String ENTRY_PROCESSOR = "CamelJCacheEntryProcessor";
-    String ARGUMENTS       = "CamelJCacheEntryArgs";
+    @Metadata(label = "producer", description = "The additional arguments to pass to the EntryProcessor",
+              javaType = "Collection<Object>")
+    String ARGUMENTS = "CamelJCacheEntryArgs";
 }

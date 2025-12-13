@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,36 +18,32 @@ package org.apache.camel.component.guava.eventbus;
 
 import com.google.common.eventbus.EventBus;
 import com.google.common.eventbus.Subscribe;
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.impl.JndiRegistry;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class GuavaEventBusProducerTest extends CamelTestSupport {
 
+    @BindToRegistry("eventBus")
     EventBus eventBus = new EventBus();
 
     Object receivedEvent;
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start").to("guava-eventbus:eventBus");
             }
         };
     }
 
-    @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry registry = super.createRegistry();
-        registry.bind("eventBus", eventBus);
-        return registry;
-    }
-
     @Test
-    public void shouldReceiveMessageFromCamel() throws InterruptedException {
+    public void shouldReceiveMessageFromCamel() {
         // Given
         String message = "message";
         eventBus.register(this);

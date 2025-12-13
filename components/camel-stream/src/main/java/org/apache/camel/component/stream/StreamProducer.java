@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,35 +23,35 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
-import java.net.URL;
-import java.net.URLConnection;
 import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.camel.AsyncCallback;
 import org.apache.camel.CamelExchangeException;
 import org.apache.camel.Exchange;
-import org.apache.camel.impl.DefaultProducer;
+import org.apache.camel.ExchangePropertyKey;
+import org.apache.camel.support.DefaultAsyncProducer;
 import org.apache.camel.util.IOHelper;
-import org.apache.camel.util.ObjectHelper;
-
+import org.apache.camel.util.StringHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Producer that can write to streams
  */
-public class StreamProducer extends DefaultProducer {
+public class StreamProducer extends DefaultAsyncProducer {
 
     private static final Logger LOG = LoggerFactory.getLogger(StreamProducer.class);
-    private static final String TYPES = "out,err,file,header,url";
+
+    private static final String TYPES = "out,err,file,header";
     private static final String INVALID_URI = "Invalid uri, valid form: 'stream:{" + TYPES + "}'";
     private static final List<String> TYPES_LIST = Arrays.asList(TYPES.split(","));
     private StreamEndpoint endpoint;
     private String uri;
     private OutputStream outputStream;
-    private AtomicInteger count = new AtomicInteger();
+    private final AtomicInteger count = new AtomicInteger();
 
     public StreamProducer(StreamEndpoint endpoint, String uri) throws Exception {
         super(endpoint);
@@ -60,42 +60,40 @@ public class StreamProducer extends DefaultProducer {
     }
 
     @Override
-    protected void doStart() throws Exception {
-        super.doStart();
-    }
-
-    @Override
     protected void doStop() throws Exception {
         super.doStop();
         closeStream(null, true);
     }
 
-    public void process(Exchange exchange) throws Exception {
-        delay(endpoint.getDelay());
-
-        synchronized (this) {
+    @Override
+    public boolean process(Exchange exchange, AsyncCallback callback) {
+        try {
+            delay(endpoint.getDelay());
+            lock.lock();
             try {
-                openStream(exchange);
-                writeToStream(outputStream, exchange);
+                try {
+                    openStream(exchange);
+                    writeToStream(outputStream, exchange);
+                } finally {
+                    closeStream(exchange, false);
+                }
             } finally {
-                closeStream(exchange, false);
+                lock.unlock();
             }
+        } catch (InterruptedException e) {
+            exchange.setException(e);
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            exchange.setException(e);
         }
-    }
 
-    private OutputStream resolveStreamFromUrl() throws IOException {
-        String u = endpoint.getUrl();
-        ObjectHelper.notEmpty(u, "url");
-        LOG.debug("About to write to url: {}", u);
-
-        URL url = new URL(u);
-        URLConnection c = url.openConnection();
-        return c.getOutputStream();
+        callback.done(true);
+        return true;
     }
 
     private OutputStream resolveStreamFromFile() throws IOException {
         String fileName = endpoint.getFileName();
-        ObjectHelper.notEmpty(fileName, "fileName");
+        StringHelper.notEmpty(fileName, "fileName");
         LOG.debug("About to write to file: {}", fileName);
         File f = new File(fileName);
         // will create a new file if missing or append to existing
@@ -104,7 +102,7 @@ public class StreamProducer extends DefaultProducer {
         return new FileOutputStream(f, true);
     }
 
-    private OutputStream resolveStreamFromHeader(Object o, Exchange exchange) throws CamelExchangeException {
+    private OutputStream resolveStreamFromHeader(Object o, Exchange exchange) {
         return exchange.getContext().getTypeConverter().convertTo(OutputStream.class, o);
     }
 
@@ -120,7 +118,7 @@ public class StreamProducer extends DefaultProducer {
         Object body = exchange.getIn().getBody();
 
         if (body == null) {
-            log.debug("Body is null, cannot write it to the stream.");
+            LOG.debug("Body is null, cannot write it to the stream.");
             return;
         }
 
@@ -130,6 +128,9 @@ public class StreamProducer extends DefaultProducer {
             if (bytes != null) {
                 LOG.debug("Writing as byte[]: {} to {}", bytes, outputStream);
                 outputStream.write(bytes);
+                if (endpoint.isAppendNewLine()) {
+                    outputStream.write(System.lineSeparator().getBytes());
+                }
                 return;
             }
         }
@@ -137,13 +138,15 @@ public class StreamProducer extends DefaultProducer {
         // okay now fallback to mandatory converterable to string
         String s = exchange.getIn().getMandatoryBody(String.class);
         Charset charset = endpoint.getCharset();
-        Writer writer = new OutputStreamWriter(outputStream, charset);
+        Writer writer = charset != null ? new OutputStreamWriter(outputStream, charset) : new OutputStreamWriter(outputStream);
         BufferedWriter bw = IOHelper.buffered(writer);
         if (LOG.isDebugEnabled()) {
-            LOG.debug("Writing as text: {} to {} using encoding: {}", new Object[]{body, outputStream, charset});
+            LOG.debug("Writing as text: {} to {} using encoding: {}", body, outputStream, charset);
         }
         bw.write(s);
-        bw.write(System.lineSeparator());
+        if (endpoint.isAppendNewLine()) {
+            bw.write(System.lineSeparator());
+        }
         bw.flush();
     }
 
@@ -158,8 +161,6 @@ public class StreamProducer extends DefaultProducer {
             outputStream = System.err;
         } else if ("file".equals(uri)) {
             outputStream = resolveStreamFromFile();
-        } else if ("url".equals(uri)) {
-            outputStream = resolveStreamFromUrl();
         }
         count.set(outputStream == null ? 0 : endpoint.getAutoCloseCount());
         LOG.debug("Opened stream '{}'", endpoint.getEndpointKey());
@@ -176,9 +177,9 @@ public class StreamProducer extends DefaultProducer {
             openStream();
         }
     }
-    
+
     private Boolean isDone(Exchange exchange) {
-        return exchange != null && exchange.getProperty(Exchange.SPLIT_COMPLETE, Boolean.FALSE, Boolean.class);
+        return exchange != null && exchange.getProperty(ExchangePropertyKey.SPLIT_COMPLETE, Boolean.FALSE, Boolean.class);
     }
 
     private void closeStream(Exchange exchange, boolean force) throws Exception {

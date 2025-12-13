@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,12 +18,9 @@ package org.apache.camel.component.salesforce.api.dto;
 
 import java.util.List;
 
-import com.thoughtworks.xstream.annotations.XStreamImplicit;
-
 public class SObjectBasicInfo extends AbstractDTOBase {
 
     private SObject objectDescribe;
-    @XStreamImplicit
     private List<RecentItem> recentItems;
 
     public SObject getObjectDescribe() {

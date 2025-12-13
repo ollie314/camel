@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -35,9 +35,17 @@ public class RemoteFile<T> extends GenericFile<T> implements Cloneable {
      */
     public void populateHeaders(GenericFileMessage<T> message) {
         if (message != null) {
-            super.populateHeaders(message);
-            message.setHeader("CamelFileHost", getHostname());
+            // because there is not probeContentType option
+            // in other file based components, false may be passed
+            // as the second argument.
+            super.populateHeaders(message, false);
+            message.setHeader(FtpConstants.FILE_HOST, getHostname());
         }
+    }
+
+    @Override
+    public void populateHeaders(GenericFileMessage<T> message, boolean isProbeContentTypeFromEndpoint) {
+        populateHeaders(message);
     }
 
     public String getHostname() {
@@ -53,17 +61,17 @@ public class RemoteFile<T> extends GenericFile<T> implements Cloneable {
         // always use / as separator for FTP
         return '/';
     }
-    
+
     @Override
     protected boolean isAbsolute(String name) {
-        if (name.length() > 0) {
+        if (!name.isEmpty()) {
             return name.charAt(0) == '/' || name.charAt(0) == '\\';
         }
         return false;
     }
-    
+
     @Override
-    protected String normalizePath(String name) {        
+    protected String normalizePath(String name) {
         return name;
     }
 
@@ -71,7 +79,6 @@ public class RemoteFile<T> extends GenericFile<T> implements Cloneable {
     public void copyFromPopulateAdditional(GenericFile<T> source, GenericFile<T> result) {
         RemoteFile<?> remoteSource = (RemoteFile<?>) source;
         RemoteFile<?> remoteResult = (RemoteFile<?>) result;
-
         remoteResult.setHostname(remoteSource.getHostname());
     }
 

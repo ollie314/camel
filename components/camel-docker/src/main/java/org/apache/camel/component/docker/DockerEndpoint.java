@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,6 +16,9 @@
  */
 package org.apache.camel.component.docker;
 
+import java.util.Map;
+
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
@@ -24,16 +27,18 @@ import org.apache.camel.component.docker.consumer.DockerStatsConsumer;
 import org.apache.camel.component.docker.exception.DockerException;
 import org.apache.camel.component.docker.producer.AsyncDockerProducer;
 import org.apache.camel.component.docker.producer.DockerProducer;
-import org.apache.camel.impl.DefaultEndpoint;
+import org.apache.camel.spi.EndpointServiceLocation;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
+import org.apache.camel.support.DefaultEndpoint;
 
 /**
- * The docker component is used for managing Docker containers.
+ * Manage Docker containers.
  */
-@UriEndpoint(scheme = "docker", title = "Docker", syntax = "docker:operation",
-        label = "container,cloud,paas", lenientProperties = true)
-public class DockerEndpoint extends DefaultEndpoint {
+@UriEndpoint(firstVersion = "2.15.0", scheme = "docker", title = "Docker", syntax = "docker:operation",
+             category = { Category.CLOUD, Category.CONTAINER }, lenientProperties = true,
+             headersClass = DockerConstants.class)
+public class DockerEndpoint extends DefaultEndpoint implements EndpointServiceLocation {
 
     @UriParam
     private DockerConfiguration configuration;
@@ -46,8 +51,22 @@ public class DockerEndpoint extends DefaultEndpoint {
         this.configuration = configuration;
     }
 
-    public DockerEndpoint(String endpointUri) {
-        super(endpointUri);
+    @Override
+    public String getServiceUrl() {
+        return configuration.getHost() + ":" + configuration.getPort();
+    }
+
+    @Override
+    public String getServiceProtocol() {
+        return "rest";
+    }
+
+    @Override
+    public Map<String, String> getServiceMetadata() {
+        if (configuration.getUsername() != null) {
+            return Map.of("username", configuration.getUsername());
+        }
+        return null;
     }
 
     @Override
@@ -69,19 +88,16 @@ public class DockerEndpoint extends DefaultEndpoint {
     public Consumer createConsumer(Processor processor) throws Exception {
         DockerOperation operation = configuration.getOperation();
 
-        switch (operation) {
-        case EVENTS:
-            return new DockerEventsConsumer(this, processor);
-        case STATS:
-            return new DockerStatsConsumer(this, processor);
-        default:
+        Consumer consumer;
+        if (operation == DockerOperation.EVENTS) {
+            consumer = new DockerEventsConsumer(this, processor);
+        } else if (operation == DockerOperation.STATS) {
+            consumer = new DockerStatsConsumer(this, processor);
+        } else {
             throw new DockerException(operation + " is not a valid consumer operation");
         }
-    }
-    
-    @Override
-    public boolean isSingleton() {
-        return true;
+        configureConsumer(consumer);
+        return consumer;
     }
 
     public DockerConfiguration getConfiguration() {
@@ -92,7 +108,5 @@ public class DockerEndpoint extends DefaultEndpoint {
     public boolean isLenientProperties() {
         return true;
     }
-
-
 
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,89 +16,68 @@
  */
 package org.apache.camel.component.jcache;
 
-import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
+
 import javax.cache.Cache;
 import javax.cache.CacheManager;
 import javax.cache.configuration.Configuration;
 import javax.cache.configuration.Factory;
 import javax.cache.event.CacheEntryEventFilter;
-import javax.cache.event.EventType;
 import javax.cache.expiry.ExpiryPolicy;
 import javax.cache.integration.CacheLoader;
 import javax.cache.integration.CacheWriter;
 
 import org.apache.camel.CamelContext;
-import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriParams;
-import org.apache.camel.util.EndpointHelper;
+import org.apache.camel.support.EndpointHelper;
 
 @UriParams
 public class JCacheConfiguration {
-    @UriParam(label = "advanced")
-    @Metadata(required = "true")
-    private String cachingProvider;
 
+    @UriParam(label = "common")
+    private String cachingProvider;
     @UriParam(label = "advanced")
     private Configuration cacheConfiguration;
-
-    @UriParam(label = "advanced")
+    @UriParam
     private Properties cacheConfigurationProperties;
-
-    @UriParam(label = "advanced")
+    @UriParam
     private String configurationUri;
-
     @UriParam(label = "advanced")
     private Factory<CacheLoader> cacheLoaderFactory;
-
     @UriParam(label = "advanced")
     private Factory<CacheWriter> cacheWriterFactory;
-
     @UriParam(label = "advanced")
     private Factory<ExpiryPolicy> expiryPolicyFactory;
-
     @UriParam
     private boolean readThrough;
-
     @UriParam
     private boolean writeThrough;
-
     @UriParam(defaultValue = "true")
     private boolean storeByValue = true;
-
     @UriParam
     private boolean statisticsEnabled;
-
     @UriParam
     private boolean managementEnabled;
-
     @UriParam(label = "consumer", enums = "CREATED,UPDATED,REMOVED,EXPIRED")
-    private List<EventType> filteredEvents;
-
+    private String filteredEvents;
     @UriParam(label = "consumer,advanced")
     private List<CacheEntryEventFilter> eventFilters;
-
     @UriParam(label = "consumer")
     private boolean oldValueRequired;
-
     @UriParam(label = "consumer")
     private boolean synchronous;
-
     @UriParam(label = "producer")
     private String action;
-
     @UriParam(label = "advanced", defaultValue = "true")
     private boolean createCacheIfNotExists = true;
-
     @UriParam(label = "advanced")
     private boolean lookupProviders;
 
     private CamelContext camelContext;
     private String cacheName;
-
 
     public JCacheConfiguration() {
         this(null, null);
@@ -131,8 +110,8 @@ public class JCacheConfiguration {
 
     public ClassLoader getApplicationContextClassLoader() {
         return this.camelContext != null
-            ? this.camelContext.getApplicationContextClassLoader()
-            : null;
+                ? this.camelContext.getApplicationContextClassLoader()
+                : null;
     }
 
     /**
@@ -158,8 +137,7 @@ public class JCacheConfiguration {
     }
 
     /**
-     * The {@link Properties} for the {@link javax.cache.spi.CachingProvider} to
-     * create the {@link CacheManager}
+     * The {@link Properties} for the {@link javax.cache.spi.CachingProvider} to create the {@link CacheManager}
      */
     public Properties getCacheConfigurationProperties() {
         return cacheConfigurationProperties;
@@ -269,22 +247,15 @@ public class JCacheConfiguration {
     }
 
     /**
-     * Events a consumer should filter. If using filteredEvents option, then eventFilters one will be ignored
+     * Events a consumer should filter (multiple events can be separated by comma). If using filteredEvents option, then
+     * eventFilters one will be ignored
      */
-    public List<EventType> getFilteredEvents() {
+    public String getFilteredEvents() {
         return filteredEvents;
     }
 
-    public void setFilteredEvents(List<EventType> filteredEvents) {
-        this.filteredEvents = filteredEvents;
-    }
-
     public void setFilteredEvents(String filteredEvents) {
-        this.filteredEvents = new ArrayList<>();
-
-        for (String event : filteredEvents.split(",")) {
-            this.filteredEvents.add(EventType.valueOf(event));
-        }
+        this.filteredEvents = filteredEvents;
     }
 
     /**
@@ -295,11 +266,14 @@ public class JCacheConfiguration {
     }
 
     public void setEventFilters(List<CacheEntryEventFilter> eventFilters) {
-        this.eventFilters = new LinkedList<>(eventFilters);
+        if (eventFilters != null) {
+            this.eventFilters = new LinkedList<>(eventFilters);
+        }
     }
 
     public void setEventFilters(String eventFilter) {
-        this.eventFilters = EndpointHelper.resolveReferenceListParameter(camelContext, eventFilter, CacheEntryEventFilter.class);
+        this.eventFilters
+                = EndpointHelper.resolveReferenceListParameter(camelContext, eventFilter, CacheEntryEventFilter.class);
     }
 
     /**
@@ -314,7 +288,7 @@ public class JCacheConfiguration {
     }
 
     /**
-     * if the the event listener should block the thread causing the event
+     * if the event listener should block the thread causing the event
      */
     public boolean isSynchronous() {
         return synchronous;
@@ -329,8 +303,8 @@ public class JCacheConfiguration {
     }
 
     /**
-     * To configure using a cache operation by default. If an operation in the
-     * message header, then the operation from the header takes precedence.
+     * To configure using a cache operation by default. If an operation in the message header, then the operation from
+     * the header takes precedence.
      */
     public void setAction(String action) {
         this.action = action;
@@ -341,8 +315,7 @@ public class JCacheConfiguration {
     }
 
     /**
-     * Configure if a cache need to be created if it does exist or can't be
-     * pre-configured.
+     * Configure if a cache need to be created if it does exist or can't be pre-configured.
      */
     public void setCreateCacheIfNotExists(boolean createCacheIfNotExists) {
         this.createCacheIfNotExists = createCacheIfNotExists;
@@ -353,8 +326,7 @@ public class JCacheConfiguration {
     }
 
     /**
-     * Configure if a camel-cache should try to find implementations of jcache
-     * api in runtimes like OSGi.
+     * Configure if a camel-cache should try to find implementations of jcache api in runtimes like OSGi.
      */
     public void setLookupProviders(boolean lookupProviders) {
         this.lookupProviders = lookupProviders;

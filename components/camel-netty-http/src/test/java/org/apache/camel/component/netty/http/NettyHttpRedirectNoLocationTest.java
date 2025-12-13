@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,42 +17,45 @@
 package org.apache.camel.component.netty.http;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
 import org.apache.camel.RuntimeCamelException;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.apache.camel.test.AvailablePortFinder;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
+
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class NettyHttpRedirectNoLocationTest extends BaseNettyTest {
 
-    private int nextPort;
+    @RegisterExtension
+    AvailablePortFinder.Port nextPort = AvailablePortFinder.find();
 
     @Test
-    public void testHttpRedirectNoLocation() throws Exception {
+    public void testHttpRedirectNoLocation() {
         try {
             template.requestBody("netty-http:http://localhost:" + nextPort + "/test", "Hello World", String.class);
             fail("Should have thrown an exception");
         } catch (RuntimeCamelException e) {
             NettyHttpOperationFailedException cause = assertIsInstanceOf(NettyHttpOperationFailedException.class, e.getCause());
             assertEquals(302, cause.getStatusCode());
-            assertEquals(true, cause.isRedirectError());
-            assertEquals(false, cause.hasRedirectLocation());
-            assertEquals(null, cause.getRedirectLocation());
+            assertTrue(cause.isRedirectError());
+            assertFalse(cause.hasRedirectLocation());
+            assertNull(cause.getRedirectLocation());
         }
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                nextPort = getNextPort();
-
+            public void configure() {
                 from("netty-http:http://localhost:" + nextPort + "/test")
-                        .process(new Processor() {
-                            public void process(Exchange exchange) throws Exception {
-                                exchange.getOut().setHeader(Exchange.HTTP_RESPONSE_CODE, 302);
-                            }
-                        });
+                        .process(exchange -> exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, 302));
             }
         };
     }

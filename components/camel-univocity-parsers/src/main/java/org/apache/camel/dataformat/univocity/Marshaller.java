@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,13 +20,15 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import com.univocity.parsers.common.AbstractWriter;
 import org.apache.camel.Exchange;
 import org.apache.camel.NoTypeConversionAvailableException;
 
-import static org.apache.camel.util.ExchangeHelper.convertToMandatoryType;
-import static org.apache.camel.util.ExchangeHelper.convertToType;
+import static org.apache.camel.support.ExchangeHelper.convertToMandatoryType;
+import static org.apache.camel.support.ExchangeHelper.convertToType;
 
 /**
  * This class marshalls the exchange body using an uniVocity writer. It can automatically generates headers and keep
@@ -35,7 +37,8 @@ import static org.apache.camel.util.ExchangeHelper.convertToType;
  * @param <W> Writer class
  */
 final class Marshaller<W extends AbstractWriter<?>> {
-    private final LinkedHashSet<String> headers = new LinkedHashSet<String>();
+    private final Lock headersLock = new ReentrantLock();
+    private final LinkedHashSet<String> headers = new LinkedHashSet<>();
     private final boolean adaptHeaders;
 
     /**
@@ -54,9 +57,9 @@ final class Marshaller<W extends AbstractWriter<?>> {
     /**
      * Marshals the given body.
      *
-     * @param exchange exchange to use (for type conversion)
-     * @param body     body to marshal
-     * @param writer   uniVocity writer to use
+     * @param  exchange                           exchange to use (for type conversion)
+     * @param  body                               body to marshal
+     * @param  writer                             uniVocity writer to use
      * @throws NoTypeConversionAvailableException when it's not possible to convert the body as list and maps.
      */
     public void marshal(Exchange exchange, Object body, W writer) throws NoTypeConversionAvailableException {
@@ -77,19 +80,35 @@ final class Marshaller<W extends AbstractWriter<?>> {
     /**
      * Writes the given row.
      *
-     * @param exchange exchange to use (for type conversion)
-     * @param row      row to write
-     * @param writer   uniVocity writer to use
+     * @param  exchange                           exchange to use (for type conversion)
+     * @param  row                                row to write
+     * @param  writer                             uniVocity writer to use
      * @throws NoTypeConversionAvailableException when it's not possible to convert the row as map.
      */
     private void writeRow(Exchange exchange, Object row, W writer) throws NoTypeConversionAvailableException {
         Map<?, ?> map = convertToMandatoryType(exchange, Map.class, row);
         if (adaptHeaders) {
-            for (Object key : map.keySet()) {
-                headers.add(convertToMandatoryType(exchange, String.class, key));
+            headersLock.lock();
+            try {
+                for (Object key : map.keySet()) {
+                    headers.add(convertToMandatoryType(exchange, String.class, key));
+                }
+                writeRow(map, writer);
+            } finally {
+                headersLock.unlock();
             }
+        } else {
+            writeRow(map, writer);
         }
+    }
 
+    /**
+     * Writes the given map as row.
+     *
+     * @param map    row values by header
+     * @param writer uniVocity writer to use
+     */
+    private void writeRow(Map<?, ?> map, W writer) {
         Object[] values = new Object[headers.size()];
         int index = 0;
         for (String header : headers) {

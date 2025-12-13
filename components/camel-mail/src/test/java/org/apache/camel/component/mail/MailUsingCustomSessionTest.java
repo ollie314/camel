@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,40 +19,38 @@ package org.apache.camel.component.mail;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-import javax.mail.Message;
-import javax.mail.Session;
 
+import jakarta.mail.Message;
+import jakarta.mail.Session;
+
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.RoutesBuilder;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mail.Mailbox.MailboxUser;
+import org.apache.camel.component.mail.Mailbox.Protocol;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.impl.JndiRegistry;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Before;
-import org.junit.Test;
-import org.jvnet.mock_javamail.Mailbox;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 public class MailUsingCustomSessionTest extends CamelTestSupport {
+    private static final MailboxUser james = Mailbox.getOrCreateUser("james", "secret");
 
-    private Session mailSession;
-
-    @Before
-    public void setUp() throws Exception {
-        super.setUp();
-        Mailbox.clearAll();
-    }
+    @BindToRegistry("myCustomMailSession")
+    private Session mailSession = Session.getInstance(new Properties());
 
     @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry registry = super.createRegistry();
-        mailSession = Session.getInstance(new Properties());
-        registry.bind("myCustomMailSession", mailSession);
-        return registry;
+    public void doPostSetup() {
+        Mailbox.clearAll();
     }
 
     @Test
     public void testEndpointConfigurationWithCustomSession() {
-        // Verify that the mail session bound to the bean registry is identical to the session tied to the endpoint configuration
-        assertSame(mailSession, getEndpointMailSession("smtp://james@localhost?session=#myCustomMailSession"));
+        // Verify that the mail session bound to the bean registry is identical
+        // to the session tied to the endpoint configuration
+        assertSame(mailSession, getEndpointMailSession(james.uriPrefix(Protocol.smtp) + "&session=#myCustomMailSession"));
     }
 
     @Test
@@ -62,12 +60,12 @@ public class MailUsingCustomSessionTest extends CamelTestSupport {
 
         Map<String, Object> headers = new HashMap<>();
         headers.put("subject", "Hello Camel");
-        template.sendBodyAndHeaders("smtp://james@localhost?session=#myCustomMailSession", "hello camel!", headers);
+        template.sendBodyAndHeaders(james.uriPrefix(Protocol.smtp) + "&session=#myCustomMailSession", "hello camel!", headers);
 
         mockEndpoint.assertIsSatisfied();
 
-        Mailbox mailbox = Mailbox.get("james@localhost");
-        assertEquals("Expected one mail for james@localhost", 1, mailbox.size());
+        Mailbox mailbox = james.getInbox();
+        assertEquals(1, mailbox.getMessageCount(), "Expected one mail for james@localhost");
 
         Message message = mailbox.get(0);
         assertEquals("hello camel!", message.getContent());
@@ -80,11 +78,12 @@ public class MailUsingCustomSessionTest extends CamelTestSupport {
     }
 
     @Override
-    protected RoutesBuilder createRouteBuilder() throws Exception {
+    protected RoutesBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("pop3://james@localhost?session=#myCustomMailSession&consumer.delay=1000").to("mock:result");
+            public void configure() {
+                from(james.uriPrefix(Protocol.imap) + "&session=#myCustomMailSession&initialDelay=100&delay=100")
+                        .to("mock:result");
             }
         };
     }

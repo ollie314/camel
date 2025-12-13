@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,8 +19,11 @@ package org.apache.camel.component.metrics.routepolicy;
 import com.codahale.metrics.MetricRegistry;
 import org.apache.camel.CamelContext;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class MetricsRoutePolicySubRouteTest extends CamelTestSupport {
 
@@ -45,7 +48,7 @@ public class MetricsRoutePolicySubRouteTest extends CamelTestSupport {
 
         template.sendBody("seda:foo", "Hello World");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // there should be 2 names
         assertEquals(2, registry.getNames().size());
@@ -55,16 +58,16 @@ public class MetricsRoutePolicySubRouteTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("seda:foo").routeId("foo")
-                    .to("direct:bar")
-                    .to("mock:foo");
+                        .to("direct:bar")
+                        .to("mock:foo");
 
                 from("direct:bar").routeId("bar")
-                    .to("mock:bar");
+                        .to("mock:bar");
             }
         };
     }

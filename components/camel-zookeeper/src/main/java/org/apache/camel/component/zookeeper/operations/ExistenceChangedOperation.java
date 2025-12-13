@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,15 +16,13 @@
  */
 package org.apache.camel.component.zookeeper.operations;
 
-import org.apache.zookeeper.AsyncCallback.StatCallback;
 import org.apache.zookeeper.Watcher.Event.EventType;
 import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.Stat;
 
 /**
- * <code>DataChangedOperation</code> is an watch driven operation. It will wait
- * for an watched event indicating that a given node has been created or
- * deleted.
+ * <code>DataChangedOperation</code> is an watch driven operation. It will wait for an watched event indicating that a
+ * given node has been created or deleted.
  */
 public class ExistenceChangedOperation extends FutureEventDrivenOperation<String> {
 
@@ -34,9 +32,7 @@ public class ExistenceChangedOperation extends FutureEventDrivenOperation<String
 
     @Override
     protected void installWatch() {
-        connection.exists(getNode(), this, new StatCallback() {
-            public void processResult(int rc, String path, Object ctx, Stat stat) {
-            }
+        connection.exists(getNode(), this, (int rc, String path, Object ctx, Stat stat) -> {
         }, null);
         if (LOG.isDebugEnabled()) {
             LOG.debug("Installed exists watch");
@@ -48,9 +44,12 @@ public class ExistenceChangedOperation extends FutureEventDrivenOperation<String
         try {
             String path = getNode();
             Stat statistics = connection.exists(path, true);
-            return new OperationResult<String>(path, statistics);
+            return new OperationResult<>(path, statistics);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return new OperationResult<>(e);
         } catch (Exception e) {
-            return new OperationResult<String>(e);
+            return new OperationResult<>(e);
         }
     }
 }

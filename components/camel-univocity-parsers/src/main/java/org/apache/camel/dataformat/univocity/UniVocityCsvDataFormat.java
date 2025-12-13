@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,123 +23,58 @@ import com.univocity.parsers.csv.CsvParser;
 import com.univocity.parsers.csv.CsvParserSettings;
 import com.univocity.parsers.csv.CsvWriter;
 import com.univocity.parsers.csv.CsvWriterSettings;
+import org.apache.camel.spi.annotations.Dataformat;
 
 /**
  * This class is the data format that uses the CSV uniVocity parser.
  */
-public class UniVocityCsvDataFormat extends AbstractUniVocityDataFormat<CsvFormat, CsvWriterSettings, CsvWriter, CsvParserSettings, CsvParser, UniVocityCsvDataFormat> {
-    protected Boolean quoteAllFields;
-    protected Character quote;
-    protected Character quoteEscape;
-    protected Character delimiter;
+@Dataformat("univocityCsv")
+public class UniVocityCsvDataFormat
+        extends
+        AbstractUniVocityDataFormat<CsvFormat, CsvWriterSettings, CsvWriter, CsvParserSettings, CsvParser, UniVocityCsvDataFormat> {
 
-    /**
-     * Gets whether or not all fields must be quoted.
-     * If {@code null} then the default settings value is used.
-     *
-     * @return whether or not all fields must be quoted
-     * @see com.univocity.parsers.csv.CsvWriterSettings#getQuoteAllFields()
-     */
+    private Boolean quoteAllFields;
+    private Character quote;
+    private Character quoteEscape;
+    private Character delimiter;
+
     public Boolean getQuoteAllFields() {
         return quoteAllFields;
     }
 
-    /**
-     * Gets whether or not all fields must be quoted.
-     * If {@code null} then the default settings value is used.
-     *
-     * @param quoteAllFields whether or not all fields must be quoted
-     * @return current data format instance, fluent API
-     * @see com.univocity.parsers.csv.CsvWriterSettings#setQuoteAllFields(boolean)
-     */
-    public UniVocityCsvDataFormat setQuoteAllFields(Boolean quoteAllFields) {
+    public void setQuoteAllFields(Boolean quoteAllFields) {
         this.quoteAllFields = quoteAllFields;
-        return this;
     }
 
-    /**
-     * Gets the quote symbol.
-     * If {@code null} then the default format value is used.
-     *
-     * @return the quote symbol
-     * @see com.univocity.parsers.csv.CsvFormat#getQuote()
-     */
     public Character getQuote() {
         return quote;
     }
 
-    /**
-     * Sets the quote symbol.
-     * If {@code null} then the default format value is used.
-     *
-     * @param quote the quote symbol
-     * @return current data format instance, fluent API
-     * @see com.univocity.parsers.csv.CsvFormat#setQuote(char)
-     */
-    public UniVocityCsvDataFormat setQuote(Character quote) {
+    public void setQuote(Character quote) {
         this.quote = quote;
-        return this;
     }
 
-    /**
-     * Gets the quote escape symbol.
-     * If {@code null} then the default format value is used.
-     *
-     * @return the quote escape symbol
-     * @see com.univocity.parsers.csv.CsvFormat#getQuoteEscape()
-     */
     public Character getQuoteEscape() {
         return quoteEscape;
     }
 
-    /**
-     * Sets the quote escape symbol.
-     * If {@code null} then the default format value is used.
-     *
-     * @param quoteEscape the quote escape symbol
-     * @return current data format instance, fluent API
-     * @see com.univocity.parsers.csv.CsvFormat#setQuoteEscape(char)
-     */
-    public UniVocityCsvDataFormat setQuoteEscape(Character quoteEscape) {
+    public void setQuoteEscape(Character quoteEscape) {
         this.quoteEscape = quoteEscape;
-        return this;
     }
 
-    /**
-     * Gets the delimiter symbol.
-     * If {@code null} then the default format value is used.
-     *
-     * @return the delimiter symbol
-     * @see com.univocity.parsers.csv.CsvFormat#getDelimiter()
-     */
     public Character getDelimiter() {
         return delimiter;
     }
 
-    /**
-     * Sets the delimiter symbol.
-     * If {@code null} then the default format value is used.
-     *
-     * @param delimiter the delimiter symbol
-     * @return current data format instance, fluent API
-     * @see com.univocity.parsers.csv.CsvFormat#setDelimiter(char)
-     */
-    public UniVocityCsvDataFormat setDelimiter(Character delimiter) {
+    public void setDelimiter(Character delimiter) {
         this.delimiter = delimiter;
-        return this;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     protected CsvWriterSettings createWriterSettings() {
         return new CsvWriterSettings();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     protected void configureWriterSettings(CsvWriterSettings settings) {
         super.configureWriterSettings(settings);
@@ -149,25 +84,16 @@ public class UniVocityCsvDataFormat extends AbstractUniVocityDataFormat<CsvForma
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     protected CsvWriter createWriter(Writer writer, CsvWriterSettings settings) {
         return new CsvWriter(writer, settings);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     protected CsvParserSettings createParserSettings() {
         return new CsvParserSettings();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     protected void configureParserSettings(CsvParserSettings settings) {
         super.configureParserSettings(settings);
@@ -177,17 +103,11 @@ public class UniVocityCsvDataFormat extends AbstractUniVocityDataFormat<CsvForma
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     protected CsvParser createParser(CsvParserSettings settings) {
         return new CsvParser(settings);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     protected void configureFormat(CsvFormat format) {
         super.configureFormat(format);
@@ -205,6 +125,6 @@ public class UniVocityCsvDataFormat extends AbstractUniVocityDataFormat<CsvForma
 
     @Override
     public String getDataFormatName() {
-        return "univocity-csv";
+        return "univocityCsv";
     }
 }

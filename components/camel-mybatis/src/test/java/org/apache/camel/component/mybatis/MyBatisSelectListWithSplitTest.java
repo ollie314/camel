@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,9 @@ package org.apache.camel.component.mybatis;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class MyBatisSelectListWithSplitTest extends MyBatisTestSupport {
 
@@ -29,7 +31,7 @@ public class MyBatisSelectListWithSplitTest extends MyBatisTestSupport {
 
         template.sendBody("direct:start", null);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         Account james = mock.getReceivedExchanges().get(0).getIn().getBody(Account.class);
         Account claus = mock.getReceivedExchanges().get(1).getIn().getBody(Account.class);
@@ -38,16 +40,16 @@ public class MyBatisSelectListWithSplitTest extends MyBatisTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: e1
                 from("direct:start")
-                    .to("mybatis:selectAllAccounts?statementType=SelectList")
-                    // just use split body to split the List into individual objects
-                    .split(body())
-                    .to("mock:result");
+                        .to("mybatis:selectAllAccounts?statementType=SelectList")
+                        // just use split body to split the List into individual objects
+                        .split(body())
+                        .to("mock:result");
                 // END SNIPPET: e1
             }
         };

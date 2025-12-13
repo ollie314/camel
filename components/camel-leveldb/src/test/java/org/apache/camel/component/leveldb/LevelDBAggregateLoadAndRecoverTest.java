@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,28 +20,33 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.camel.AggregationStrategy;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.processor.aggregate.AggregationStrategy;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.junit5.params.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class LevelDBAggregateLoadAndRecoverTest extends CamelTestSupport {
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@DisabledOnOs({ OS.AIX, OS.OTHER })
+public class LevelDBAggregateLoadAndRecoverTest extends LevelDBTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(LevelDBAggregateLoadAndRecoverTest.class);
     private static final int SIZE = 200;
     private static AtomicInteger counter = new AtomicInteger();
 
-    @Before
+    @BeforeEach
     @Override
-    public void setUp() throws Exception {
+    public void doPreSetup() throws Exception {
         deleteDirectory("target/data");
-        super.setUp();
     }
 
     @Test
@@ -50,12 +55,12 @@ public class LevelDBAggregateLoadAndRecoverTest extends CamelTestSupport {
         mock.expectedMessageCount(SIZE / 10);
         mock.setResultWaitTime(50 * 1000);
 
-        LOG.info("Staring to send " + SIZE + " messages.");
+        LOG.info("Starting to send {} messages.", SIZE);
 
         for (int i = 0; i < SIZE; i++) {
             final int value = 1;
             char id = 'A';
-            Map<String, Object> headers = new HashMap<String, Object>();
+            Map<String, Object> headers = new HashMap<>();
             headers.put("id", id);
             headers.put("seq", i);
             LOG.debug("Sending {} with id {}", value, id);
@@ -64,9 +69,9 @@ public class LevelDBAggregateLoadAndRecoverTest extends CamelTestSupport {
             Thread.sleep(5);
         }
 
-        LOG.info("Sending all " + SIZE + " message done. Now waiting for aggregation to complete.");
+        LOG.info("Sending all {} message done. Now waiting for aggregation to complete.", SIZE);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         int recovered = 0;
         for (Exchange exchange : mock.getReceivedExchanges()) {
@@ -77,31 +82,31 @@ public class LevelDBAggregateLoadAndRecoverTest extends CamelTestSupport {
         int expected = SIZE / 10 / 10;
         int delta = Math.abs(expected - recovered);
         if (delta == 0) {
-            assertEquals("There should be " + expected + " recovered", expected, recovered);
+            assertEquals(expected, recovered, "There should be " + expected + " recovered");
         } else {
-            assertTrue("We expected " + expected + " recovered but the delta is within accepted range " + delta, delta < 3);
+            assertTrue(delta < 3, "We expected " + expected + " recovered but the delta is within accepted range " + delta);
         }
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                LevelDBAggregationRepository repo = new LevelDBAggregationRepository("repo1", "target/data/leveldb.dat");
+            public void configure() {
+                LevelDBAggregationRepository repo = getRepo();
                 repo.setUseRecovery(true);
                 // for faster unit testing
                 repo.setRecoveryInterval(500);
 
                 from("seda:start?size=" + SIZE)
-                    .to("log:input?groupSize=500")
-                    .aggregate(header("id"), new MyAggregationStrategy())
+                        .to("log:input?groupSize=500")
+                        .aggregate(header("id"), new MyAggregationStrategy())
                         .aggregationRepository(repo)
                         .completionSize(10)
                         .to("log:output?showHeaders=true")
                         // have every 10th exchange fail which should then be recovered
                         .process(new Processor() {
-                            public void process(Exchange exchange) throws Exception {
+                            public void process(Exchange exchange) {
                                 int num = counter.incrementAndGet();
                                 if (num % 10 == 0) {
                                     throw new IllegalStateException("Failed for num " + num);
@@ -109,13 +114,14 @@ public class LevelDBAggregateLoadAndRecoverTest extends CamelTestSupport {
                             }
                         })
                         .to("mock:result")
-                    .end();
+                        .end();
             }
         };
     }
 
     public static class MyAggregationStrategy implements AggregationStrategy {
 
+        @Override
         public Exchange aggregate(Exchange oldExchange, Exchange newExchange) {
             if (oldExchange == null) {
                 return newExchange;

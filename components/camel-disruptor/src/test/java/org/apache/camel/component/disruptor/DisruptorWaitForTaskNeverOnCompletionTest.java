@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,13 +22,14 @@ import java.util.concurrent.TimeUnit;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.support.SynchronizationAdapter;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version
- */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 public class DisruptorWaitForTaskNeverOnCompletionTest extends CamelTestSupport {
 
     private static String done = "";
@@ -36,13 +37,13 @@ public class DisruptorWaitForTaskNeverOnCompletionTest extends CamelTestSupport 
     private final CountDownLatch latch = new CountDownLatch(1);
 
     @Test
-    public void testNever() throws Exception {
+    void testNever() throws Exception {
         getMockEndpoint("mock:dead").expectedMessageCount(0);
         getMockEndpoint("mock:result").expectedMessageCount(1);
 
         template.sendBody("direct:start", "Hello World");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         assertTrue(latch.await(5, TimeUnit.SECONDS));
         // B should be first because we do not wait
@@ -50,16 +51,16 @@ public class DisruptorWaitForTaskNeverOnCompletionTest extends CamelTestSupport 
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 errorHandler(deadLetterChannel("mock:dead").maximumRedeliveries(3).redeliveryDelay(0));
 
                 from("direct:start").process(new Processor() {
                     @Override
-                    public void process(final Exchange exchange) throws Exception {
-                        exchange.addOnCompletion(new SynchronizationAdapter() {
+                    public void process(final Exchange exchange) {
+                        exchange.getExchangeExtension().addOnCompletion(new SynchronizationAdapter() {
                             @Override
                             public void onDone(final Exchange exchange) {
                                 done = done + "A";
@@ -69,14 +70,14 @@ public class DisruptorWaitForTaskNeverOnCompletionTest extends CamelTestSupport 
                     }
                 }).to("disruptor:foo?waitForTaskToComplete=Never").process(new Processor() {
                     @Override
-                    public void process(final Exchange exchange) throws Exception {
+                    public void process(final Exchange exchange) {
                         done = done + "B";
                     }
                 }).to("mock:result");
 
                 from("disruptor:foo").errorHandler(noErrorHandler()).delay(1000).process(new Processor() {
                     @Override
-                    public void process(final Exchange exchange) throws Exception {
+                    public void process(final Exchange exchange) {
                         done = done + "C";
                     }
                 }).throwException(new IllegalArgumentException("Forced"));

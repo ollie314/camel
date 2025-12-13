@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,24 +18,20 @@ package org.apache.camel.component.metrics;
 
 import com.codahale.metrics.Histogram;
 import com.codahale.metrics.MetricRegistry;
+import org.apache.camel.CamelContext;
 import org.apache.camel.EndpointInject;
 import org.apache.camel.Produce;
 import org.apache.camel.ProducerTemplate;
+import org.apache.camel.RoutesBuilder;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.spring.javaconfig.SingleRouteCamelConfiguration;
-import org.apache.camel.test.spring.CamelSpringDelegatingTestContextLoader;
-import org.apache.camel.test.spring.CamelSpringJUnit4ClassRunner;
-import org.apache.camel.test.spring.MockEndpoints;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.apache.camel.test.spring.junit5.CamelSpringTest;
+import org.apache.camel.test.spring.junit5.CamelSpringTestSupport;
+import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.mockito.Mockito;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.test.context.ContextConfiguration;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.context.support.AbstractApplicationContext;
 
 import static org.apache.camel.component.metrics.MetricsComponent.METRIC_REGISTRY_NAME;
 import static org.apache.camel.component.metrics.MetricsConstants.HEADER_HISTOGRAM_VALUE;
@@ -44,17 +40,13 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
-@RunWith(CamelSpringJUnit4ClassRunner.class)
-@ContextConfiguration(
-        classes = { HistogramRouteTest.TestConfig.class },
-        loader = CamelSpringDelegatingTestContextLoader.class)
-@MockEndpoints
-public class HistogramRouteTest {
+@CamelSpringTest
+public class HistogramRouteTest extends CamelSpringTestSupport {
 
-    @EndpointInject(uri = "mock:out")
+    @EndpointInject("mock:out")
     private MockEndpoint endpoint;
 
-    @Produce(uri = "direct:in")
+    @Produce("direct:in")
     private ProducerTemplate producer;
 
     private MetricRegistry mockRegistry;
@@ -63,39 +55,37 @@ public class HistogramRouteTest {
 
     private InOrder inOrder;
 
-    @Configuration
-    public static class TestConfig extends SingleRouteCamelConfiguration {
-
-        @Bean
-        @Override
-        public RouteBuilder route() {
-            return new RouteBuilder() {
-
-                @Override
-                public void configure() throws Exception {
-                    from("direct:in")
-                            .to("metrics:histogram:A?value=332491")
-                            .to("mock:out");
-                }
-            };
-        }
-
-        @Bean(name = METRIC_REGISTRY_NAME)
-        public MetricRegistry getMetricRegistry() {
-            return Mockito.mock(MetricRegistry.class);
-        }
+    @Override
+    protected AbstractApplicationContext createApplicationContext() {
+        return new AnnotationConfigApplicationContext();
     }
 
-    @Before
-    public void setup() {
-        // TODO - 12.05.2014, Lauri - is there any better way to set this up?
-        mockRegistry = endpoint.getCamelContext().getRegistry().lookupByNameAndType(METRIC_REGISTRY_NAME, MetricRegistry.class);
+    @Override
+    protected CamelContext createCamelContext() throws Exception {
+        CamelContext context = super.createCamelContext();
+
+        mockRegistry = Mockito.mock(MetricRegistry.class);
+        context.getRegistry().bind(METRIC_REGISTRY_NAME, mockRegistry);
         mockHistogram = Mockito.mock(Histogram.class);
         inOrder = Mockito.inOrder(mockRegistry, mockHistogram);
+
+        return context;
     }
 
-    @After
-    public void tearDown() {
+    @Override
+    protected RoutesBuilder createRouteBuilder() {
+        return new RouteBuilder() {
+            @Override
+            public void configure() {
+                from("direct:in")
+                        .to("metrics:histogram:A?value=332491")
+                        .to("mock:out");
+            }
+        };
+    }
+
+    @Override
+    public void doPostTearDown() {
         endpoint.reset();
         reset(mockRegistry);
     }

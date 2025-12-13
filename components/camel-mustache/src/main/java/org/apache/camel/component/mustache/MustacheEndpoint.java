@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,27 +26,32 @@ import java.util.Map;
 import com.github.mustachejava.DefaultMustacheFactory;
 import com.github.mustachejava.Mustache;
 import com.github.mustachejava.MustacheFactory;
+import org.apache.camel.Category;
 import org.apache.camel.Component;
 import org.apache.camel.Exchange;
 import org.apache.camel.ExchangePattern;
-import org.apache.camel.Message;
 import org.apache.camel.component.ResourceEndpoint;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
-import org.apache.camel.util.ExchangeHelper;
+import org.apache.camel.support.ExchangeHelper;
 
 import static org.apache.camel.component.mustache.MustacheConstants.MUSTACHE_ENDPOINT_URI_PREFIX;
 import static org.apache.camel.component.mustache.MustacheConstants.MUSTACHE_RESOURCE_URI;
 import static org.apache.camel.component.mustache.MustacheConstants.MUSTACHE_TEMPLATE;
 
 /**
- * Transforms the message using a Mustache template.
+ * Transform messages using a Mustache template.
  */
-@UriEndpoint(scheme = "mustache", title = "Mustache", syntax = "mustache:resourceUri", producerOnly = true, label = "transformation")
+@UriEndpoint(firstVersion = "2.12.0", scheme = "mustache", title = "Mustache", syntax = "mustache:resourceUri",
+             remote = false, producerOnly = true, category = { Category.TRANSFORMATION },
+             headersClass = MustacheConstants.class)
 public class MustacheEndpoint extends ResourceEndpoint {
 
     private MustacheFactory mustacheFactory;
     private Mustache mustache;
+
+    @UriParam
+    private boolean allowTemplateFromHeader;
     @UriParam
     private String encoding;
     @UriParam(defaultValue = "{{")
@@ -62,8 +67,8 @@ public class MustacheEndpoint extends ResourceEndpoint {
     }
 
     @Override
-    public boolean isSingleton() {
-        return true;
+    public boolean isRemote() {
+        return false;
     }
 
     @Override
@@ -84,42 +89,47 @@ public class MustacheEndpoint extends ResourceEndpoint {
 
     @Override
     protected void onExchange(Exchange exchange) throws Exception {
-        String newResourceUri = exchange.getIn().getHeader(MUSTACHE_RESOURCE_URI, String.class);
-        if (newResourceUri == null) {
-            // Get Mustache
-            String newTemplate = exchange.getIn().getHeader(MUSTACHE_TEMPLATE, String.class);
-            Mustache newMustache;
-            if (newTemplate == null) {
-                newMustache = getOrCreateMustache();
-            } else {
-                newMustache = createMustache(new StringReader(newTemplate), "mustache:temp#" + newTemplate.hashCode());
-                exchange.getIn().removeHeader(MUSTACHE_TEMPLATE);
-            }
-
-            // Execute Mustache
-            Map<String, Object> variableMap = ExchangeHelper.createVariableMap(exchange);
-            StringWriter writer = new StringWriter();
-            newMustache.execute(writer, variableMap);
-            writer.flush();
-
-            // Fill out message
-            Message out = exchange.getOut();
-            out.setBody(writer.toString());
-            out.setHeaders(exchange.getIn().getHeaders());
-            out.setAttachments(exchange.getIn().getAttachments());
-        } else {
-            exchange.getIn().removeHeader(MustacheConstants.MUSTACHE_RESOURCE_URI);
-            MustacheEndpoint newEndpoint = getCamelContext().getEndpoint(MUSTACHE_ENDPOINT_URI_PREFIX + newResourceUri, MustacheEndpoint.class);
-            newEndpoint.onExchange(exchange);
+        String newResourceUri = null;
+        if (allowTemplateFromHeader) {
+            newResourceUri = exchange.getIn().getHeader(MUSTACHE_RESOURCE_URI, String.class);
         }
+        if (newResourceUri != null) {
+            exchange.getIn().removeHeader(MustacheConstants.MUSTACHE_RESOURCE_URI);
+            MustacheEndpoint newEndpoint
+                    = getCamelContext().getEndpoint(MUSTACHE_ENDPOINT_URI_PREFIX + newResourceUri, MustacheEndpoint.class);
+            newEndpoint.onExchange(exchange);
+            return;
+        }
+
+        // Get Mustache
+        String newTemplate = null;
+        if (allowTemplateFromHeader) {
+            newTemplate = exchange.getIn().getHeader(MUSTACHE_TEMPLATE, String.class);
+        }
+        Mustache newMustache;
+        if (newTemplate == null) {
+            newMustache = getOrCreateMustache();
+        } else {
+            newMustache = createMustache(new StringReader(newTemplate), "mustache:temp#" + newTemplate.hashCode());
+            exchange.getIn().removeHeader(MUSTACHE_TEMPLATE);
+        }
+
+        // Execute Mustache
+        Map<String, Object> variableMap = ExchangeHelper.createVariableMap(exchange, isAllowContextMapAll());
+        StringWriter writer = new StringWriter();
+        newMustache.execute(writer, variableMap);
+        writer.flush();
+
+        // Fill out message
+        ExchangeHelper.setInOutBodyPatternAware(exchange, writer.toString());
     }
 
     /**
      * Read and compile a Mustache template
      *
-     * @param resourceReader Reader used to get template
-     * @param resourceUri    Template Id
-     * @return Template
+     * @param  resourceReader Reader used to get template
+     * @param  resourceUri    Template Id
+     * @return                Template
      */
     private Mustache createMustache(Reader resourceReader, String resourceUri) throws IOException {
         ClassLoader oldcl = Thread.currentThread().getContextClassLoader();
@@ -138,9 +148,7 @@ public class MustacheEndpoint extends ResourceEndpoint {
             return newMustache;
         } finally {
             resourceReader.close();
-            if (oldcl != null) {
-                Thread.currentThread().setContextClassLoader(oldcl);
-            }
+            Thread.currentThread().setContextClassLoader(oldcl);
         }
     }
 
@@ -210,6 +218,20 @@ public class MustacheEndpoint extends ResourceEndpoint {
      */
     public void setEndDelimiter(String endDelimiter) {
         this.endDelimiter = endDelimiter;
+    }
+
+    public boolean isAllowTemplateFromHeader() {
+        return allowTemplateFromHeader;
+    }
+
+    /**
+     * Whether to allow to use resource template from header or not (default false).
+     *
+     * Enabling this allows to specify dynamic templates via message header. However this can be seen as a potential
+     * security vulnerability if the header is coming from a malicious user, so use this with care.
+     */
+    public void setAllowTemplateFromHeader(boolean allowTemplateFromHeader) {
+        this.allowTemplateFromHeader = allowTemplateFromHeader;
     }
 
 }

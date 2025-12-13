@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,24 +19,23 @@ package org.apache.camel.component.mail;
 import java.util.Iterator;
 import java.util.Properties;
 
-import javax.mail.Address;
-import javax.mail.Message;
-import javax.mail.Session;
-import javax.mail.internet.InternetAddress;
-import javax.mail.internet.MimeMessage;
+import jakarta.mail.Address;
+import jakarta.mail.Message;
+import jakarta.mail.Session;
+import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.support.ObjectHelper;
+import org.apache.camel.test.junit5.CamelTestSupport;
 import org.apache.camel.util.CastUtils;
-import org.apache.camel.util.ObjectHelper;
-import org.junit.Before;
-import org.junit.Test;
-import org.jvnet.mock_javamail.Mailbox;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 public class MailMessageTest extends CamelTestSupport {
     private Session mailSession;
     private MimeMessage mimeMessage;
@@ -45,12 +44,13 @@ public class MailMessageTest extends CamelTestSupport {
 
     @Test
     public void testMailMessageHandlesMultipleHeaders() throws Exception {
-        mimeMessage.setRecipients(Message.RecipientType.TO, new Address[] {new InternetAddress("foo@localhost"), new InternetAddress("bar@localhost")});
+        mimeMessage.setRecipients(Message.RecipientType.TO,
+                new Address[] { new InternetAddress("foo@localhost"), new InternetAddress("bar@localhost") });
 
         Exchange exchange = endpoint.createExchange(mimeMessage);
-        MailMessage in = (MailMessage)exchange.getIn();
+        MailMessage in = (MailMessage) exchange.getIn();
         assertNotNull(in);
-        assertEquals("mail body", body, in.getBody());
+        assertEquals(body, in.getBody(), "mail body");
 
         // need to use iterator as some mail impl returns String[] and others a single String with comma as separator
         // so we let Camel create an iterator so we can use the same code for the test
@@ -69,25 +69,23 @@ public class MailMessageTest extends CamelTestSupport {
 
     @Test
     public void testMailMessageHandlesSingleHeader() throws Exception {
-        mimeMessage.setRecipients(Message.RecipientType.TO, new Address[] {new InternetAddress("frank@localhost")});
+        mimeMessage.setRecipients(Message.RecipientType.TO, new Address[] { new InternetAddress("frank@localhost") });
 
         Exchange exchange = endpoint.createExchange(mimeMessage);
-        MailMessage in = (MailMessage)exchange.getIn();
+        MailMessage in = (MailMessage) exchange.getIn();
         assertNotNull(in);
         Object header = in.getHeader("TO");
         String value = assertIsInstanceOf(String.class, header);
-        assertEquals("value", "frank@localhost", value);
+        assertEquals("frank@localhost", value, "value");
 
-        assertEquals("body", body, in.getBody());
+        assertEquals(body, in.getBody(), "body");
     }
 
     @Override
-    @Before
-    public void setUp() throws Exception {
-        super.setUp();
+    public void doPostSetup() throws Exception {
         Mailbox.clearAll();
 
-        endpoint = resolveMandatoryEndpoint("pop3://someone@myhost:30/subject");
+        endpoint = checkEndpoint("pop3://someone@myhost:30/subject");
 
         Properties properties = new Properties();
         properties.put("mail.smtp.host", "localhost");
@@ -97,8 +95,7 @@ public class MailMessageTest extends CamelTestSupport {
         mimeMessage.setText(body);
     }
 
-    @Override
-    protected MailEndpoint resolveMandatoryEndpoint(String uri) {
+    protected MailEndpoint checkEndpoint(String uri) {
         Endpoint endpoint = super.resolveMandatoryEndpoint(uri);
         return assertIsInstanceOf(MailEndpoint.class, endpoint);
     }

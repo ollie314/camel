@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,40 +20,37 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Properties;
 
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
-@RunWith(Parameterized.class)
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 public class MailEndpointTlsTest extends CamelTestSupport {
 
-    private final String protocol;
-
-    public MailEndpointTlsTest(String protocol) {
-        this.protocol = protocol;
-    }
-
-    @Parameterized.Parameters
     public static Collection<Object[]> data() {
         return Arrays.asList(new Object[][] {
-            {"smtp"},
-            {"smtps"},
-            {"pop3"},
-            {"pop3s"},
-            {"imap"},
-            {"imaps"}
+                { "smtp" },
+                { "smtps" },
+                { "pop3" },
+                { "pop3s" },
+                { "imap" },
+                { "imaps" }
         });
     }
 
-    @Test
-    public void testMailEndpointTslConfig() throws Exception {
+    @ParameterizedTest
+    @MethodSource("data")
+    public void testMailEndpointTlsConfig(String protocol) {
         Properties properties = new Properties();
         properties.setProperty("mail." + protocol + ".starttls.enable", "true");
 
         MailConfiguration cfg = new MailConfiguration();
         cfg.setPort(21);
-        cfg.setProtocol(protocol);
+        cfg.configureProtocol(protocol);
         cfg.setHost("myhost");
         cfg.setUsername("james");
         cfg.setPassword("secret");
@@ -61,23 +58,23 @@ public class MailEndpointTlsTest extends CamelTestSupport {
 
         assertTrue(cfg.isStartTlsEnabled());
 
-        Properties javaMailProperties = cfg.createJavaMailSender().getJavaMailProperties();
-        assertNull(javaMailProperties.get("mail." + protocol + ".socketFactory"));
-        assertNull(javaMailProperties.get("mail." + protocol + ".socketFactory.fallback"));
-        assertNull(javaMailProperties.get("mail." + protocol + ".socketFactory.port"));
+        Properties javaMailProperties = cfg.createJavaMailSender(context).getJavaMailProperties();
+        assertNull(javaMailProperties.get("mail." + protocol + ".ssl.socketFactory"));
+        assertNull(javaMailProperties.get("mail." + protocol + ".ssl.socketFactory.port"));
     }
 
-    @Test
-    public void testMailEndpointNoTslConfig() throws Exception {
+    @ParameterizedTest
+    @MethodSource("data")
+    public void testMailEndpointNoTlsConfig(String protocol) {
         MailConfiguration cfg = new MailConfiguration();
         cfg.setPort(21);
-        cfg.setProtocol(protocol);
+        cfg.configureProtocol(protocol);
         cfg.setHost("myhost");
         cfg.setUsername("james");
         cfg.setPassword("secret");
         cfg.setSslContextParameters(MailTestHelper.createSslContextParameters());
 
-        Properties javaMailProperties = cfg.createJavaMailSender().getJavaMailProperties();
+        Properties javaMailProperties = cfg.createJavaMailSender(context).getJavaMailProperties();
 
         assertFalse(cfg.isStartTlsEnabled());
 
@@ -94,14 +91,15 @@ public class MailEndpointTlsTest extends CamelTestSupport {
         }
     }
 
-    @Test
-    public void testMailEndpointTslSslContextParametersConfig() throws Exception {
+    @ParameterizedTest
+    @MethodSource("data")
+    public void testMailEndpointTlsSslContextParametersConfig(String protocol) {
         Properties properties = new Properties();
         properties.setProperty("mail." + protocol + ".starttls.enable", "true");
 
         MailConfiguration cfg = new MailConfiguration();
         cfg.setPort(21);
-        cfg.setProtocol(protocol);
+        cfg.configureProtocol(protocol);
         cfg.setHost("myhost");
         cfg.setUsername("james");
         cfg.setPassword("secret");
@@ -110,31 +108,9 @@ public class MailEndpointTlsTest extends CamelTestSupport {
 
         assertTrue(cfg.isStartTlsEnabled());
 
-        Properties javaMailProperties = cfg.createJavaMailSender().getJavaMailProperties();
-        assertNotNull(javaMailProperties.get("mail." + protocol + ".socketFactory"));
-        assertNotNull(javaMailProperties.get("mail." + protocol + ".socketFactory.fallback"));
-        assertNotNull(javaMailProperties.get("mail." + protocol + ".socketFactory.port"));
+        Properties javaMailProperties = cfg.createJavaMailSender(context).getJavaMailProperties();
+        assertNotNull(javaMailProperties.get("mail." + protocol + ".ssl.socketFactory"));
+        assertNotNull(javaMailProperties.get("mail." + protocol + ".ssl.socketFactory.port"));
     }
 
-    @Test
-    public void testMailEndpointTslDummyTrustManagerConfig() throws Exception {
-        Properties properties = new Properties();
-        properties.setProperty("mail." + protocol + ".starttls.enable", "true");
-
-        MailConfiguration cfg = new MailConfiguration();
-        cfg.setPort(21);
-        cfg.setProtocol(protocol);
-        cfg.setHost("myhost");
-        cfg.setUsername("james");
-        cfg.setPassword("secret");
-        cfg.setDummyTrustManager(true);
-        cfg.setAdditionalJavaMailProperties(properties);
-
-        assertTrue(cfg.isStartTlsEnabled());
-
-        Properties javaMailProperties = cfg.createJavaMailSender().getJavaMailProperties();
-        assertNotNull(javaMailProperties.get("mail." + protocol + ".socketFactory.class"));
-        assertNotNull(javaMailProperties.get("mail." + protocol + ".socketFactory.fallback"));
-        assertNotNull(javaMailProperties.get("mail." + protocol + ".socketFactory.port"));
-    }
 }

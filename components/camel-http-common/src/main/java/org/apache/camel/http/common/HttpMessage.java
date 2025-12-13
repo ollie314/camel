@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,30 +17,48 @@
 package org.apache.camel.http.common;
 
 import java.io.IOException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.RuntimeCamelException;
-import org.apache.camel.impl.DefaultMessage;
+import org.apache.camel.support.DefaultMessage;
 import org.apache.camel.util.ObjectHelper;
 
-/**
- * @version 
- */
 public class HttpMessage extends DefaultMessage {
 
     private HttpServletRequest request;
     private HttpServletResponse response;
+    private HttpCommonEndpoint endpoint;
+    private boolean requestRead;
 
-    public HttpMessage(Exchange exchange, HttpServletRequest request, HttpServletResponse response) {
-        setExchange(exchange);
+    public HttpMessage(Exchange exchange, HttpCommonEndpoint endpoint, HttpServletRequest request,
+                       HttpServletResponse response) {
+        super(exchange);
+        init(exchange, endpoint, request, response);
+    }
+
+    private HttpMessage(HttpServletRequest request, HttpServletResponse response, Exchange exchange,
+                        HttpCommonEndpoint endpoint,
+                        boolean requestRead) {
+        super(exchange);
         this.request = request;
         this.response = response;
-        // Put the request and response into the message header
-        this.setHeader(Exchange.HTTP_SERVLET_REQUEST, request);
-        this.setHeader(Exchange.HTTP_SERVLET_RESPONSE, response);
-        
+        this.endpoint = endpoint;
+        this.requestRead = requestRead;
+    }
+
+    public void init(
+            Exchange exchange, HttpCommonEndpoint endpoint, HttpServletRequest request,
+            HttpServletResponse response) {
+        setExchange(exchange);
+        this.requestRead = false;
+        this.endpoint = endpoint;
+
+        this.request = request;
+        this.response = response;
+
         // Check the setting of exchange
         Boolean flag = exchange.getProperty(Exchange.SKIP_WWW_FORM_URLENCODED, Boolean.class);
         if (flag != null && flag) {
@@ -49,13 +67,16 @@ public class HttpMessage extends DefaultMessage {
 
         // use binding to read the request allowing end users to use their
         // implementation of the binding
-        getEndpoint().getHttpBinding().readRequest(request, this);
+        endpoint.getHttpBinding().readRequest(request, this);
     }
 
-    private HttpMessage(HttpServletRequest request, HttpServletResponse response, Exchange exchange) {
-        this.request = request;
-        this.response = response;
-        setExchange(getExchange());
+    @Override
+    public void reset() {
+        super.reset();
+        request = null;
+        response = null;
+        endpoint = null;
+        requestRead = false;
     }
 
     public HttpServletRequest getRequest() {
@@ -68,20 +89,23 @@ public class HttpMessage extends DefaultMessage {
 
     @Override
     protected Object createBody() {
+        // HTTP request may be read only once
+        if (requestRead) {
+            return null;
+        }
+
         try {
-            return getEndpoint().getHttpBinding().parseBody(this);
+            return endpoint.getHttpBinding().parseBody(request, this);
         } catch (IOException e) {
             throw new RuntimeCamelException(e);
+        } finally {
+            requestRead = true;
         }
     }
 
     @Override
     public HttpMessage newInstance() {
-        return new HttpMessage(request, response, getExchange());
-    }
-
-    private HttpCommonEndpoint getEndpoint() {
-        return (HttpCommonEndpoint) getExchange().getFromEndpoint();
+        return new HttpMessage(request, response, getExchange(), endpoint, requestRead);
     }
 
     @Override

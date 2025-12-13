@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,8 +19,9 @@ package org.apache.camel.component.smpp;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
 
-import org.apache.camel.impl.DefaultMessage;
-import org.apache.camel.util.IOHelper;
+import org.apache.camel.CamelContext;
+import org.apache.camel.support.DefaultMessage;
+import org.apache.camel.support.ExchangeHelper;
 import org.apache.camel.util.ObjectHelper;
 import org.jsmpp.bean.AlertNotification;
 import org.jsmpp.bean.Alphabet;
@@ -38,43 +39,30 @@ public class SmppMessage extends DefaultMessage {
     private static final Logger LOG = LoggerFactory.getLogger(SmppMessage.class);
     private Command command;
     private SmppConfiguration configuration;
-    
-    public SmppMessage(SmppConfiguration configuration) {
-        this.configuration = configuration;
-    }
 
-    public SmppMessage(AlertNotification command, SmppConfiguration configuration) {
+    public SmppMessage(CamelContext camelContext, Command command, SmppConfiguration configuration) {
+        super(camelContext);
         this.command = command;
-        this.configuration = configuration;
-    }
-    
-    public SmppMessage(DeliverSm command, SmppConfiguration configuration) {
-        this.command = command;
-        this.configuration = configuration;
-    }
-
-    public SmppMessage(DataSm dataSm, SmppConfiguration configuration) {
-        this.command = dataSm;
         this.configuration = configuration;
     }
 
     @Override
     public SmppMessage newInstance() {
-        return new SmppMessage(this.configuration);
+        return new SmppMessage(getCamelContext(), null, this.configuration);
     }
-    
+
     public boolean isAlertNotification() {
         return command instanceof AlertNotification;
     }
-    
+
     public boolean isDataSm() {
         return command instanceof DataSm;
     }
-    
+
     public boolean isDeliverSm() {
         return command instanceof DeliverSm && !((DeliverSm) command).isSmscDeliveryReceipt();
     }
-    
+
     public boolean isDeliveryReceipt() {
         return command instanceof DeliverSm && ((DeliverSm) command).isSmscDeliveryReceipt();
     }
@@ -82,7 +70,7 @@ public class SmppMessage extends DefaultMessage {
     @Override
     protected Object createBody() {
         if (command instanceof MessageRequest) {
-            MessageRequest msgRequest = (MessageRequest)command;
+            MessageRequest msgRequest = (MessageRequest) command;
             byte[] shortMessage = msgRequest.getShortMessage();
             if (shortMessage == null || shortMessage.length == 0) {
                 return null;
@@ -91,8 +79,8 @@ public class SmppMessage extends DefaultMessage {
             if (SmppUtils.is8Bit(alphabet)) {
                 return shortMessage;
             }
-            
-            String encoding = IOHelper.getCharsetName(getExchange(), false);
+
+            String encoding = ExchangeHelper.getCharsetName(getExchange(), false);
             if (ObjectHelper.isEmpty(encoding) || !Charset.isSupported(encoding)) {
                 encoding = configuration.getEncoding();
             }
@@ -118,7 +106,7 @@ public class SmppMessage extends DefaultMessage {
 
     /**
      * Returns the underlying jSMPP command
-     * 
+     *
      * @return command
      */
     public Command getCommand() {

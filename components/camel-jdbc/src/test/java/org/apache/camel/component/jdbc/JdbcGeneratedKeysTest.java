@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,8 +17,7 @@
 package org.apache.camel.component.jdbc;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
-
+import org.junit.jupiter.api.Test;
 
 public class JdbcGeneratedKeysTest extends AbstractJdbcGeneratedKeysTest {
 
@@ -39,15 +38,16 @@ public class JdbcGeneratedKeysTest extends AbstractJdbcGeneratedKeysTest {
 
     @Test
     public void testGivenAnInvalidGeneratedColumnsHeaderThenAnExceptionIsThrown() throws Exception {
-        super.testGivenAnInvalidGeneratedColumnsHeaderThenAnExceptionIsThrown("insert into tableWithAutoIncr (content) values ('value2')");
+        super.testGivenAnInvalidGeneratedColumnsHeaderThenAnExceptionIsThrown(
+                "insert into tableWithAutoIncr (content) values ('value2')");
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             // START SNIPPET: route
             // lets add simple route
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:hello").to("jdbc:testdb?readSize=100");
             }
             // END SNIPPET: route

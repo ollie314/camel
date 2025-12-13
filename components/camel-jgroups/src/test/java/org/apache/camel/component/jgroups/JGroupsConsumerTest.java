@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,12 +19,13 @@ package org.apache.camel.component.jgroups;
 import org.apache.camel.EndpointInject;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.test.junit5.CamelTestSupport;
 import org.jgroups.JChannel;
 import org.jgroups.Message;
-import org.junit.Test;
+import org.jgroups.ObjectMessage;
+import org.junit.jupiter.api.Test;
 
-import static org.apache.camel.component.jgroups.JGroupsEndpoint.HEADER_JGROUPS_ORIGINAL_MESSAGE;
+import static org.apache.camel.component.jgroups.JGroupsConstants.HEADER_JGROUPS_ORIGINAL_MESSAGE;
 
 public class JGroupsConsumerTest extends CamelTestSupport {
 
@@ -38,14 +39,14 @@ public class JGroupsConsumerTest extends CamelTestSupport {
 
     // Routes fixture
 
-    @EndpointInject(uri = "mock:test")
+    @EndpointInject("mock:test")
     MockEndpoint mockEndpoint;
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("jgroups:" + clusterName).to(mockEndpoint);
             }
         };
@@ -61,9 +62,8 @@ public class JGroupsConsumerTest extends CamelTestSupport {
     }
 
     @Override
-    public void tearDown() throws Exception {
+    public void doPostTearDown() {
         channel.close();
-        super.tearDown();
     }
 
     // Tests
@@ -75,10 +75,12 @@ public class JGroupsConsumerTest extends CamelTestSupport {
         mockEndpoint.expectedBodiesReceived(message);
 
         // When
-        channel.send(new Message(null, null, message));
+        Message msg = new ObjectMessage(null, message);
+        msg.setSrc(null);
+        channel.send(msg);
 
         // Then
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -88,10 +90,12 @@ public class JGroupsConsumerTest extends CamelTestSupport {
         mockEndpoint.message(0).header(HEADER_JGROUPS_ORIGINAL_MESSAGE).isInstanceOf(Message.class);
 
         // When
-        channel.send(new Message(null, null, message));
+        Message msg = new ObjectMessage(null, message);
+        msg.setSrc(null);
+        channel.send(msg);
 
         // Then
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
 }

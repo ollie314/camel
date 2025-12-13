@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,40 +16,22 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
+import org.junit.jupiter.api.Test;
 
-import org.apache.camel.CamelContext;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
-
-/**
- * @version 
- */
-public class JmsConsumeTemplateTest extends CamelTestSupport {
+public class JmsConsumeTemplateTest extends AbstractPersistentJMSTest {
 
     @Test
-    public void testConsumeTemplate() throws Exception {
+    public void testConsumeTemplate() {
         // must start CamelContext because use route builder is false
         context.start();
 
-        String url = "activemq:queue:foo";
+        String url = "activemq:queue:JmsConsumeTemplateTest";
         template.sendBody(url, "Hello World");
 
         Object out = consumer.receiveBody(url, 5000);
         assertEquals("Hello World", out);
-    }
-
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
-        // must be persistent so the consumer can receive the message as we receive AFTER the message
-        // has been published
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createPersistentConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-
-        return camelContext;
     }
 
     @Override

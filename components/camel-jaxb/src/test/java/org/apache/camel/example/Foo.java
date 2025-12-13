@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,24 +19,24 @@ package org.apache.camel.example;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.xml.bind.annotation.XmlAccessType;
-import javax.xml.bind.annotation.XmlAccessorType;
-import javax.xml.bind.annotation.XmlElement;
-import javax.xml.bind.annotation.XmlElements;
-import javax.xml.bind.annotation.XmlRootElement;
+import jakarta.xml.bind.annotation.XmlAccessType;
+import jakarta.xml.bind.annotation.XmlAccessorType;
+import jakarta.xml.bind.annotation.XmlElement;
+import jakarta.xml.bind.annotation.XmlElements;
+import jakarta.xml.bind.annotation.XmlRootElement;
 
 @XmlRootElement
 @XmlAccessorType(XmlAccessType.FIELD)
 public class Foo {
     @XmlElements({
-        @XmlElement(name = "bar", type = Bar.class, required = false),
-        @XmlElement(name = "zot", type = Zot.class, required = false)})
-    List<Bar> barRefs = new ArrayList<Bar>();
-    
+            @XmlElement(name = "bar", type = Bar.class, required = false),
+            @XmlElement(name = "zot", type = Zot.class, required = false) })
+    List<Bar> barRefs = new ArrayList<>();
+
     public List<Bar> getBarRefs() {
         return barRefs;
     }
-    
+
     public void setBarRefs(List<Bar> bars) {
         barRefs = bars;
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,10 +23,11 @@ import com.github.dockerjava.core.DockerClientBuilder;
 import com.github.dockerjava.core.LocalDirectorySSLConfig;
 import com.github.dockerjava.core.SSLConfig;
 import com.github.dockerjava.jaxrs.JerseyDockerCmdExecFactory;
+import com.github.dockerjava.netty.NettyDockerCmdExecFactory;
+import org.apache.camel.CamelContext;
 import org.apache.camel.Message;
-import org.apache.camel.component.docker.exception.DockerException;
 import org.apache.camel.component.docker.ssl.NoImplSslConfig;
-import org.apache.camel.util.ObjectHelper;
+import org.apache.camel.support.ObjectHelper;
 
 /**
  * Methods for communicating with Docker
@@ -41,33 +42,48 @@ public final class DockerClientFactory {
      * Produces a {@link DockerClient} to communicate with Docker
      */
     @SuppressWarnings("resource")
-    public static DockerClient getDockerClient(DockerComponent dockerComponent, DockerConfiguration dockerConfiguration, Message message) throws DockerException {
+    public static DockerClient getDockerClient(
+            DockerComponent dockerComponent, DockerConfiguration dockerConfiguration, Message message) {
 
-        ObjectHelper.notNull(dockerConfiguration, "dockerConfiguration");
+        org.apache.camel.util.ObjectHelper.notNull(dockerConfiguration, "dockerConfiguration");
+
+        Integer port = DockerHelper.getProperty(DockerConstants.DOCKER_PORT, dockerConfiguration, message, Integer.class,
+                dockerConfiguration.getPort());
+        String host = DockerHelper.getProperty(DockerConstants.DOCKER_HOST, dockerConfiguration, message, String.class,
+                dockerConfiguration.getHost());
+
+        Integer maxTotalConnections = DockerHelper.getProperty(DockerConstants.DOCKER_MAX_TOTAL_CONNECTIONS,
+                dockerConfiguration, message, Integer.class,
+                dockerConfiguration.getMaxTotalConnections());
+        Integer maxPerRouteConnections = DockerHelper.getProperty(DockerConstants.DOCKER_MAX_PER_ROUTE_CONNECTIONS,
+                dockerConfiguration, message, Integer.class,
+                dockerConfiguration.getMaxPerRouteConnections());
+
+        String username = DockerHelper.getProperty(DockerConstants.DOCKER_USERNAME, dockerConfiguration, message, String.class,
+                dockerConfiguration.getUsername());
+        String password = DockerHelper.getProperty(DockerConstants.DOCKER_PASSWORD, dockerConfiguration, message, String.class,
+                dockerConfiguration.getPassword());
+        String email = DockerHelper.getProperty(DockerConstants.DOCKER_EMAIL, dockerConfiguration, message, String.class,
+                dockerConfiguration.getEmail());
+        Integer requestTimeout = DockerHelper.getProperty(DockerConstants.DOCKER_API_REQUEST_TIMEOUT, dockerConfiguration,
+                message, Integer.class,
+                dockerConfiguration.getRequestTimeout());
+        String serverAddress = DockerHelper.getProperty(DockerConstants.DOCKER_SERVER_ADDRESS, dockerConfiguration, message,
+                String.class, dockerConfiguration.getServerAddress());
+        String certPath = DockerHelper.getProperty(DockerConstants.DOCKER_CERT_PATH, dockerConfiguration, message, String.class,
+                dockerConfiguration.getCertPath());
+        Boolean secure = DockerHelper.getProperty(DockerConstants.DOCKER_SECURE, dockerConfiguration, message, Boolean.class,
+                dockerConfiguration.isSecure());
+        Boolean tlsVerify = DockerHelper.getProperty(DockerConstants.DOCKER_TLSVERIFY, dockerConfiguration, message,
+                Boolean.class, dockerConfiguration.isTlsVerify());
+        Boolean socket = DockerHelper.getProperty(DockerConstants.DOCKER_SOCKET_ENABLED, dockerConfiguration, message,
+                Boolean.class, dockerConfiguration.isSocket());
+
+        String cmdExecFactory = DockerHelper.getProperty(DockerConstants.DOCKER_CMD_EXEC_FACTORY,
+                dockerConfiguration, message, String.class, dockerConfiguration.getCmdExecFactory());
 
         DockerClientProfile clientProfile = new DockerClientProfile();
-
-        Integer port = DockerHelper.getProperty(DockerConstants.DOCKER_PORT, dockerConfiguration, message, Integer.class, dockerConfiguration.getPort());
-        String host = DockerHelper.getProperty(DockerConstants.DOCKER_HOST, dockerConfiguration, message, String.class, dockerConfiguration.getHost());
-
-        Integer maxTotalConnections = DockerHelper.getProperty(DockerConstants.DOCKER_MAX_TOTAL_CONNECTIONS, dockerConfiguration, message, Integer.class,
-                                                               dockerConfiguration.getMaxTotalConnections());
-        Integer maxPerRouteConnections = DockerHelper.getProperty(DockerConstants.DOCKER_MAX_PER_ROUTE_CONNECTIONS, dockerConfiguration, message, Integer.class,
-                                                                  dockerConfiguration.getMaxPerRouteConnections());
-
-        String username = DockerHelper.getProperty(DockerConstants.DOCKER_USERNAME, dockerConfiguration, message, String.class, dockerConfiguration.getUsername());
-        String password = DockerHelper.getProperty(DockerConstants.DOCKER_PASSWORD, dockerConfiguration, message, String.class, dockerConfiguration.getPassword());
-        String email = DockerHelper.getProperty(DockerConstants.DOCKER_EMAIL, dockerConfiguration, message, String.class, dockerConfiguration.getEmail());
-        Integer requestTimeout = DockerHelper.getProperty(DockerConstants.DOCKER_API_REQUEST_TIMEOUT, dockerConfiguration, message, Integer.class,
-                                                          dockerConfiguration.getRequestTimeout());
-        String serverAddress = DockerHelper.getProperty(DockerConstants.DOCKER_SERVER_ADDRESS, dockerConfiguration, message, String.class, dockerConfiguration.getServerAddress());
-        String certPath = DockerHelper.getProperty(DockerConstants.DOCKER_CERT_PATH, dockerConfiguration, message, String.class, dockerConfiguration.getCertPath());
-        Boolean secure = DockerHelper.getProperty(DockerConstants.DOCKER_SECURE, dockerConfiguration, message, Boolean.class, dockerConfiguration.isSecure());
-        Boolean tlsVerify = DockerHelper.getProperty(DockerConstants.DOCKER_TLSVERIFY, dockerConfiguration, message, Boolean.class, dockerConfiguration.isTlsVerify());
-        Boolean socket = DockerHelper.getProperty(DockerConstants.DOCKER_SOCKET_ENABLED, dockerConfiguration, message, Boolean.class, dockerConfiguration.isSocket());
-
         clientProfile.setHost(host);
-        clientProfile.setPort(port);
         clientProfile.setEmail(email);
         clientProfile.setUsername(username);
         clientProfile.setPassword(password);
@@ -79,6 +95,11 @@ public final class DockerClientFactory {
         clientProfile.setSecure(secure);
         clientProfile.setTlsVerify(tlsVerify);
         clientProfile.setSocket(socket);
+        clientProfile.setCmdExecFactory(cmdExecFactory);
+
+        if (Boolean.FALSE.equals(socket)) {
+            clientProfile.setPort(port);
+        }
 
         DockerClient dockerClient = dockerComponent.getClient(clientProfile);
 
@@ -88,7 +109,8 @@ public final class DockerClientFactory {
 
         SSLConfig sslConfig;
         if (clientProfile.isSecure() != null && clientProfile.isSecure()) {
-            ObjectHelper.notNull(clientProfile.getCertPath(), "certPath must be specified in secure mode");
+            org.apache.camel.util.ObjectHelper.notNull(clientProfile.getCertPath(),
+                    "certPath must be specified in secure mode");
             sslConfig = new LocalDirectorySSLConfig(clientProfile.getCertPath());
         } else {
             // docker-java requires an implementation of SslConfig interface
@@ -96,25 +118,48 @@ public final class DockerClientFactory {
             sslConfig = new NoImplSslConfig();
         }
 
-        DefaultDockerClientConfig.Builder configBuilder = DefaultDockerClientConfig.createDefaultConfigBuilder().withDockerHost(clientProfile.toUrl())
-            .withDockerTlsVerify(clientProfile.isTlsVerify()).withRegistryUsername(clientProfile.getUsername()).withRegistryPassword(clientProfile.getPassword())
-            .withRegistryEmail(clientProfile.getEmail()).withRegistryUrl(clientProfile.getServerAddress()).withCustomSslConfig(sslConfig);
+        DefaultDockerClientConfig.Builder configBuilder = DefaultDockerClientConfig.createDefaultConfigBuilder()
+                .withDockerHost(clientProfile.toUrl())
+                .withDockerTlsVerify(clientProfile.isTlsVerify())
+                .withRegistryUsername(clientProfile.getUsername())
+                .withRegistryPassword(clientProfile.getPassword())
+                .withRegistryEmail(clientProfile.getEmail())
+                .withRegistryUrl(clientProfile.getServerAddress())
+                .withCustomSslConfig(sslConfig);
 
         if (clientProfile.getCertPath() != null) {
             configBuilder.withDockerCertPath(clientProfile.getCertPath());
         }
 
-        // @Deprecated: isFollowRedirectFilterEnabled, isLoggingFilterEnabled
+        CamelContext camelContext = dockerComponent.getCamelContext();
+        try {
+            DockerCmdExecFactory factory = null;
 
-        DockerCmdExecFactory dockerCmdExecFactory = new JerseyDockerCmdExecFactory().withReadTimeout(clientProfile.getRequestTimeout())
-            .withConnectTimeout(clientProfile.getRequestTimeout()).withMaxTotalConnections(clientProfile.getMaxTotalConnections())
-            .withMaxPerRouteConnections(clientProfile.getMaxPerRouteConnections());
+            if (cmdExecFactory.equals(JerseyDockerCmdExecFactory.class.getName())) {
+                factory = new JerseyDockerCmdExecFactory();
+                ((JerseyDockerCmdExecFactory) factory)
+                        .withReadTimeout(clientProfile.getRequestTimeout())
+                        .withConnectTimeout(clientProfile.getRequestTimeout());
+            } else if (cmdExecFactory.equals(NettyDockerCmdExecFactory.class.getName())) {
+                factory = new NettyDockerCmdExecFactory();
+                ((NettyDockerCmdExecFactory) factory)
+                        .withConnectTimeout(clientProfile.getRequestTimeout());
+            } else {
+                Class<DockerCmdExecFactory> clazz
+                        = camelContext.getClassResolver().resolveMandatoryClass(cmdExecFactory, DockerCmdExecFactory.class);
+                factory = ObjectHelper.newInstance(clazz);
+            }
 
-        dockerClient = DockerClientBuilder.getInstance(configBuilder).withDockerCmdExecFactory(dockerCmdExecFactory).build();
+            dockerClient = DockerClientBuilder.getInstance(configBuilder)
+                    .withDockerCmdExecFactory(factory)
+                    .build();
 
-        dockerComponent.setClient(clientProfile, dockerClient);
+            dockerComponent.setClient(clientProfile, dockerClient);
 
-        return dockerClient;
+            return dockerClient;
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException("Unable to resolve DockerCmdExecFactory class: " + cmdExecFactory, e);
+        }
     }
 
 }

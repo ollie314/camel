@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,12 +24,13 @@ import org.apache.camel.InvalidPayloadException;
 import org.apache.camel.Message;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
+import static org.apache.camel.test.junit5.TestSupport.assertMessageBodyEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 public class VelocityTemplateInHeaderTest extends CamelTestSupport {
 
     @Test
@@ -52,32 +53,38 @@ public class VelocityTemplateInHeaderTest extends CamelTestSupport {
         assertRespondsWith("CorrelationID", "bar", "<hello>bar</hello>");
     }
 
-    protected void assertRespondsWith(final String headerName, final String headerValue, String expectedBody) throws InvalidPayloadException {
+    protected void assertRespondsWith(final String headerName, final String headerValue, String expectedBody)
+            throws InvalidPayloadException {
         Exchange response = template.request("direct:a", new Processor() {
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 Message in = exchange.getIn();
                 in.setHeader(VelocityConstants.VELOCITY_TEMPLATE, "<hello>${headers." + headerName + "}</hello>");
                 in.setHeader(headerName, headerValue);
             }
         });
-        assertOutMessageBodyEquals(response, expectedBody);
+        assertMessageBodyEquals(response, expectedBody);
 
-        Object template = response.getOut().getHeader(VelocityConstants.VELOCITY_TEMPLATE);
-        assertNull("Template header should have been removed", template);
+        Object template = response.getMessage().getHeader(VelocityConstants.VELOCITY_TEMPLATE);
+        assertNull(template, "Template header should have been removed");
 
-        Set<Entry<String, Object>> entrySet = response.getOut().getHeaders().entrySet();
+        Set<Entry<String, Object>> entrySet = response.getMessage().getHeaders().entrySet();
         boolean keyFound = false;
         for (Entry<String, Object> entry : entrySet) {
             if (entry.getKey().equals(headerName)) {
                 keyFound = true;
+                break;
             }
         }
-        assertTrue("Header should been found", keyFound);
+        assertTrue(keyFound, "Header should been found");
     }
 
+    @Override
     protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
+                VelocityComponent vc = context.getComponent("velocity", VelocityComponent.class);
+                vc.setAllowTemplateFromHeader(true);
+
                 from("direct:a").to("velocity://dummy");
             }
         };

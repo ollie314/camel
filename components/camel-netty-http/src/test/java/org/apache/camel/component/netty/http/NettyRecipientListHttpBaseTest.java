@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,13 +18,15 @@ package org.apache.camel.component.netty.http;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
 
 public class NettyRecipientListHttpBaseTest extends BaseNettyTest {
 
     @Test
     public void testRecipientListHttpBase() throws Exception {
-        getMockEndpoint("mock:foo").expectedHeaderValuesReceivedInAnyOrder(Exchange.HTTP_PATH, "/bar", "/baz", "/bar/baz", "/baz/bar");
+        getMockEndpoint("mock:foo").expectedHeaderValuesReceivedInAnyOrder(Exchange.HTTP_PATH, "/bar", "/baz", "/bar/baz",
+                "/baz/bar");
         getMockEndpoint("mock:foo").expectedHeaderValuesReceivedInAnyOrder("num", "1", "2", "3", "4");
 
         template.sendBodyAndHeader("direct:start", "A", Exchange.HTTP_PATH, "/foo/bar?num=1");
@@ -32,20 +34,20 @@ public class NettyRecipientListHttpBaseTest extends BaseNettyTest {
         template.sendBodyAndHeader("direct:start", "C", Exchange.HTTP_PATH, "/foo/bar/baz?num=3");
         template.sendBodyAndHeader("direct:start", "D", Exchange.HTTP_PATH, "/foo/baz/bar?num=4");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("netty-http:http://0.0.0.0:{{port}}/foo?matchOnUriPrefix=true")
-                    .to("mock:foo")
-                    .transform(body().prepend("Bye "));
+                        .to("mock:foo")
+                        .transform(body().prepend("Bye "));
 
                 from("direct:start")
-                    .recipientList().constant("netty-http:http://localhost:{{port}}");
+                        .recipientList().constant("netty-http:http://localhost:{{port}}");
             }
         };
     }

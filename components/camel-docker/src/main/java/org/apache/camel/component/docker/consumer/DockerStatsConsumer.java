@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,9 +16,9 @@
  */
 package org.apache.camel.component.docker.consumer;
 
+import com.github.dockerjava.api.async.ResultCallbackTemplate;
 import com.github.dockerjava.api.command.StatsCmd;
 import com.github.dockerjava.api.model.Statistics;
-import com.github.dockerjava.core.async.ResultCallbackTemplate;
 import org.apache.camel.AsyncCallback;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
@@ -28,7 +28,7 @@ import org.apache.camel.component.docker.DockerComponent;
 import org.apache.camel.component.docker.DockerConstants;
 import org.apache.camel.component.docker.DockerEndpoint;
 import org.apache.camel.component.docker.DockerHelper;
-import org.apache.camel.impl.DefaultConsumer;
+import org.apache.camel.support.DefaultConsumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,20 +43,21 @@ public class DockerStatsConsumer extends DefaultConsumer {
     private DockerComponent component;
     private StatsCmd statsCmd;
 
-    public DockerStatsConsumer(DockerEndpoint endpoint, Processor processor) throws Exception {
+    public DockerStatsConsumer(DockerEndpoint endpoint, Processor processor) {
         super(endpoint, processor);
         this.endpoint = endpoint;
-        this.component = (DockerComponent)endpoint.getComponent();
+        this.component = (DockerComponent) endpoint.getComponent();
     }
 
     @Override
     public DockerEndpoint getEndpoint() {
-        return (DockerEndpoint)super.getEndpoint();
+        return (DockerEndpoint) super.getEndpoint();
     }
 
     @Override
     protected void doStart() throws Exception {
-        String containerId = DockerHelper.getProperty(DockerConstants.DOCKER_CONTAINER_ID, endpoint.getConfiguration(), null, String.class);
+        String containerId = DockerHelper.getProperty(DockerConstants.DOCKER_CONTAINER_ID, endpoint.getConfiguration(), null,
+                String.class);
 
         this.statsCmd = DockerClientFactory.getDockerClient(component, endpoint.getConfiguration(), null).statsCmd(containerId);
         this.statsCmd.exec(new StatsCallback());
@@ -73,27 +74,17 @@ public class DockerStatsConsumer extends DefaultConsumer {
 
     protected class StatsCallback extends ResultCallbackTemplate<StatsCallback, Statistics> {
 
+        @Override
         public void onNext(Statistics statistics) {
-            LOGGER.debug("Received Docker Statistics Event: " + statistics);
+            LOGGER.debug("Received Docker Statistics Event: {}", statistics);
 
-            final Exchange exchange = getEndpoint().createExchange();
+            final Exchange exchange = createExchange(true);
             Message message = exchange.getIn();
             message.setBody(statistics);
 
-            try {
-                LOGGER.trace("Processing exchange [{}]...", exchange);
-                getAsyncProcessor().process(exchange, new AsyncCallback() {
-                    @Override
-                    public void done(boolean doneSync) {
-                        LOGGER.trace("Done processing exchange [{}]...", exchange);
-                    }
-                });
-            } catch (Exception e) {
-                exchange.setException(e);
-            }
-            if (exchange.getException() != null) {
-                getExceptionHandler().handleException("Error processing exchange", exchange, exchange.getException());
-            }
+            // use default consumer callback
+            AsyncCallback cb = defaultConsumerCallback(exchange, true);
+            getAsyncProcessor().process(exchange, cb);
         }
     }
 }

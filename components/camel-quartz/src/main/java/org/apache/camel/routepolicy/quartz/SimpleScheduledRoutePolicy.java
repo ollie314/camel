@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,90 +20,132 @@ import java.util.Date;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.camel.Route;
+import org.apache.camel.RuntimeCamelException;
 import org.apache.camel.component.quartz.QuartzComponent;
-import org.apache.camel.util.ObjectHelper;
+import org.apache.camel.spi.Configurer;
+import org.apache.camel.spi.Metadata;
+import org.quartz.SimpleScheduleBuilder;
 import org.quartz.SimpleTrigger;
 import org.quartz.Trigger;
+import org.quartz.TriggerBuilder;
 
+@Metadata(label = "bean",
+          description = "A basic RoutePolicy that can be used to start/stop routes using fixed intervals.",
+          annotations = { "interfaceName=org.apache.camel.spi.RoutePolicy" })
+@Configurer(metadataOnly = true)
 public class SimpleScheduledRoutePolicy extends ScheduledRoutePolicy {
     private Date routeStartDate;
+    @Metadata(description = "Maximum number of times the route should be started")
     private int routeStartRepeatCount;
+    @Metadata(description = "Interval (in millis) how often the route should be started")
     private long routeStartRepeatInterval;
     private Date routeStopDate;
+    @Metadata(description = "Maximum number of times the route should be stopped")
     private int routeStopRepeatCount;
+    @Metadata(description = "Interval (in millis) how often the route should be stopped")
     private long routeStopRepeatInterval;
-    private Date routeSuspendDate; 
+    private Date routeSuspendDate;
+    @Metadata(label = "advanced", description = "Maximum number of times the route should be suspended")
     private int routeSuspendRepeatCount;
+    @Metadata(label = "advanced", description = "Interval (in millis) how often the route should be suspended")
     private long routeSuspendRepeatInterval;
-    private Date routeResumeDate; 
+    private Date routeResumeDate;
+    @Metadata(label = "advanced", description = "Maximum number of times the route should be resumed")
     private int routeResumeRepeatCount;
-    private long routeResumeRepeatInterval;    
-    
+    @Metadata(label = "advanced", description = "Interval (in millis) how often the route should be resumed")
+    private long routeResumeRepeatInterval;
+
+    @Override
     public void onInit(Route route) {
         try {
             doOnInit(route);
         } catch (Exception e) {
-            throw ObjectHelper.wrapRuntimeCamelException(e);
+            throw RuntimeCamelException.wrapRuntimeCamelException(e);
         }
     }
 
-    protected void doOnInit(Route route) throws Exception {
-        QuartzComponent quartz = route.getRouteContext().getCamelContext().getComponent("quartz", QuartzComponent.class);
-        setScheduler(quartz.getScheduler());
+    protected void doOnInit(Route route) {
+        QuartzComponent quartz = route.getCamelContext().getComponent("quartz", QuartzComponent.class);
+        quartz.addScheduleInitTask(scheduler -> {
+            setScheduler(scheduler);
 
-        // Important: do not start scheduler as QuartzComponent does that automatic
-        // when CamelContext has been fully initialized and started
+            // Important: do not start scheduler as QuartzComponent does that automatic
+            // when CamelContext has been fully initialized and started
 
-        if (getRouteStopGracePeriod() == 0) {
-            setRouteStopGracePeriod(10000);
-        }
+            if (getRouteStopGracePeriod() == 0) {
+                setRouteStopGracePeriod(10000);
+            }
 
-        if (getTimeUnit() == null) {
-            setTimeUnit(TimeUnit.MILLISECONDS);
-        }
+            if (getTimeUnit() == null) {
+                setTimeUnit(TimeUnit.MILLISECONDS);
+            }
 
-        // validate time options has been configured
-        if ((getRouteStartDate() == null) && (getRouteStopDate() == null) && (getRouteSuspendDate() == null) && (getRouteResumeDate() == null)) {
-            throw new IllegalArgumentException("Scheduled Route Policy for route {} has no start/stop/suspend/resume times specified");
-        }
+            // validate time options has been configured
+            if (getRouteStartDate() == null && getRouteStopDate() == null && getRouteSuspendDate() == null
+                    && getRouteResumeDate() == null) {
+                throw new IllegalArgumentException(
+                        "Scheduled Route Policy for route " + route.getId()
+                                                   + " has no start/stop/suspend/resume times specified");
+            }
 
-        registerRouteToScheduledRouteDetails(route);
-        if (getRouteStartDate() != null) {
-            scheduleRoute(Action.START, route);
-        }
-        if (getRouteStopDate() != null) {
-            scheduleRoute(Action.STOP, route);
-        }
+            registerRouteToScheduledRouteDetails(route);
+            if (getRouteStartDate() != null) {
+                scheduleRoute(Action.START, route);
+            }
+            if (getRouteStopDate() != null) {
+                scheduleRoute(Action.STOP, route);
+            }
 
-        if (getRouteSuspendDate() != null) {
-            scheduleRoute(Action.SUSPEND, route);
-        }
-        if (getRouteResumeDate() != null) {
-            scheduleRoute(Action.RESUME, route);
-        }
+            if (getRouteSuspendDate() != null) {
+                scheduleRoute(Action.SUSPEND, route);
+            }
+            if (getRouteResumeDate() != null) {
+                scheduleRoute(Action.RESUME, route);
+            }
+        });
     }
 
     @Override
     protected Trigger createTrigger(Action action, Route route) throws Exception {
         SimpleTrigger trigger = null;
-        
+
         if (action == Action.START) {
-            trigger = new SimpleTrigger(TRIGGER_START + route.getId(), TRIGGER_GROUP + route.getId(),
-                getRouteStartDate(), null, getRouteStartRepeatCount(), getRouteStartRepeatInterval());
+            trigger = TriggerBuilder.newTrigger()
+                    .withIdentity(TRIGGER_START + route.getId(), TRIGGER_GROUP + route.getId())
+                    .withSchedule(SimpleScheduleBuilder.simpleSchedule()
+                            .withRepeatCount(getRouteStartRepeatCount())
+                            .withIntervalInMilliseconds(getRouteStartRepeatInterval()))
+                    .startAt(routeStartDate == null ? new Date() : routeStartDate)
+                    .build();
         } else if (action == Action.STOP) {
-            trigger = new SimpleTrigger(TRIGGER_STOP + route.getId(), TRIGGER_GROUP + route.getId(),
-                getRouteStopDate(), null, getRouteStopRepeatCount(), getRouteStopRepeatInterval());
+            trigger = TriggerBuilder.newTrigger()
+                    .withIdentity(TRIGGER_STOP + route.getId(), TRIGGER_GROUP + route.getId())
+                    .withSchedule(SimpleScheduleBuilder.simpleSchedule()
+                            .withRepeatCount(getRouteStopRepeatCount())
+                            .withIntervalInMilliseconds(getRouteStopRepeatInterval()))
+                    .startAt(routeStopDate == null ? new Date() : routeStopDate)
+                    .build();
         } else if (action == Action.SUSPEND) {
-            trigger = new SimpleTrigger(TRIGGER_SUSPEND + route.getId(), TRIGGER_GROUP + route.getId(),
-                    getRouteSuspendDate(), null, getRouteSuspendRepeatCount(), getRouteSuspendRepeatInterval());
+            trigger = TriggerBuilder.newTrigger()
+                    .withIdentity(TRIGGER_SUSPEND + route.getId(), TRIGGER_GROUP + route.getId())
+                    .withSchedule(SimpleScheduleBuilder.simpleSchedule()
+                            .withRepeatCount(getRouteSuspendRepeatCount())
+                            .withIntervalInMilliseconds(getRouteSuspendRepeatInterval()))
+                    .startAt(routeSuspendDate == null ? new Date() : routeSuspendDate)
+                    .build();
         } else if (action == Action.RESUME) {
-            trigger = new SimpleTrigger(TRIGGER_RESUME + route.getId(), TRIGGER_GROUP + route.getId(),
-                    getRouteResumeDate(), null, getRouteResumeRepeatCount(), getRouteResumeRepeatInterval());
+            trigger = TriggerBuilder.newTrigger()
+                    .withIdentity(TRIGGER_RESUME + route.getId(), TRIGGER_GROUP + route.getId())
+                    .withSchedule(SimpleScheduleBuilder.simpleSchedule()
+                            .withRepeatCount(getRouteResumeRepeatCount())
+                            .withIntervalInMilliseconds(getRouteResumeRepeatInterval()))
+                    .startAt(routeResumeDate == null ? new Date() : routeResumeDate)
+                    .build();
         }
-        
+
         return trigger;
     }
-    
+
     public Date getRouteStartDate() {
         return routeStartDate;
     }
@@ -199,5 +241,5 @@ public class SimpleScheduledRoutePolicy extends ScheduledRoutePolicy {
     public long getRouteResumeRepeatInterval() {
         return routeResumeRepeatInterval;
     }
-    
+
 }

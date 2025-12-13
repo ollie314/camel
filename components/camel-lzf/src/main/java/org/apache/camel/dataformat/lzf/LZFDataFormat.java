@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,7 +16,6 @@
  */
 package org.apache.camel.dataformat.lzf;
 
-
 import java.io.InputStream;
 import java.io.OutputStream;
 
@@ -24,18 +23,20 @@ import com.ning.compress.lzf.LZFInputStream;
 import com.ning.compress.lzf.LZFOutputStream;
 import com.ning.compress.lzf.parallel.PLZFOutputStream;
 import org.apache.camel.Exchange;
-import org.apache.camel.converter.stream.OutputStreamBuilder;
 import org.apache.camel.spi.DataFormat;
 import org.apache.camel.spi.DataFormatName;
-import org.apache.camel.support.ServiceSupport;
+import org.apache.camel.spi.annotations.Dataformat;
+import org.apache.camel.support.builder.OutputStreamBuilder;
+import org.apache.camel.support.service.ServiceSupport;
 import org.apache.camel.util.IOHelper;
 
 /**
- * LZF data format.
- * See {@link org.apache.camel.model.dataformat.LZFDataFormat} for "deflate" compression.
+ * LZF data format. See {@link org.apache.camel.model.dataformat.LZFDataFormat} for "deflate" compression.
  */
+@Dataformat("lzf")
 public class LZFDataFormat extends ServiceSupport implements DataFormat, DataFormatName {
-    private boolean parallelCompression;
+
+    private boolean usingParallelCompression;
 
     @Override
     public String getDataFormatName() {
@@ -45,7 +46,7 @@ public class LZFDataFormat extends ServiceSupport implements DataFormat, DataFor
     @Override
     public void marshal(final Exchange exchange, final Object graph, final OutputStream stream) throws Exception {
         InputStream is = exchange.getContext().getTypeConverter().mandatoryConvertTo(InputStream.class, exchange, graph);
-        OutputStream compressedOutput = parallelCompression ? new PLZFOutputStream(stream) : new LZFOutputStream(stream);
+        OutputStream compressedOutput = usingParallelCompression ? new PLZFOutputStream(stream) : new LZFOutputStream(stream);
         try {
             IOHelper.copy(is, compressedOutput);
         } finally {
@@ -70,11 +71,11 @@ public class LZFDataFormat extends ServiceSupport implements DataFormat, DataFor
     }
 
     public boolean isUsingParallelCompression() {
-        return parallelCompression;
+        return usingParallelCompression;
     }
 
     public void setUsingParallelCompression(boolean parallelCompression) {
-        this.parallelCompression = parallelCompression;
+        this.usingParallelCompression = parallelCompression;
     }
 
     @Override

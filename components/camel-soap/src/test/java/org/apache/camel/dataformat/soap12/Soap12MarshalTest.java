@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -28,26 +28,22 @@ import org.apache.camel.Produce;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.dataformat.soap.SoapJaxbDataFormat;
+import org.apache.camel.dataformat.soap.SoapDataFormat;
 import org.apache.camel.dataformat.soap.TestUtil;
 import org.apache.camel.dataformat.soap.name.ElementNameStrategy;
 import org.apache.camel.dataformat.soap.name.TypeNameStrategy;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-/**
- * 
- */
 public class Soap12MarshalTest extends CamelTestSupport {
-    @EndpointInject(uri = "mock:result")
+    @EndpointInject("mock:result")
     protected MockEndpoint resultEndpoint;
 
-    @Produce(uri = "direct:start")
+    @Produce("direct:start")
     protected ProducerTemplate producer;
 
     /**
-     * Test Soap marshalling by sending a GetCustomerByName object and checking
-     * against a xml file.
+     * Test Soap marshalling by sending a GetCustomerByName object and checking against a xml file.
      *
      * @throws java.io.IOException
      * @throws InterruptedException
@@ -64,9 +60,8 @@ public class Soap12MarshalTest extends CamelTestSupport {
     }
 
     /**
-     * Test Soap marshalling by sending a NoSuchCustomerException object and
-     * checking against a xml file. We expect to receive a SOAP fault here that
-     * contains a NoSuchCustomer object as detail.
+     * Test Soap marshalling by sending a NoSuchCustomerException object and checking against a xml file. We expect to
+     * receive a SOAP fault here that contains a NoSuchCustomer object as detail.
      *
      * @throws java.io.IOException
      * @throws InterruptedException
@@ -74,7 +69,8 @@ public class Soap12MarshalTest extends CamelTestSupport {
     @Test
     public void testMarshalException() throws IOException, InterruptedException {
         resultEndpoint.expectedMessageCount(1);
-        resultEndpoint.message(0).body(String.class).contains("<ns2:Envelope xmlns:ns2=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:ns3=\"http://customerservice.example.com/\">");
+        resultEndpoint.message(0).body(String.class).contains(
+                "<ns2:Envelope xmlns:ns2=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:ns3=\"http://customerservice.example.com/\">");
         resultEndpoint.message(0).body(String.class).contains("<ns2:Fault>");
         resultEndpoint.message(0).body(String.class).contains("<ns2:Value>ns2:Receiver</ns2:Value>");
         resultEndpoint.message(0).body(String.class).contains("<ns2:Text xml:lang=\"en\">No customer found</ns2:Text>");
@@ -90,10 +86,10 @@ public class Soap12MarshalTest extends CamelTestSupport {
     /**
      * Create data format by using the constructor
      */
-    protected SoapJaxbDataFormat createDataFormat() {
+    protected SoapDataFormat createDataFormat() {
         String jaxbPackage = GetCustomersByName.class.getPackage().getName();
         ElementNameStrategy elStrat = new TypeNameStrategy();
-        SoapJaxbDataFormat answer = new SoapJaxbDataFormat(jaxbPackage, elStrat);
+        SoapDataFormat answer = new SoapDataFormat(jaxbPackage, elStrat);
         answer.setVersion("1.2");
         return answer;
     }
@@ -104,10 +100,10 @@ public class Soap12MarshalTest extends CamelTestSupport {
 
             @Override
             public void configure() throws Exception {
-                SoapJaxbDataFormat df = createDataFormat();
+                SoapDataFormat df = createDataFormat();
                 from("direct:start") //
-                    .marshal(df) //
-                    .to("mock:result");
+                        .marshal(df) //
+                        .to("mock:result");
             }
         };
     }

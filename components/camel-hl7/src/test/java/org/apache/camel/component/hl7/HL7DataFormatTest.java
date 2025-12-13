@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,6 +17,7 @@
 package org.apache.camel.component.hl7;
 
 import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.nio.charset.Charset;
 
 import ca.uhn.hl7v2.model.Message;
@@ -27,15 +28,17 @@ import ca.uhn.hl7v2.model.v24.segment.QRD;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit test for HL7 DataFormat.
  */
 public class HL7DataFormatTest extends CamelTestSupport {
-    private static final String NONE_ISO_8859_1 = 
-        "\u221a\u00c4\u221a\u00e0\u221a\u00e5\u221a\u00ed\u221a\u00f4\u2248\u00ea";
+    private static final String NONE_ISO_8859_1 = "\u221a\u00c4\u221a\u00e0\u221a\u00e5\u221a\u00ed\u221a\u00f4\u2248\u00ea";
 
     private HL7DataFormat hl7 = new HL7DataFormat();
     private HL7DataFormat hl7big5 = new HL7DataFormat() {
@@ -49,27 +52,27 @@ public class HL7DataFormatTest extends CamelTestSupport {
     public void testMarshal() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:marshal");
         mock.expectedMessageCount(1);
-        mock.message(0).body().isInstanceOf(byte[].class);
+        mock.message(0).body().isInstanceOf(InputStream.class);
         mock.message(0).body(String.class).contains("MSA|AA|123");
         mock.message(0).body(String.class).contains("QRD|20080805120000");
 
         Message message = createHL7AsMessage();
         template.sendBody("direct:marshal", message);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testMarshalISO8859() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:marshal");
         mock.expectedMessageCount(1);
-        mock.message(0).body().isInstanceOf(byte[].class);
+        mock.message(0).body().isInstanceOf(InputStream.class);
         mock.message(0).body(String.class).contains("MSA|AA|123");
         mock.message(0).body(String.class).contains("QRD|20080805120000");
         mock.message(0).body(String.class).not().contains(NONE_ISO_8859_1);
         Message message = createHL7AsMessage();
         template.sendBodyAndProperty("direct:marshal", message, Exchange.CHARSET_NAME, "ISO-8859-1");
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -80,25 +83,25 @@ public class HL7DataFormatTest extends CamelTestSupport {
 
         Message message = createHL7WithCharsetAsMessage(HL7Charset.getHL7Charset(charsetName));
         template.sendBodyAndProperty("direct:marshal", message, Exchange.CHARSET_NAME, charsetName);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
-        byte[] body = (byte[])mock.getExchanges().get(0).getIn().getBody();
+        byte[] body = mock.getExchanges().get(0).getIn().getBody(byte[].class);
         String msg = new String(body, Charset.forName(charsetName));
         assertTrue(msg.contains("MSA|AA|123"));
         assertTrue(msg.contains("QRD|20080805120000"));
     }
-    
+
     @Test
     public void testMarshalUTF8() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:marshal");
         mock.expectedMessageCount(1);
-        mock.message(0).body().isInstanceOf(byte[].class);
+        mock.message(0).body().isInstanceOf(InputStream.class);
         mock.message(0).body(String.class).contains("MSA|AA|123");
         mock.message(0).body(String.class).contains("QRD|20080805120000");
         mock.message(0).body(String.class).contains(NONE_ISO_8859_1);
         Message message = createHL7AsMessage();
         template.sendBodyAndProperty("direct:marshal", message, Exchange.CHARSET_NAME, "UTF-8");
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -126,7 +129,7 @@ public class HL7DataFormatTest extends CamelTestSupport {
         String body = createHL7AsString();
         template.sendBody("direct:unmarshal", body);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         Message msg = mock.getExchanges().get(0).getIn().getBody(Message.class);
         assertEquals("2.4", msg.getVersion());
@@ -147,7 +150,7 @@ public class HL7DataFormatTest extends CamelTestSupport {
         byte[] body = createHL7WithCharsetAsString(HL7Charset.UTF_16).getBytes(Charset.forName(charset));
         template.sendBodyAndHeader("direct:unmarshal", new ByteArrayInputStream(body), Exchange.CHARSET_NAME, charset);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         Message msg = mock.getExchanges().get(0).getIn().getBody(Message.class);
         assertEquals("2.4", msg.getVersion());
@@ -169,7 +172,7 @@ public class HL7DataFormatTest extends CamelTestSupport {
         byte[] body = createHL7AsString().getBytes(Charset.forName(charset));
         template.sendBody("direct:unmarshalBig5", new ByteArrayInputStream(body));
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         Message msg = mock.getExchanges().get(0).getIn().getBody(Message.class);
         assertEquals("2.4", msg.getVersion());
@@ -177,10 +180,11 @@ public class HL7DataFormatTest extends CamelTestSupport {
         assertEquals("0101701234", qrd.getWhoSubjectFilter(0).getIDNumber().getValue());
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
 
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
 
                 from("direct:marshal").marshal().hl7().to("mock:marshal");
                 from("direct:unmarshal").unmarshal(hl7).to("mock:unmarshal");
@@ -195,7 +199,8 @@ public class HL7DataFormatTest extends CamelTestSupport {
 
     private static String createHL7WithCharsetAsString(HL7Charset charset) {
         String hl7Charset = charset == null ? "" : charset.getHL7CharsetName();
-        String line1 = String.format("MSH|^~\\&|MYSENDER|MYSENDERAPP|MYCLIENT|MYCLIENTAPP|200612211200||QRY^A19|1234|P|2.4||||||%s", hl7Charset);
+        String line1 = String.format(
+                "MSH|^~\\&|MYSENDER|MYSENDERAPP|MYCLIENT|MYCLIENTAPP|200612211200||QRY^A19|1234|P|2.4||||||%s", hl7Charset);
         String line2 = "QRD|200612211200|R|I|GetPatient|||1^RD|0101701234|DEM||";
 
         StringBuilder body = new StringBuilder();
@@ -207,7 +212,7 @@ public class HL7DataFormatTest extends CamelTestSupport {
 
     private static ADR_A19 createHL7AsMessage() throws Exception {
         ADR_A19 adr = new ADR_A19();
-       
+
         // Populate the MSH Segment
         MSH mshSegment = adr.getMSH();
         mshSegment.getFieldSeparator().setValue("|");

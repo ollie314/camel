@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,6 +17,7 @@
 package org.apache.camel.component.exec;
 
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.List;
 
@@ -26,31 +27,31 @@ import org.apache.camel.Processor;
 import org.apache.camel.Produce;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.component.exec.impl.ExecCommandExecutorMock;
+import org.apache.camel.test.spring.junit5.CamelSpringTest;
 import org.apache.commons.io.IOUtils;
-
-import org.junit.Test;
-
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit4.AbstractJUnit4SpringContextTests;
 
 import static org.apache.camel.component.exec.ExecBinding.EXEC_COMMAND_ARGS;
 import static org.apache.camel.component.exec.ExecBinding.EXEC_COMMAND_EXECUTABLE;
+import static org.apache.camel.component.exec.ExecBinding.EXEC_COMMAND_EXIT_VALUES;
 import static org.apache.camel.component.exec.ExecBinding.EXEC_COMMAND_TIMEOUT;
 import static org.apache.camel.component.exec.ExecBinding.EXEC_COMMAND_WORKING_DIR;
-import static org.apache.commons.io.IOUtils.LINE_SEPARATOR;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Test the functionality of {@link ExecProducer}
  */
-@ContextConfiguration(locations = {"exec-mock-executor-context.xml"})
-public class ExecProducerTest extends AbstractJUnit4SpringContextTests {
+@CamelSpringTest
+@ContextConfiguration(locations = { "exec-mock-executor-context.xml" })
+public class ExecProducerTest {
 
-    @Produce(uri = "direct:input")
+    @Produce("direct:input")
     private ProducerTemplate producerTemplate;
 
     @Autowired
@@ -71,7 +72,7 @@ public class ExecProducerTest extends AbstractJUnit4SpringContextTests {
 
         producerTemplate.send(new Processor() {
 
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setBody("noinput");
                 exchange.getIn().setHeader(EXEC_COMMAND_EXECUTABLE, command);
             }
@@ -86,10 +87,10 @@ public class ExecProducerTest extends AbstractJUnit4SpringContextTests {
     @Test
     @DirtiesContext
     public void testOverrideArgs() {
-        final String[] args = {"-version", "classpath:c:/program files/test/"};
+        final String[] args = { "-version", "classpath:c:/program files/test/" };
         producerTemplate.send(new Processor() {
 
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setBody("noinput");
                 exchange.getIn().setHeader(EXEC_COMMAND_ARGS, Arrays.asList(args));
             }
@@ -105,7 +106,7 @@ public class ExecProducerTest extends AbstractJUnit4SpringContextTests {
     public void testOverrideTimeout() {
         producerTemplate.send(new Processor() {
 
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setBody("noinput");
                 exchange.getIn().setHeader(EXEC_COMMAND_TIMEOUT, "1000");
             }
@@ -115,26 +116,53 @@ public class ExecProducerTest extends AbstractJUnit4SpringContextTests {
 
     @Test
     @DirtiesContext
-    public void testInputLines() throws IOException {
-        // String must be convertible to InputStream
-        final String input = "line1" + LINE_SEPARATOR + "line2";
+    public void testExitValues() {
         producerTemplate.send(new Processor() {
 
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setBody(input);
+            public void process(Exchange exchange) {
+                exchange.getIn().setBody("noinput");
+                exchange.getIn().setHeader(EXEC_COMMAND_EXIT_VALUES, "0,1");
             }
         });
-        assertEquals(input, IOUtils.toString(execCommandExecutorMock.lastCommandResult.getCommand().getInput()));
+        assertTrue(execCommandExecutorMock.lastCommandResult.getCommand().getExitValues().contains(1));
     }
 
     @Test
     @DirtiesContext
-    public void testInputLinesNotConvertibleToInputStream() throws IOException {
+    public void testExitValueNone() {
+        producerTemplate.send(new Processor() {
+
+            public void process(Exchange exchange) {
+                exchange.getIn().setBody("noinput");
+                exchange.getIn().setHeader(EXEC_COMMAND_EXIT_VALUES, "");
+            }
+        });
+        assertEquals(0, execCommandExecutorMock.lastCommandResult.getCommand().getExitValues().size());
+    }
+
+    @Test
+    @DirtiesContext
+    public void testInputLines() throws IOException {
         // String must be convertible to InputStream
-        final Integer notConvertibleToInputStreamBody = new Integer(1);
+        final String input = "line1" + System.lineSeparator() + "line2";
+        producerTemplate.send(new Processor() {
+
+            public void process(Exchange exchange) {
+                exchange.getIn().setBody(input);
+            }
+        });
+        assertEquals(input,
+                IOUtils.toString(execCommandExecutorMock.lastCommandResult.getCommand().getInput(), Charset.defaultCharset()));
+    }
+
+    @Test
+    @DirtiesContext
+    public void testInputLinesNotConvertibleToInputStream() {
+        // String must be convertible to InputStream
+        final Integer notConvertibleToInputStreamBody = Integer.valueOf(1);
         Exchange e = producerTemplate.send(new Processor() {
 
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setBody(notConvertibleToInputStreamBody);
             }
         });
@@ -142,14 +170,14 @@ public class ExecProducerTest extends AbstractJUnit4SpringContextTests {
         assertNotNull(result);
         assertNull(result.getCommand().getInput());
     }
-    
+
     @Test
     @DirtiesContext
-    public void testNullInBody() throws IOException {
+    public void testNullInBody() {
         // Null body must also be supported
         Exchange e = producerTemplate.send(new Processor() {
 
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setBody(null);
             }
         });
@@ -164,7 +192,7 @@ public class ExecProducerTest extends AbstractJUnit4SpringContextTests {
         final String workingDir = "c:/program files/test";
 
         producerTemplate.send(new Processor() {
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setBody("");
                 exchange.getIn().setHeader(EXEC_COMMAND_WORKING_DIR, workingDir);
             }
@@ -174,9 +202,9 @@ public class ExecProducerTest extends AbstractJUnit4SpringContextTests {
 
     @Test
     @DirtiesContext
-    public void testInInOnlyExchange() throws Exception {
+    public void testInInOnlyExchange() {
         Exchange exchange = producerTemplate.send(new Processor() {
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.setPattern(ExchangePattern.InOnly);
                 exchange.getIn().setBody("inonly");
             }
@@ -188,15 +216,15 @@ public class ExecProducerTest extends AbstractJUnit4SpringContextTests {
 
     @Test
     @DirtiesContext
-    public void testOutCapableExchange() throws Exception {
+    public void testOutCapableExchange() {
         Exchange exchange = producerTemplate.send(new Processor() {
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.setPattern(ExchangePattern.InOut);
                 exchange.getIn().setBody("inout");
             }
         });
         // test the conversion
-        ExecResult result = exchange.getOut().getBody(ExecResult.class);
+        ExecResult result = exchange.getMessage().getBody(ExecResult.class);
         assertNotNull(result);
     }
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,26 +19,35 @@ package org.apache.camel.component.flink;
 import java.util.Map;
 
 import org.apache.camel.Endpoint;
-import org.apache.camel.impl.UriEndpointComponent;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.spi.annotations.Component;
+import org.apache.camel.support.DefaultComponent;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.streaming.api.datastream.DataStream;
 
 /**
  * The flink component can be used to send DataSet or DataStream jobs to Apache Flink cluster.
  */
-public class FlinkComponent extends UriEndpointComponent {
+@Component("flink")
+public class FlinkComponent extends DefaultComponent {
 
+    @Metadata
     private DataSet ds;
+    @Metadata
     private DataSetCallback dataSetCallback;
+    @Metadata
     private DataStream dataStream;
+    @Metadata
     private DataStreamCallback dataStreamCallback;
 
     public FlinkComponent() {
-        super(FlinkEndpoint.class);
     }
 
     @Override
     protected Endpoint createEndpoint(String uri, String remaining, Map<String, Object> parameters) throws Exception {
+        if (remaining == null) {
+            throw new IllegalArgumentException("The endpointType must be configured in endpoint uri: " + uri);
+        }
         EndpointType type = getCamelContext().getTypeConverter().mandatoryConvertTo(EndpointType.class, remaining);
         return new FlinkEndpoint(uri, this, type);
     }
@@ -47,15 +56,18 @@ public class FlinkComponent extends UriEndpointComponent {
         return ds;
     }
 
-    public DataStream getDataStream() {
-        return dataStream;
-    }
-
     /**
      * DataSet to compute against.
+     *
+     * @deprecated The DataSet API is deprecated since Flink 1.12. Use the DataStream API with bounded streams instead.
      */
+    @Deprecated(since = "4.16.0")
     public void setDataSet(DataSet ds) {
         this.ds = ds;
+    }
+
+    public DataStream getDataStream() {
+        return dataStream;
     }
 
     /**
@@ -69,15 +81,18 @@ public class FlinkComponent extends UriEndpointComponent {
         return dataSetCallback;
     }
 
-    public DataStreamCallback getDataStreamCallback() {
-        return dataStreamCallback;
-    }
-
     /**
      * Function performing action against a DataSet.
+     *
+     * @deprecated The DataSet API is deprecated since Flink 1.12. Use the DataStream API with bounded streams instead.
      */
+    @Deprecated(since = "4.16.0")
     public void setDataSetCallback(DataSetCallback dataSetCallback) {
         this.dataSetCallback = dataSetCallback;
+    }
+
+    public DataStreamCallback getDataStreamCallback() {
+        return dataStreamCallback;
     }
 
     /**

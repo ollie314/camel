@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,21 +17,26 @@
 package org.apache.camel.component.mail;
 
 import java.util.Date;
-import javax.mail.internet.InternetAddress;
-import javax.mail.internet.MimeMessage;
-import javax.mail.search.SearchTerm;
 
-import junit.framework.TestCase;
-import org.jvnet.mock_javamail.Mailbox;
+import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.search.SearchTerm;
+
+import org.junit.jupiter.api.Test;
 
 import static org.apache.camel.component.mail.SearchTermBuilder.Comparison;
 import static org.apache.camel.component.mail.SearchTermBuilder.Op.or;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  *
  */
-public class SearchTermBuilderTest extends TestCase {
+public class SearchTermBuilderTest {
 
+    @Test
     public void testSearchTermBuilderFromAndSubject() throws Exception {
         SearchTermBuilder build = new SearchTermBuilder();
         SearchTerm st = build.from("someone@somewhere.com").subject("Camel").build();
@@ -46,15 +51,16 @@ public class SearchTermBuilderTest extends TestCase {
         msg.setSubject("Yeah Camel rocks");
         msg.setText("Apache Camel is a cool project. Have a fun ride.");
         msg.setFrom(new InternetAddress("someone@somewhere.com"));
-        assertTrue("Should match message", st.match(msg));
+        assertTrue(st.match(msg), "Should match message");
 
         MimeMessage msg2 = new MimeMessage(sender.getSession());
         msg2.setSubject("Apache Camel is fantastic");
         msg2.setText("I like Camel.");
         msg2.setFrom(new InternetAddress("donotreply@somewhere.com"));
-        assertFalse("Should not match message, as from doesn't match", st.match(msg2));
+        assertFalse(st.match(msg2), "Should not match message, as from doesn't match");
     }
 
+    @Test
     public void testSearchTermBuilderFromOrSubject() throws Exception {
         SearchTermBuilder build = new SearchTermBuilder();
         SearchTerm st = build.subject("Camel").from(or, "admin@apache.org").build();
@@ -69,15 +75,16 @@ public class SearchTermBuilderTest extends TestCase {
         msg.setSubject("Yeah Camel rocks");
         msg.setText("Apache Camel is a cool project. Have a fun ride.");
         msg.setFrom(new InternetAddress("someone@somewhere.com"));
-        assertTrue("Should match message", st.match(msg));
+        assertTrue(st.match(msg), "Should match message");
 
         MimeMessage msg2 = new MimeMessage(sender.getSession());
         msg2.setSubject("Beware");
         msg2.setText("This is from the administrator.");
         msg2.setFrom(new InternetAddress("admin@apache.org"));
-        assertTrue("Should match message, as its from admin", st.match(msg2));
+        assertTrue(st.match(msg2), "Should match message, as its from admin");
     }
 
+    @Test
     public void testSearchTermSentLast24Hours() throws Exception {
         SearchTermBuilder build = new SearchTermBuilder();
         long offset = -1 * (24 * 60 * 60 * 1000L);
@@ -94,7 +101,7 @@ public class SearchTermBuilderTest extends TestCase {
         msg.setText("Apache Camel is a cool project. Have a fun ride.");
         msg.setFrom(new InternetAddress("someone@somewhere.com"));
         msg.setSentDate(new Date());
-        assertTrue("Should match message", st.match(msg));
+        assertTrue(st.match(msg), "Should match message");
 
         MimeMessage msg2 = new MimeMessage(sender.getSession());
         msg2.setSubject("Camel in Action");
@@ -105,10 +112,11 @@ public class SearchTermBuilderTest extends TestCase {
         long time = new Date().getTime() - twoDays;
         msg2.setSentDate(new Date(time));
 
-        assertFalse("Should not match message as its too old", st.match(msg2));
+        assertFalse(st.match(msg2), "Should not match message as its too old");
     }
 
-    public void testComparison() throws Exception {
+    @Test
+    public void testComparison() {
         assertEquals(1, Comparison.LE.asNum());
         assertEquals(2, Comparison.LT.asNum());
         assertEquals(3, Comparison.EQ.asNum());

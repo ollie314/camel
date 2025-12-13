@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -32,15 +32,16 @@ public abstract class NumberPatternFormat<T> implements PatternFormat<T> {
     private int precision;
     private String rounding;
 
-    public NumberPatternFormat() {
+    protected NumberPatternFormat() {
     }
 
-    public NumberPatternFormat(String pattern, Locale locale) {
+    protected NumberPatternFormat(String pattern, Locale locale) {
         this.pattern = pattern;
         this.locale = locale;
     }
 
-    public NumberPatternFormat(String pattern, Locale locale, int precision, String rounding, String decimalSeparator, String groupingSeparator) {
+    protected NumberPatternFormat(String pattern, Locale locale, int precision, String rounding, String decimalSeparator,
+                                  String groupingSeparator) {
         this.pattern = pattern;
         this.locale = locale;
         this.decimalSeparator = decimalSeparator;
@@ -49,6 +50,7 @@ public abstract class NumberPatternFormat<T> implements PatternFormat<T> {
         this.rounding = rounding;
     }
 
+    @Override
     public String format(T object) throws Exception {
         if (getNumberFormat() != null) {
             return this.getNumberFormat().format(object);
@@ -57,6 +59,7 @@ public abstract class NumberPatternFormat<T> implements PatternFormat<T> {
         }
     }
 
+    @Override
     public abstract T parse(String string) throws Exception;
 
     /**
@@ -87,6 +90,7 @@ public abstract class NumberPatternFormat<T> implements PatternFormat<T> {
         return format;
     }
 
+    @Override
     public String getPattern() {
         return pattern;
     }

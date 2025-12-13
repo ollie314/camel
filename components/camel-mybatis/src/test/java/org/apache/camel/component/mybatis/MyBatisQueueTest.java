@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,18 +17,26 @@
 package org.apache.camel.component.mybatis;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.hamcrest.Matchers;
+import org.junit.jupiter.api.Test;
+
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class MyBatisQueueTest extends MyBatisTestSupport {
-    
+
+    @Override
     protected boolean createTestData() {
         return false;
     }
-    
-    protected String createStatement() {
+
+    @Override
+    protected String getCreateStatement() {
         return "create table ACCOUNT (ACC_ID INTEGER, ACC_FIRST_NAME VARCHAR(255), ACC_LAST_NAME VARCHAR(255), ACC_EMAIL VARCHAR(255), PROCESSED BOOLEAN DEFAULT false)";
     }
 
@@ -49,32 +57,33 @@ public class MyBatisQueueTest extends MyBatisTestSupport {
         account2.setLastName("Hale");
         account2.setEmailAddress("TryGuessingSkipper@gmail.com");
 
-        template.sendBody("direct:start", new Account[]{account1, account2});
+        template.sendBody("direct:start", new Account[] { account1, account2 });
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // need a delay here on slower machines
-        Thread.sleep(1000);
+        List<?> body = await()
+                .atMost(1, TimeUnit.SECONDS)
+                .until(() -> template.requestBody("mybatis:selectProcessedAccounts?statementType=SelectList", null, List.class),
+                        Matchers.notNullValue());
 
         // now lets poll that the account has been inserted
-        List<?> body = template.requestBody("mybatis:selectProcessedAccounts?statementType=SelectList", null, List.class);
-
-        assertEquals("Wrong size: " + body, 2, body.size());
+        assertEquals(2, body.size(), "Wrong size: " + body);
         Account actual = assertIsInstanceOf(Account.class, body.get(0));
 
-        assertEquals("Account.getFirstName()", "Bob", actual.getFirstName());
-        assertEquals("Account.getLastName()", "Denver", actual.getLastName());
+        assertEquals("Bob", actual.getFirstName(), "Account.getFirstName()");
+        assertEquals("Denver", actual.getLastName(), "Account.getLastName()");
 
         body = template.requestBody("mybatis:selectUnprocessedAccounts?statementType=SelectList", null, List.class);
-        assertEquals("Wrong size: " + body, 0, body.size());
+        assertEquals(0, body.size(), "Wrong size: " + body);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: e1
-                from("mybatis:selectUnprocessedAccounts?consumer.onConsume=consumeAccount").to("mock:results");
+                from("mybatis:selectUnprocessedAccounts?onConsume=consumeAccount").to("mock:results");
                 // END SNIPPET: e1
 
                 from("direct:start").to("mybatis:insertAccount?statementType=Insert");

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,32 +19,33 @@ package org.apache.camel.itest.sql;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 
-import org.apache.camel.itest.ITestSupport;
-import org.junit.After;
-import org.junit.Before;
-
+import org.apache.camel.itest.utils.extensions.JmsServiceExtension;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.context.support.AbstractApplicationContext;
 import org.springframework.context.support.ClassPathXmlApplicationContext;
 
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
+
 /**
- * Jms with JDBC idempotent consumer test using XA.
+ * JMS with JDBC idempotent consumer test using XA.
  */
 public class FromJmsToJdbcIdempotentConsumerToJmsXaTest extends FromJmsToJdbcIdempotentConsumerToJmsTest {
 
-    @Override
-    @Before
-    public void setUp() throws Exception {
-        deleteDirectory("target/testdb");
+    @RegisterExtension
+    public static JmsServiceExtension jmsServiceExtension = JmsServiceExtension.createExtension();
 
-        super.setUp();
+    @BeforeEach
+    public void cleanupDirectories() {
+        deleteDirectory("target/testdb");
     }
 
-    @Override
-    @After
-    public void tearDown() throws Exception {
-        super.tearDown();
-
-        // shutdown the embedded Derby database so that the next test becomes a clean initial state 
+    @AfterEach
+    public void shutdownDatabase() {
+        // shutdown the embedded Derby database so that the next test becomes a clean initial state
         try {
             DriverManager.getConnection("jdbc:derby:target/testdb;shutdown=true");
             fail("Should have thrown exception");
@@ -61,7 +62,6 @@ public class FromJmsToJdbcIdempotentConsumerToJmsXaTest extends FromJmsToJdbcIde
 
     @Override
     protected AbstractApplicationContext createApplicationContext() {
-        ITestSupport.getPort1();
         return new ClassPathXmlApplicationContext("org/apache/camel/itest/sql/FromJmsToJdbcIdempotentConsumerToJmsXaTest.xml");
     }
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,18 +19,23 @@ package org.apache.camel.component.mail;
 import java.util.HashMap;
 import java.util.Map;
 
-import javax.mail.Message;
-import javax.mail.internet.MimeMultipart;
+import jakarta.mail.Message;
+import jakarta.mail.internet.MimeMultipart;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import org.jvnet.mock_javamail.Mailbox;
+import org.apache.camel.component.mail.Mailbox.MailboxUser;
+import org.apache.camel.component.mail.Mailbox.Protocol;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit test for contentType option.
  */
 public class MailContentTypeTest extends CamelTestSupport {
+    private static final MailboxUser claus = Mailbox.getOrCreateUser("claus", "secret");
 
     @Test
     public void testSendHtmlMail() throws Exception {
@@ -38,7 +43,7 @@ public class MailContentTypeTest extends CamelTestSupport {
 
         sendBody("direct:a", "<html><body><h1>Hello</h1>World</body></html>");
 
-        Mailbox box = Mailbox.get("claus@localhost");
+        Mailbox box = claus.getInbox();
         Message msg = box.get(0);
 
         assertTrue(msg.getContentType().startsWith("text/html"));
@@ -51,33 +56,35 @@ public class MailContentTypeTest extends CamelTestSupport {
 
         sendBody("direct:b", "Hello World");
 
-        Mailbox box = Mailbox.get("claus@localhost");
+        Mailbox box = claus.getInbox();
         Message msg = box.get(0);
         assertTrue(msg.getContentType().startsWith("text/plain"));
         assertEquals("Hello World", msg.getContent());
     }
-    
+
     @Test
     public void testSendMultipartMail() throws Exception {
         Mailbox.clearAll();
 
-        Map<String, Object> headers = new HashMap<String, Object>();
+        Map<String, Object> headers = new HashMap<>();
         headers.put(MailConstants.MAIL_ALTERNATIVE_BODY, "Hello World");
         sendBody("direct:c", "<html><body><h1>Hello</h1>World</body></html>", headers);
 
-        Mailbox box = Mailbox.get("claus@localhost");
+        Mailbox box = claus.getInbox();
         Message msg = box.get(0);
         assertTrue(msg.getContentType().startsWith("multipart/alternative"));
         assertEquals("Hello World", ((MimeMultipart) msg.getContent()).getBodyPart(0).getContent());
-        assertEquals("<html><body><h1>Hello</h1>World</body></html>", ((MimeMultipart) msg.getContent()).getBodyPart(1).getContent());
+        assertEquals("<html><body><h1>Hello</h1>World</body></html>",
+                ((MimeMultipart) msg.getContent()).getBodyPart(1).getContent());
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("direct:a").to("smtp://claus@localhost?contentType=text/html");
-                from("direct:b").to("smtp://claus@localhost?contentType=text/plain");
-                from("direct:c").to("smtp://claus@localhost");
+            public void configure() {
+                from("direct:a").to(claus.uriPrefix(Protocol.smtp) + "&contentType=text/html");
+                from("direct:b").to(claus.uriPrefix(Protocol.smtp) + "&contentType=text/plain");
+                from("direct:c").to(claus.uriPrefix(Protocol.smtp));
             }
         };
     }

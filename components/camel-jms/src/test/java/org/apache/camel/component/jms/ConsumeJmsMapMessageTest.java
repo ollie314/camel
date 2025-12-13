@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,29 +19,41 @@ package org.apache.camel.component.jms;
 import java.util.HashMap;
 import java.util.Map;
 
-import javax.jms.ConnectionFactory;
-import javax.jms.JMSException;
-import javax.jms.MapMessage;
-import javax.jms.Message;
-import javax.jms.Session;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.MapMessage;
 
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
 import org.apache.camel.Exchange;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.apache.camel.util.ExchangeHelper;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.support.ExchangeHelper;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jms.core.JmsTemplate;
-import org.springframework.jms.core.MessageCreator;
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
 
-/**
- * @version 
- */
-public class ConsumeJmsMapMessageTest extends CamelTestSupport {
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+public class ConsumeJmsMapMessageTest extends AbstractJMSTest {
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+
+    private static final Logger LOG = LoggerFactory.getLogger(ConsumeJmsMapMessageTest.class);
+
     protected JmsTemplate jmsTemplate;
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
     private MockEndpoint endpoint;
 
     @Test
@@ -49,13 +61,11 @@ public class ConsumeJmsMapMessageTest extends CamelTestSupport {
         endpoint.expectedMessageCount(1);
 
         jmsTemplate.setPubSubDomain(false);
-        jmsTemplate.send("test.map", new MessageCreator() {
-            public Message createMessage(Session session) throws JMSException {
-                MapMessage mapMessage = session.createMapMessage();
-                mapMessage.setString("foo", "abc");
-                mapMessage.setString("bar", "xyz");
-                return mapMessage;
-            }
+        jmsTemplate.send("test.map", session -> {
+            MapMessage mapMessage = session.createMapMessage();
+            mapMessage.setString("foo", "abc");
+            mapMessage.setString("bar", "xyz");
+            return mapMessage;
         });
 
         endpoint.assertIsSatisfied();
@@ -66,17 +76,17 @@ public class ConsumeJmsMapMessageTest extends CamelTestSupport {
         Exchange exchange = endpoint.getReceivedExchanges().get(0);
         // This should be a JMS Exchange
         assertNotNull(ExchangeHelper.getBinding(exchange, JmsBinding.class));
-        JmsMessage in = (JmsMessage) exchange.getIn();
+        JmsMessage in = exchange.getIn(JmsMessage.class);
         assertNotNull(in);
-        
-        Map<?, ?> map = exchange.getIn().getBody(Map.class);
-        log.info("Received map: " + map);
 
-        assertNotNull("Should have received a map message!", map);
+        Map<?, ?> map = exchange.getIn().getBody(Map.class);
+        LOG.info("Received map: {}", map);
+
+        assertNotNull(map, "Should have received a map message!");
         assertIsInstanceOf(MapMessage.class, in.getJmsMessage());
-        assertEquals("map.foo", "abc", map.get("foo"));
-        assertEquals("map.bar", "xyz", map.get("bar"));
-        assertEquals("map.size", 2, map.size());
+        assertEquals("abc", map.get("foo"), "map.foo");
+        assertEquals("xyz", map.get("bar"), "map.bar");
+        assertEquals(2, map.size(), "map.size");
     }
 
     @Test
@@ -84,7 +94,7 @@ public class ConsumeJmsMapMessageTest extends CamelTestSupport {
 
         endpoint.expectedMessageCount(1);
 
-        Map<String, String> map = new HashMap<String, String>();
+        Map<String, String> map = new HashMap<>();
         map.put("foo", "abc");
         map.put("bar", "xyz");
 
@@ -94,29 +104,43 @@ public class ConsumeJmsMapMessageTest extends CamelTestSupport {
         assertCorrectMapReceived();
     }
 
-    @Override
-    @Before
+    @BeforeEach
     public void setUp() throws Exception {
-        super.setUp();
         endpoint = getMockEndpoint("mock:result");
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        jmsTemplate = new JmsTemplate(connectionFactory);
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-
-        return camelContext;
+    @Override
+    protected String getComponentName() {
+        return "activemq";
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected JmsComponent setupComponent(
+            CamelContext camelContext, ConnectionFactory connectionFactory, String componentName) {
+        jmsTemplate = new JmsTemplate(connectionFactory);
+
+        return super.setupComponent(camelContext, connectionFactory, componentName);
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 from("activemq:test.map").to("mock:result");
                 from("direct:test").to("activemq:test.map");
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
     }
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,84 +16,102 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
-
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class JmsSelectorOptionTest extends CamelTestSupport {
-    
-    protected String componentName = "activemq";
+public class JmsSelectorOptionTest extends AbstractJMSTest {
+
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected final String componentName = "activemq";
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
     public void testJmsMessageWithSelector() throws Exception {
         MockEndpoint endpointA = getMockEndpoint("mock:a");
         MockEndpoint endpointB = getMockEndpoint("mock:b");
         MockEndpoint endpointC = getMockEndpoint("mock:c");
-        
+
         endpointA.expectedBodiesReceivedInAnyOrder("A blue car!", "A blue car, again!");
         endpointA.expectedHeaderReceived("color", "blue");
         endpointB.expectedHeaderReceived("color", "red");
         endpointB.expectedBodiesReceived("A red car!");
-        
+
         endpointC.expectedBodiesReceived("Message1", "Message2");
         endpointC.expectedMessageCount(2);
 
-        template.sendBodyAndHeader("activemq:queue:hello", "A blue car!", "color", "blue");
-        template.sendBodyAndHeader("activemq:queue:hello", "A red car!", "color", "red");
-        template.sendBodyAndHeader("activemq:queue:hello", "A blue car, again!", "color", "blue");
-        template.sendBodyAndHeader("activemq:queue:hello", "Message1", "SIZE_NUMBER", 1505);
-        template.sendBodyAndHeader("activemq:queue:hello", "Message3", "SIZE_NUMBER", 1300);
-        template.sendBodyAndHeader("activemq:queue:hello", "Message2", "SIZE_NUMBER", 1600);
-        assertMockEndpointsSatisfied();
+        template.sendBodyAndHeader("activemq:queue:JmsSelectorOptionTest.hello", "A blue car!", "color", "blue");
+        template.sendBodyAndHeader("activemq:queue:JmsSelectorOptionTest.hello", "A red car!", "color", "red");
+        template.sendBodyAndHeader("activemq:queue:JmsSelectorOptionTest.hello", "A blue car, again!", "color", "blue");
+        template.sendBodyAndHeader("activemq:queue:JmsSelectorOptionTest.hello", "Message1", "SIZE_NUMBER", 1505);
+        template.sendBodyAndHeader("activemq:queue:JmsSelectorOptionTest.hello", "Message3", "SIZE_NUMBER", 1300);
+        template.sendBodyAndHeader("activemq:queue:JmsSelectorOptionTest.hello", "Message2", "SIZE_NUMBER", 1600);
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
-    public void testConsumerTemplate() throws Exception {
-        template.sendBodyAndHeader("activemq:queue:consumer", "Message1", "SIZE_NUMBER", 1505);
-        template.sendBodyAndHeader("activemq:queue:consumer", "Message3", "SIZE_NUMBER", 1300);
-        template.sendBodyAndHeader("activemq:queue:consumer", "Message2", "SIZE_NUMBER", 1600);
+    public void testConsumerTemplate() {
+        template.sendBodyAndHeader("activemq:queue:JmsSelectorOptionTest.consumer", "Message1", "SIZE_NUMBER", 1505);
+        template.sendBodyAndHeader("activemq:queue:JmsSelectorOptionTest.consumer", "Message3", "SIZE_NUMBER", 1300);
+        template.sendBodyAndHeader("activemq:queue:JmsSelectorOptionTest.consumer", "Message2", "SIZE_NUMBER", 1600);
 
         // process every exchange which is ready. If no exchange is left break
         // the loop
         while (true) {
-            Exchange ex = consumer.receiveNoWait("activemq:queue:consumer?selector=SIZE_NUMBER<1500");
+            Exchange ex = consumer.receiveNoWait("activemq:queue:JmsSelectorOptionTest.consumer?selector=SIZE_NUMBER<1500");
             if (ex != null) {
                 Message message = ex.getIn();
                 int size = message.getHeader("SIZE_NUMBER", int.class);
-                assertTrue("The message header SIZE_NUMBER should be less than 1500", size < 1500);
-                assertEquals("The message body is wrong", "Message3", message.getBody());
+                assertTrue(size < 1500, "The message header SIZE_NUMBER should be less than 1500");
+                assertEquals("Message3", message.getBody(), "The message body is wrong");
             } else {
                 break;
             }
         }
-
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent(componentName, jmsComponentAutoAcknowledge(connectionFactory));
-
-        return camelContext;
+    @Override
+    public String getComponentName() {
+        return componentName;
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("activemq:queue:hello?selector=color='blue'").to("mock:a");
-                from("activemq:queue:hello?selector=color='red'").to("mock:b");
-                from("activemq:queue:hello?selector=SIZE_NUMBER>1500").to("mock:c");
+            public void configure() {
+                from("activemq:queue:JmsSelectorOptionTest.hello?selector=color='blue'").to("mock:a");
+                from("activemq:queue:JmsSelectorOptionTest.hello?selector=color='red'").to("mock:b");
+                from("activemq:queue:JmsSelectorOptionTest.hello?selector=SIZE_NUMBER>1500").to("mock:c");
             }
         };
     }
 
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
+    }
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,278 +16,166 @@
  */
 package org.apache.camel.component.solr;
 
-import java.io.UnsupportedEncodingException;
-import java.net.URL;
-import java.net.URLDecoder;
+import java.io.InputStream;
+import java.security.KeyStore;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
+import java.util.concurrent.TimeUnit;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
+
+import org.apache.camel.CamelContext;
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
-import org.apache.camel.impl.DefaultEndpoint;
-import org.apache.camel.spi.Metadata;
+import org.apache.camel.spi.EndpointServiceLocation;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
-import org.apache.camel.spi.UriPath;
-import org.apache.solr.client.solrj.impl.CloudSolrClient;
-import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrClient;
-import org.apache.solr.client.solrj.impl.HttpSolrClient;
+import org.apache.camel.support.DefaultEndpoint;
+import org.apache.camel.support.ResourceHelper;
+import org.apache.camel.util.IOHelper;
+import org.apache.camel.util.ObjectHelper;
+import org.apache.camel.util.URISupport;
+import org.apache.solr.client.solrj.SolrClient;
+import org.apache.solr.client.solrj.impl.HttpJdkSolrClient;
+import org.apache.solr.client.solrj.impl.HttpSolrClientBase;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * The solr component allows you to interface with an Apache Lucene Solr server.
+ * Perform operations against Apache Lucene Solr.
  */
-@UriEndpoint(scheme = "solr,solrs,solrCloud", title = "Solr", syntax = "solr:url", producerOnly = true, label = "monitoring,search")
-public class SolrEndpoint extends DefaultEndpoint {
+@UriEndpoint(firstVersion = "4.8.0", scheme = "solr", title = "Solr", syntax = "solr:host:port/basePath", producerOnly = true,
+             category = { Category.SEARCH, Category.MONITORING }, headersClass = SolrConstants.class)
+public class SolrEndpoint extends DefaultEndpoint implements EndpointServiceLocation {
 
-    private String scheme = "http://";
+    private static final Logger LOG = LoggerFactory.getLogger(SolrEndpoint.class);
 
-    @UriPath(description = "Hostname and port for the solr server")
-    @Metadata(required = "true")
-    private String url;
-    @UriParam(defaultValue = "" + SolrConstants.DEFUALT_STREAMING_QUEUE_SIZE)
-    private int streamingQueueSize = SolrConstants.DEFUALT_STREAMING_QUEUE_SIZE;
-    @UriParam(defaultValue = "" + SolrConstants.DEFAULT_STREAMING_THREAD_COUNT)
-    private int streamingThreadCount = SolrConstants.DEFAULT_STREAMING_THREAD_COUNT;
     @UriParam
-    private Integer maxRetries;
-    @UriParam
-    private Integer soTimeout;
-    @UriParam
-    private Integer connectionTimeout;
-    @UriParam
-    private Integer defaultMaxConnectionsPerHost;
-    @UriParam
-    private Integer maxTotalConnections;
-    @UriParam
-    private Boolean followRedirects;
-    @UriParam
-    private Boolean allowCompression;
-    @UriParam(label = "solrCloud")
-    private String zkHost;
-    @UriParam(label = "solrCloud")
-    private String collection;
-    @UriParam
-    private String requestHandler;
+    private final SolrConfiguration configuration;
 
-    public SolrEndpoint(String endpointUri, SolrComponent component, String address) throws Exception {
-        super(endpointUri, component);
-        if (endpointUri.startsWith("solrs")) {
-            scheme = "https://";
-        }
-        URL url = new URL(scheme + address);
-        this.url = url.toString();
+    private SolrClient solrClient;
+
+    public SolrEndpoint(String uri, SolrComponent component, SolrConfiguration configuration) {
+        super(uri, component);
+        this.configuration = configuration;
     }
 
-    /**
-     * Set the ZooKeeper host information which the solrCloud could use, such as "zkhost=localhost:8123".
-     */
-    public void setZkHost(String zkHost) throws UnsupportedEncodingException {
-        String decoded = URLDecoder.decode(zkHost, "UTF-8");
-        this.zkHost = decoded;
-    }
-
-    public String getZkHost() {
-        return this.zkHost;
-    }
-
-    /**
-     * Set the collection name which the solrCloud server could use
-     */
-    public void setCollection(String collection) {
-        this.collection = collection;
-    }
-
-    public String getCollection() {
-        return this.collection;
+    public SolrConfiguration getConfiguration() {
+        return configuration;
     }
 
     @Override
-    public SolrComponent getComponent() {
-        return (SolrComponent) super.getComponent();
-    }
-
-    private CloudSolrClient getCloudServer() {
-        CloudSolrClient rVal = null;
-        if (this.getZkHost() != null && this.getCollection() != null) {
-            rVal = new CloudSolrClient(zkHost);
-            rVal.setDefaultCollection(this.getCollection());
-        }
-        return rVal;
+    public Producer createProducer() {
+        return new SolrProducer(this, configuration);
     }
 
     @Override
-    public Producer createProducer() throws Exception {
-        // do we have servers?
-        SolrComponent.SolrServerReference ref = getComponent().getSolrServers(this);
-        if (ref == null) {
-            // no then create new servers
-            ref = new SolrComponent.SolrServerReference();
-            CloudSolrClient cloudServer = getCloudServer();
-            if (cloudServer == null) {
-                HttpSolrClient solrServer = new HttpSolrClient(url);
-                ConcurrentUpdateSolrClient solrStreamingServer = new ConcurrentUpdateSolrClient(url, streamingQueueSize, streamingThreadCount);
-
-                // set the properties on the solr server
-                if (maxRetries != null) {
-                    solrServer.setMaxRetries(maxRetries);
-                }
-                if (soTimeout != null) {
-                    solrServer.setSoTimeout(soTimeout);
-                }
-                if (connectionTimeout != null) {
-                    solrServer.setConnectionTimeout(connectionTimeout);
-                }
-                if (defaultMaxConnectionsPerHost != null) {
-                    solrServer.setDefaultMaxConnectionsPerHost(defaultMaxConnectionsPerHost);
-                }
-                if (maxTotalConnections != null) {
-                    solrServer.setMaxTotalConnections(maxTotalConnections);
-                }
-                if (followRedirects != null) {
-                    solrServer.setFollowRedirects(followRedirects);
-                }
-                if (allowCompression != null) {
-                    solrServer.setAllowCompression(allowCompression);
-                }
-                ref.setSolrServer(solrServer);
-                ref.setUpdateSolrServer(solrStreamingServer);
-            }
-            ref.setCloudSolrServer(cloudServer);
-
-            getComponent().addSolrServers(this, ref);
-        }
-
-        ref.addReference();
-        return new SolrProducer(this, ref.getSolrServer(), ref.getUpdateSolrServer(), ref.getCloudSolrServer());
+    public Consumer createConsumer(Processor processor) {
+        throw new UnsupportedOperationException("Cannot consume from a Solr endpoint: " + getEndpointUri());
     }
 
-    protected void onProducerShutdown(SolrProducer producer) {
-        SolrComponent.SolrServerReference ref = getComponent().getSolrServers(this);
-        if (ref != null) {
-            int counter = ref.decReference();
-            if (counter <= 0) {
-                getComponent().shutdownServers(ref, true);
-            }
+    @Override
+    public String getServiceUrl() {
+        return configuration.getSolrBaseUrl();
+    }
+
+    @Override
+    public String getServiceProtocol() {
+        return "solr";
+    }
+
+    @Override
+    protected void doStart() throws Exception {
+        super.doStart();
+
+        // preconfigured solr client
+        if (solrClient == null && configuration.getSolrClient() == null) {
+            // create solr client from config
+            solrClient = createSolrClient();
+            LOG.info("Starting SolrClient: {}",
+                    getSolrClientInfoString(solrClient, isProcessAsync(solrClient, configuration), this.getEndpointUri()));
         }
     }
 
     @Override
-    public Consumer createConsumer(Processor processor) throws Exception {
-        throw new UnsupportedOperationException("Consumer not supported for Solr endpoint.");
+    protected void doShutdown() throws Exception {
+        // stop solr client when created (not pre-configured)
+        if (solrClient != null) {
+            LOG.info("Stopping SolrClient: {}",
+                    getSolrClientInfoString(solrClient, isProcessAsync(solrClient, configuration), this.getEndpointUri()));
+            IOHelper.close(solrClient);
+            solrClient = null;
+        }
     }
 
-    @Override
-    public boolean isSingleton() {
-        return true;
+    public SolrClient getSolrClient() {
+        if (configuration.getSolrClient() != null) {
+            return configuration.getSolrClient();
+        }
+        return solrClient;
     }
 
-    /**
-     * Set the request handler to be used
-     */
-    public void setRequestHandler(String requestHandler) {
-        this.requestHandler = requestHandler;
+    public static String getSolrClientInfoString(SolrClient solrClient, boolean async, String endpointUri) {
+        return String.format(
+                "%s %s (async=%s; endpoint=%s)",
+                solrClient.getClass().getSimpleName(),
+                solrClient instanceof HttpJdkSolrClient httpJdkSolrClient
+                        ? "@ " + httpJdkSolrClient.getBaseURL()
+                        : "",
+                async,
+                URISupport.sanitizeUri(endpointUri));
     }
 
-    public String getRequestHandler() {
-        return requestHandler;
+    public SolrClient createSolrClient() {
+        final HttpJdkSolrClient.Builder builder = new HttpJdkSolrClient.Builder(configuration.getSolrBaseUrl());
+        builder.withConnectionTimeout(configuration.getConnectionTimeout(), TimeUnit.MILLISECONDS);
+        builder.withRequestTimeout(configuration.getRequestTimeout(), TimeUnit.MILLISECONDS);
+        if (ObjectHelper.isNotEmpty(configuration.getUsername()) && ObjectHelper.isNotEmpty(configuration.getPassword())) {
+            builder.withBasicAuthCredentials(configuration.getUsername(), configuration.getPassword());
+        }
+        if (ObjectHelper.isNotEmpty(configuration.getCertificatePath())) {
+            builder.withSSLContext(createSslContextFromCa(getCamelContext(), configuration.getCertificatePath()));
+        }
+        if (configuration.getCollection() != null) {
+            builder.withDefaultCollection(configuration.getCollection());
+        }
+        return builder.build();
     }
 
-    public int getStreamingThreadCount() {
-        return streamingThreadCount;
-    }
-
-    /**
-     * Set the number of threads for the StreamingUpdateSolrServer
-     */
-    public void setStreamingThreadCount(int streamingThreadCount) {
-        this.streamingThreadCount = streamingThreadCount;
-    }
-
-    public int getStreamingQueueSize() {
-        return streamingQueueSize;
-    }
-
-    /**
-     * Set the queue size for the StreamingUpdateSolrServer
-     */
-    public void setStreamingQueueSize(int streamingQueueSize) {
-        this.streamingQueueSize = streamingQueueSize;
-    }
-
-    public Integer getMaxRetries() {
-        return maxRetries;
-    }
-
-    /**
-     * Maximum number of retries to attempt in the event of transient errors
-     */
-    public void setMaxRetries(Integer maxRetries) {
-        this.maxRetries = maxRetries;
-    }
-
-    public Integer getSoTimeout() {
-        return soTimeout;
+    protected static boolean isProcessAsync(SolrClient solrClient, SolrConfiguration configuration) {
+        if (!(solrClient instanceof HttpSolrClientBase)) {
+            return false;
+        }
+        return configuration.isAsync();
     }
 
     /**
-     * Read timeout on the underlying HttpConnectionManager. This is desirable for queries, but probably not for indexing
+     * An SSL context based on the self-signed CA, so that using this SSL Context allows to connect to the solr instance
+     *
+     * @return a customized SSL Context
      */
-    public void setSoTimeout(Integer soTimeout) {
-        this.soTimeout = soTimeout;
-    }
-
-    public Integer getConnectionTimeout() {
-        return connectionTimeout;
-    }
-
-    /**
-     * connectionTimeout on the underlying HttpConnectionManager
-     */
-    public void setConnectionTimeout(Integer connectionTimeout) {
-        this.connectionTimeout = connectionTimeout;
-    }
-
-    public Integer getDefaultMaxConnectionsPerHost() {
-        return defaultMaxConnectionsPerHost;
-    }
-
-    /**
-     * maxConnectionsPerHost on the underlying HttpConnectionManager
-     */
-    public void setDefaultMaxConnectionsPerHost(Integer defaultMaxConnectionsPerHost) {
-        this.defaultMaxConnectionsPerHost = defaultMaxConnectionsPerHost;
-    }
-
-    public Integer getMaxTotalConnections() {
-        return maxTotalConnections;
-    }
-
-    /**
-     * maxTotalConnection on the underlying HttpConnectionManager
-     */
-    public void setMaxTotalConnections(Integer maxTotalConnections) {
-        this.maxTotalConnections = maxTotalConnections;
-    }
-
-    public Boolean getFollowRedirects() {
-        return followRedirects;
-    }
-
-    /**
-     * indicates whether redirects are used to get to the Solr server
-     */
-    public void setFollowRedirects(Boolean followRedirects) {
-        this.followRedirects = followRedirects;
-    }
-
-    public Boolean getAllowCompression() {
-        return allowCompression;
-    }
-
-    /**
-     * Server side must support gzip or deflate for this to have any effect
-     */
-    public void setAllowCompression(Boolean allowCompression) {
-        this.allowCompression = allowCompression;
+    private static SSLContext createSslContextFromCa(CamelContext camelContext, String certificatePath) {
+        try {
+            CertificateFactory factory = CertificateFactory.getInstance("X.509");
+            InputStream resolveMandatoryResourceAsInputStream
+                    = ResourceHelper.resolveMandatoryResourceAsInputStream(
+                            camelContext, certificatePath);
+            Certificate trustedCa = factory.generateCertificate(resolveMandatoryResourceAsInputStream);
+            KeyStore trustStore = KeyStore.getInstance("pkcs12");
+            trustStore.load(null, null);
+            trustStore.setCertificateEntry("ca", trustedCa);
+            final SSLContext sslContext = SSLContext.getInstance("TLSv1.3");
+            TrustManagerFactory trustManagerFactory
+                    = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            trustManagerFactory.init(trustStore);
+            sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
+            return sslContext;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
 }

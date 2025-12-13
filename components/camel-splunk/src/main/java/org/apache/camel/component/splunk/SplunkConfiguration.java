@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,6 @@ package org.apache.camel.component.splunk;
 
 import com.splunk.SSLSecurityProtocol;
 import com.splunk.Service;
-
 import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriParams;
@@ -30,7 +29,8 @@ public class SplunkConfiguration {
 
     private SplunkConnectionFactory connectionFactory;
 
-    @UriPath(description = "Name has no purpose") @Metadata(required = "true")
+    @UriPath(description = "Name has no purpose")
+    @Metadata(required = true)
     private String name;
     @UriParam(defaultValue = "https")
     private String scheme = Service.DEFAULT_SCHEME;
@@ -38,19 +38,23 @@ public class SplunkConfiguration {
     private String host = Service.DEFAULT_HOST;
     @UriParam(defaultValue = "8089")
     private int port = Service.DEFAULT_PORT;
-    @UriParam(enums = "TLSv1.2,TLSv1.1,TLSv1,SSLv3", defaultValue = "TLSv1.2")
+    @UriParam(enums = "TLSv1.2,TLSv1.1,TLSv1,SSLv3", defaultValue = "TLSv1.2", label = "security")
     private SSLSecurityProtocol sslProtocol = SSLSecurityProtocol.TLSv1_2;
+    @UriParam(defaultValue = "true", label = "security")
+    private boolean validateCertificates = true;
     @UriParam
     private String app;
     @UriParam
     private String owner;
-    @UriParam
+    @UriParam(label = "security", secret = true)
     private String username;
-    @UriParam
+    @UriParam(label = "security", secret = true)
     private String password;
+    @UriParam(label = "security", secret = true)
+    private String token;
     @UriParam(defaultValue = "5000")
     private int connectionTimeout = 5000;
-    @UriParam
+    @UriParam(label = "security")
     private boolean useSunHttpsHandler;
 
     @UriParam(label = "producer")
@@ -63,6 +67,8 @@ public class SplunkConfiguration {
     private String eventHost;
     @UriParam(label = "producer")
     private int tcpReceiverPort;
+    @UriParam(label = "producer")
+    private Integer tcpReceiverLocalPort;
     @UriParam(label = "producer", defaultValue = "false")
     private boolean raw;
 
@@ -79,7 +85,7 @@ public class SplunkConfiguration {
     @UriParam(label = "consumer")
     private String initEarliestTime;
     @UriParam(label = "consumer")
-    private Boolean streaming;
+    private boolean streaming;
 
     public String getName() {
         return name;
@@ -153,6 +159,18 @@ public class SplunkConfiguration {
      */
     public void setTcpReceiverPort(int tcpReceiverPort) {
         this.tcpReceiverPort = tcpReceiverPort;
+    }
+
+    public Integer getTcpReceiverLocalPort() {
+        return tcpReceiverLocalPort;
+    }
+
+    /**
+     * Splunk tcp receiver port defined locally on splunk server. (For example if splunk port 9997 is mapped to 12345,
+     * tcpReceiverLocalPort has to be 9997)
+     */
+    public void setTcpReceiverLocalPort(Integer tcpReceiverLocalPort) {
+        this.tcpReceiverLocalPort = tcpReceiverLocalPort;
     }
 
     public boolean isRaw() {
@@ -238,11 +256,24 @@ public class SplunkConfiguration {
 
     /**
      * Set the ssl protocol to use
-     * 
+     *
      * @param sslProtocol
      */
     public void setSslProtocol(SSLSecurityProtocol sslProtocol) {
         this.sslProtocol = sslProtocol;
+    }
+
+    public boolean isValidateCertificates() {
+        return validateCertificates;
+    }
+
+    /**
+     * Sets client's certificate validation mode.
+     *
+     * Value `false` makes SSL vulnerable and is not recommended for the production environment.
+     */
+    public void setValidateCertificates(boolean validateCertificates) {
+        this.validateCertificates = validateCertificates;
     }
 
     public String getScheme() {
@@ -300,8 +331,19 @@ public class SplunkConfiguration {
         this.password = password;
     }
 
+    public String getToken() {
+        return token;
+    }
+
+    /**
+     * User's token for Splunk. This takes precedence over password when both are set
+     */
+    public void setToken(String token) {
+        this.token = token;
+    }
+
     public boolean isStreaming() {
-        return streaming != null ? streaming : false;
+        return streaming;
     }
 
     /**
@@ -329,8 +371,8 @@ public class SplunkConfiguration {
     }
 
     /**
-     * Use sun.net.www.protocol.https.Handler Https handler to establish the Splunk Connection.
-     * Can be useful when running in application servers to avoid app. server https handling.
+     * Use sun.net.www.protocol.https.Handler Https handler to establish the Splunk Connection. Can be useful when
+     * running in application servers to avoid app. server https handling.
      */
     public void setUseSunHttpsHandler(boolean useSunHttpsHandler) {
         this.useSunHttpsHandler = useSunHttpsHandler;
@@ -370,6 +412,8 @@ public class SplunkConfiguration {
         splunkConnectionFactory.setScheme(getScheme());
         splunkConnectionFactory.setUseSunHttpsHandler(isUseSunHttpsHandler());
         splunkConnectionFactory.setSslProtocol(getSslProtocol());
+        splunkConnectionFactory.setValidateCertificates(isValidateCertificates());
+        splunkConnectionFactory.setToken(getToken());
         return splunkConnectionFactory;
     }
 

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,8 +20,8 @@ import org.apache.camel.Component;
 import org.apache.camel.Consumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
-import org.apache.camel.impl.DefaultEndpoint;
-import org.apache.camel.impl.SynchronousDelegateProducer;
+import org.apache.camel.support.DefaultEndpoint;
+import org.apache.camel.support.SynchronousDelegateProducer;
 
 /**
  *
@@ -31,12 +31,14 @@ public class MyAsyncEndpoint extends DefaultEndpoint {
     private String reply;
     private long delay = 25;
     private int failFirstAttempts;
+    private boolean synchronous;
 
     public MyAsyncEndpoint(String endpointUri, Component component) {
         super(endpointUri, component);
     }
 
-    public Producer createProducer() throws Exception {
+    @Override
+    public Producer createProducer() {
         Producer answer = new MyAsyncProducer(this);
         if (isSynchronous()) {
             // force it to be synchronously
@@ -46,10 +48,12 @@ public class MyAsyncEndpoint extends DefaultEndpoint {
         }
     }
 
-    public Consumer createConsumer(Processor processor) throws Exception {
+    @Override
+    public Consumer createConsumer(Processor processor) {
         throw new UnsupportedOperationException("Consumer not supported");
     }
 
+    @Override
     public boolean isSingleton() {
         return false;
     }
@@ -76,5 +80,13 @@ public class MyAsyncEndpoint extends DefaultEndpoint {
 
     public void setFailFirstAttempts(int failFirstAttempts) {
         this.failFirstAttempts = failFirstAttempts;
+    }
+
+    public boolean isSynchronous() {
+        return synchronous;
+    }
+
+    public void setSynchronous(boolean synchronous) {
+        this.synchronous = synchronous;
     }
 }

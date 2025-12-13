@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,13 +16,21 @@
  */
 package org.apache.camel.component.optaplanner;
 
+import org.apache.camel.spi.Metadata;
+
 public interface OptaPlannerConstants {
     String DEFAULT_SOLVER_ID = "DEFAULT_SOLVER";
+    @Metadata(label = "producer", description = "Specifies the solverId to use.", javaType = "String")
     String SOLVER_ID = "CamelOptaPlannerSolverId";
+    @Metadata(label = "producer", description = "Specify whether to use another thread for submitting Solution instances\n" +
+                                                "rather than blocking the current thread.",
+              javaType = "Boolean")
     String IS_ASYNC = "CamelOptaPlannerIsAsync";
+    @Metadata(label = "consumer", description = "The best planning solution.", javaType = "Object")
     String BEST_SOLUTION = "CamelOptaPlannerBestSolution";
-    String TIME_SPENT = "CamelOptaPlannerTimeSpent";
+    @Metadata(label = "producer", description = "Is solving.", javaType = "Boolean")
     String IS_SOLVING = "CamelOptaPlannerIsSolving";
-    String IS_TERMINATE_EARLY = "CamelOptaPlannerIsTerminateEarly";
-    String IS_EVERY_PROBLEM_FACT_CHANGE_PROCESSED = "CamelOptaPlannerIsEveryProblemFactChangeProcessed";
+    @Metadata(label = "producer", description = "The Solver Manager.",
+              javaType = "org.optaplanner.core.api.solver.SolverManager")
+    String SOLVER_MANAGER = "CamelOptaPlannerSolverManager";
 }

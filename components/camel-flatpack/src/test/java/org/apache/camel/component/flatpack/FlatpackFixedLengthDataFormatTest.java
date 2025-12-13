@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,8 +26,11 @@ import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.converter.IOConverter;
 import org.apache.camel.dataformat.flatpack.FlatpackDataFormat;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit test for fixed length DataFormat.
@@ -44,7 +47,7 @@ public class FlatpackFixedLengthDataFormatTest extends CamelTestSupport {
         String data = IOConverter.toString(new File("src/test/data/fixed/PEOPLE-FixedLength.txt"), null);
 
         template.sendBody("direct:unmarshal", data);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         DataSetList list = mock.getExchanges().get(0).getIn().getBody(DataSetList.class);
         assertEquals(4, list.size());
@@ -58,8 +61,8 @@ public class FlatpackFixedLengthDataFormatTest extends CamelTestSupport {
         // by default we get on big message
         mock.expectedMessageCount(1);
 
-        List<Map<String, Object>> data = new ArrayList<Map<String, Object>>();
-        Map<String, Object> row = new LinkedHashMap<String, Object>();
+        List<Map<String, Object>> data = new ArrayList<>();
+        Map<String, Object> row = new LinkedHashMap<>();
         row.put("FIRSTNAME", "JOHN");
         row.put("LASTNAME", "DOE");
         row.put("ADDRESS", "1234 CIRCLE CT");
@@ -69,16 +72,16 @@ public class FlatpackFixedLengthDataFormatTest extends CamelTestSupport {
         data.add(row);
 
         template.sendBody("direct:marshal", data);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         String s = mock.getExchanges().get(0).getIn().getBody(String.class);
         assertTrue(s.startsWith("JOHN                               DOE"));
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 FlatpackDataFormat df = new FlatpackDataFormat();
                 df.setDefinition("PEOPLE-FixedLength.pzmap.xml");
                 df.setFixed(true);

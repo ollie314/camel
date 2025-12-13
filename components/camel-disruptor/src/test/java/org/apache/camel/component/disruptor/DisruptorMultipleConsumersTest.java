@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,26 +17,24 @@
 package org.apache.camel.component.disruptor;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version
- */
 public class DisruptorMultipleConsumersTest extends CamelTestSupport {
     @Test
-    public void testDisruptorMultipleConsumers() throws Exception {
+    void testDisruptorMultipleConsumers() throws Exception {
         getMockEndpoint("mock:a").expectedBodiesReceivedInAnyOrder("Hello World", "Bye World");
         getMockEndpoint("mock:b").expectedBodiesReceivedInAnyOrder("Hello World", "Bye World");
 
         template.sendBody("disruptor:foo", "Hello World");
         template.sendBody("disruptor:bar", "Bye World");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
-    public void testDisruptorMultipleConsumersNewAdded() throws Exception {
+    void testDisruptorMultipleConsumersNewAdded() throws Exception {
         getMockEndpoint("mock:a").expectedBodiesReceivedInAnyOrder("Hello World", "Bye World");
         getMockEndpoint("mock:b").expectedBodiesReceivedInAnyOrder("Hello World", "Bye World");
         getMockEndpoint("mock:c").expectedMessageCount(0);
@@ -44,17 +42,17 @@ public class DisruptorMultipleConsumersTest extends CamelTestSupport {
         template.sendBody("disruptor:foo", "Hello World");
         template.sendBody("disruptor:bar", "Bye World");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         context.addRoutes(new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("disruptor:foo?multipleConsumers=true").id("testRoute").to("mock:c");
 
             }
 
         });
-        resetMocks();
+        MockEndpoint.resetMocks(context);
 
         getMockEndpoint("mock:a").expectedMessageCount(20);
         getMockEndpoint("mock:b").expectedMessageCount(20);
@@ -64,10 +62,10 @@ public class DisruptorMultipleConsumersTest extends CamelTestSupport {
             template.sendBody("disruptor:foo", "Hello World");
             template.sendBody("disruptor:bar", "Bye World");
         }
-        assertMockEndpointsSatisfied();
-        resetMocks();
+        MockEndpoint.assertIsSatisfied(context);
+        MockEndpoint.resetMocks(context);
 
-        context.suspendRoute("testRoute");
+        context.getRouteController().suspendRoute("testRoute");
         getMockEndpoint("mock:a").expectedMessageCount(20);
         getMockEndpoint("mock:b").expectedMessageCount(20);
         getMockEndpoint("mock:c").expectedMessageCount(0);
@@ -76,14 +74,14 @@ public class DisruptorMultipleConsumersTest extends CamelTestSupport {
             template.sendBody("disruptor:foo", "Hello World");
             template.sendBody("disruptor:bar", "Bye World");
         }
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("disruptor:foo?multipleConsumers=true").to("mock:a");
 
                 from("disruptor:foo?multipleConsumers=true").to("mock:b");

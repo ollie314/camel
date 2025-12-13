@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,30 +17,29 @@
 package org.apache.camel.component.jt400;
 
 import com.ibm.as400.access.AS400;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 public class Jt400ConfigurationConnectionTest extends Jt400TestSupport {
 
     private Jt400Configuration jt400Configuration;
     private AS400 connection;
 
-    @Before
-    public void setUp() throws Exception {
-        super.setUp();
-
-        jt400Configuration = new Jt400Configuration("jt400://USER:password@host/QSYS.LIB/LIBRARY.LIB/QUEUE.DTAQ", getConnectionPool());
+    @Override
+    public void doPostSetup() throws Exception {
+        jt400Configuration
+                = new Jt400Configuration("jt400://USER:password@host/QSYS.LIB/LIBRARY.LIB/QUEUE.DTAQ", getConnectionPool());
         jt400Configuration.setCcsid(37);
         connection = jt400Configuration.getConnection();
     }
 
-    @After
-    public void tearDown() throws Exception {
+    @Override
+    public void doPostTearDown() {
         if (connection != null) {
             jt400Configuration.releaseConnection(connection);
         }
-        super.tearDown();
     }
 
     @Test

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,31 +20,37 @@ import java.io.IOException;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import java.util.stream.Collectors;
+
+import jakarta.servlet.AsyncContext;
+import jakarta.servlet.AsyncEvent;
+import jakarta.servlet.AsyncListener;
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import org.apache.camel.AsyncCallback;
+import org.apache.camel.CamelException;
 import org.apache.camel.Exchange;
 import org.apache.camel.ExchangePattern;
+import org.apache.camel.ExchangePropertyKey;
+import org.apache.camel.Message;
 import org.apache.camel.http.common.CamelServlet;
 import org.apache.camel.http.common.HttpCommonEndpoint;
 import org.apache.camel.http.common.HttpConstants;
 import org.apache.camel.http.common.HttpConsumer;
-import org.apache.camel.http.common.HttpHelper;
 import org.apache.camel.http.common.HttpMessage;
-import org.apache.camel.impl.DefaultExchange;
-import org.apache.camel.util.ObjectHelper;
+import org.apache.camel.spi.UnitOfWork;
+import org.apache.camel.support.ObjectHelper;
+import org.apache.camel.util.IOHelper;
 import org.apache.camel.util.UnsafeUriCharactersEncoder;
-import org.eclipse.jetty.continuation.Continuation;
-import org.eclipse.jetty.continuation.ContinuationSupport;
 
 /**
  * Servlet which leverage <a href="http://wiki.eclipse.org/Jetty/Feature/Continuations">Jetty Continuations</a>.
- *
- * @version 
  */
 public class CamelContinuationServlet extends CamelServlet {
+
+    static final String TIMEOUT_ERROR = "CamelTimeoutException";
 
     static final String EXCHANGE_ATTRIBUTE_NAME = "CamelExchange";
     static final String EXCHANGE_ATTRIBUTE_ID = "CamelExchangeId";
@@ -53,17 +59,39 @@ public class CamelContinuationServlet extends CamelServlet {
     // we must remember expired exchanges as Jetty will initiate a new continuation when we send
     // back the error when timeout occurred, and thus in the async callback we cannot check the
     // continuation if it was previously expired. So that's why we have our own map for that
-    private final Map<String, String> expiredExchanges = new ConcurrentHashMap<String, String>();
+    private final Map<String, String> expiredExchanges = new ConcurrentHashMap<>();
 
     @Override
-    protected void doService(final HttpServletRequest request, final HttpServletResponse response) throws ServletException, IOException {
+    protected void doService(HttpServletRequest request, HttpServletResponse response) {
         log.trace("Service: {}", request);
+        try {
+            handleDoService(request, response);
+        } catch (Exception e) {
+            // do not leak exception back to caller
+            log.warn("Error handling request due to: {}", e.getMessage(), e);
+            sendError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    protected void handleDoService(final HttpServletRequest request, final HttpServletResponse response)
+            throws Exception {
 
         // is there a consumer registered for the request.
         HttpConsumer consumer = getServletResolveConsumerStrategy().resolve(request, getConsumers());
         if (consumer == null) {
-            response.sendError(HttpServletResponse.SC_NOT_FOUND);
-            return;
+            // okay we cannot process this requires so return either 404 or 405.
+            // to know if its 405 then we need to check if any other HTTP method would have a consumer for the "same" request
+            boolean hasAnyMethod = METHODS.stream()
+                    .anyMatch(m -> getServletResolveConsumerStrategy().isHttpMethodAllowed(request, m, getConsumers()));
+            if (hasAnyMethod) {
+                log.debug("No consumer to service request {} as method {} is not allowed", request, request.getMethod());
+                sendError(response, HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+                return;
+            } else {
+                log.debug("No consumer to service request {} as resource is not found", request);
+                sendError(response, HttpServletResponse.SC_NOT_FOUND);
+                return;
+            }
         }
 
         // figure out if continuation is enabled and what timeout to use
@@ -86,10 +114,32 @@ public class CamelContinuationServlet extends CamelServlet {
             }
         }
         if (useContinuation) {
-            log.trace("Start request with continuation timeout of {}", continuationTimeout != null ? continuationTimeout : "jetty default");
+            log.trace("Start request with continuation timeout of {}",
+                    continuationTimeout != null ? continuationTimeout : "jetty default");
         } else {
-            log.trace("Usage of continuation is disabled, either by component or endpoint configuration, fallback to normal servlet processing instead");
+            log.trace(
+                    "Usage of continuation is disabled, either by component or endpoint configuration, fallback to normal servlet processing instead");
             super.doService(request, response);
+            return;
+        }
+
+        // if its an OPTIONS request then return which method is allowed
+        if ("OPTIONS".equals(request.getMethod()) && !consumer.isOptionsEnabled()) {
+            String allowedMethods = METHODS.stream()
+                    .filter(m -> getServletResolveConsumerStrategy().isHttpMethodAllowed(request, m, getConsumers()))
+                    .collect(Collectors.joining(","));
+            if (allowedMethods == null && consumer.getEndpoint().getHttpMethodRestrict() != null) {
+                allowedMethods = consumer.getEndpoint().getHttpMethodRestrict();
+            }
+            if (allowedMethods == null) {
+                // allow them all
+                allowedMethods = "GET,HEAD,POST,PUT,DELETE,TRACE,OPTIONS,CONNECT,PATCH";
+            }
+            if (!allowedMethods.contains("OPTIONS")) {
+                allowedMethods = allowedMethods + ",OPTIONS";
+            }
+            response.addHeader("Allow", allowedMethods);
+            response.setStatus(HttpServletResponse.SC_OK);
             return;
         }
 
@@ -104,49 +154,44 @@ public class CamelContinuationServlet extends CamelServlet {
                 }
             }
             if (!match) {
-                response.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+                sendError(response, HttpServletResponse.SC_METHOD_NOT_ALLOWED);
                 return;
             }
         }
 
         if ("TRACE".equals(request.getMethod()) && !consumer.isTraceEnabled()) {
-            response.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+            sendError(response, HttpServletResponse.SC_METHOD_NOT_ALLOWED);
             return;
         }
 
         // we do not support java serialized objects unless explicit enabled
         String contentType = request.getContentType();
-        if (HttpConstants.CONTENT_TYPE_JAVA_SERIALIZED_OBJECT.equals(contentType) && !consumer.getEndpoint().getComponent().isAllowJavaSerializedObject()) {
-            response.sendError(HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
+        if (HttpConstants.CONTENT_TYPE_JAVA_SERIALIZED_OBJECT.equals(contentType)
+                && !consumer.getEndpoint().getComponent().isAllowJavaSerializedObject()) {
+            sendError(response, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
             return;
         }
-        
+
         final Exchange result = (Exchange) request.getAttribute(EXCHANGE_ATTRIBUTE_NAME);
         if (result == null) {
             // no asynchronous result so leverage continuation
-            final Continuation continuation = ContinuationSupport.getContinuation(request);
-            if (continuation.isInitial() && continuationTimeout != null) {
+            AsyncContext asyncContext = request.startAsync();
+            if (isInitial(request) && continuationTimeout != null) {
                 // set timeout on initial
-                continuation.setTimeout(continuationTimeout);
+                asyncContext.setTimeout(continuationTimeout.longValue());
             }
+            asyncContext.addListener(new ExpiredListener(), request, response);
 
             // are we suspended and a request is dispatched initially?
-            if (consumer.isSuspended() && continuation.isInitial()) {
-                response.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
-                return;
-            }
-
-            if (continuation.isExpired()) {
-                String id = (String) continuation.getAttribute(EXCHANGE_ATTRIBUTE_ID);
-                // remember this id as expired
-                expiredExchanges.put(id, id);
-                log.warn("Continuation expired of exchangeId: {}", id);
-                response.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+            if (consumer.isSuspended() && isInitial(request)) {
+                sendError(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE);
                 return;
             }
 
             // a new request so create an exchange
-            final Exchange exchange = new DefaultExchange(consumer.getEndpoint(), ExchangePattern.InOut);
+            // must be prototype scoped (not pooled) so we create the exchange via endpoint
+            final Exchange exchange = consumer.createExchange(false);
+            exchange.setPattern(ExchangePattern.InOut);
 
             if (consumer.getEndpoint().isBridgeEndpoint()) {
                 exchange.setProperty(Exchange.SKIP_GZIP_ENCODING, Boolean.TRUE);
@@ -155,31 +200,39 @@ public class CamelContinuationServlet extends CamelServlet {
             if (consumer.getEndpoint().isDisableStreamCache()) {
                 exchange.setProperty(Exchange.DISABLE_HTTP_STREAM_CACHE, Boolean.TRUE);
             }
-            
-            HttpHelper.setCharsetFromContentType(request.getContentType(), exchange);
-            
-            exchange.setIn(new HttpMessage(exchange, request, response));
+
+            if (contentType != null) {
+                String normalizedCharset = IOHelper.getCharsetNameFromContentType(contentType);
+                exchange.setProperty(ExchangePropertyKey.CHARSET_NAME, normalizedCharset);
+            }
+
+            // reuse existing http message if pooled
+            Message msg = exchange.getIn();
+            if (msg instanceof HttpMessage) {
+                HttpMessage hm = (HttpMessage) msg;
+                hm.init(exchange, endpoint, request, response);
+            } else {
+                exchange.setIn(new HttpMessage(exchange, endpoint, request, response));
+            }
             // set context path as header
             String contextPath = consumer.getEndpoint().getPath();
-            exchange.getIn().setHeader("CamelServletContextPath", contextPath);
+            exchange.getIn().setHeader(JettyHttpConstants.SERVLET_CONTEXT_PATH, contextPath);
 
             updateHttpPath(exchange, contextPath);
 
             if (log.isTraceEnabled()) {
                 log.trace("Suspending continuation of exchangeId: {}", exchange.getExchangeId());
             }
-            continuation.setAttribute(EXCHANGE_ATTRIBUTE_ID, exchange.getExchangeId());
+            request.setAttribute(EXCHANGE_ATTRIBUTE_ID, exchange.getExchangeId());
 
             // we want to handle the UoW
-            try {
+            UnitOfWork uow = exchange.getUnitOfWork();
+            if (uow == null) {
                 consumer.createUoW(exchange);
-            } catch (Exception e) {
-                log.error("Error processing request", e);
-                throw new ServletException(e);
+            } else if (uow.onPrepare(exchange)) {
+                // need to re-attach uow
+                exchange.getExchangeExtension().setUnitOfWork(uow);
             }
-
-            // must suspend before we process the exchange
-            continuation.suspend();
 
             ClassLoader oldTccl = overrideTccl(exchange);
 
@@ -187,7 +240,6 @@ public class CamelContinuationServlet extends CamelServlet {
                 log.trace("Processing request for exchangeId: {}", exchange.getExchangeId());
             }
             // use the asynchronous API to process the exchange
-            
             consumer.getAsyncProcessor().process(exchange, new AsyncCallback() {
                 public void done(boolean doneSync) {
                     // check if the exchange id is already expired
@@ -197,10 +249,11 @@ public class CamelContinuationServlet extends CamelServlet {
                             log.trace("Resuming continuation of exchangeId: {}", exchange.getExchangeId());
                         }
                         // resume processing after both, sync and async callbacks
-                        continuation.setAttribute(EXCHANGE_ATTRIBUTE_NAME, exchange);
-                        continuation.resume();
+                        request.setAttribute(EXCHANGE_ATTRIBUTE_NAME, exchange);
+                        asyncContext.dispatch();
                     } else {
                         log.warn("Cannot resume expired continuation of exchangeId: {}", exchange.getExchangeId());
+                        consumer.releaseExchange(exchange, false);
                     }
                 }
             });
@@ -208,7 +261,7 @@ public class CamelContinuationServlet extends CamelServlet {
             if (oldTccl != null) {
                 restoreTccl(exchange, oldTccl);
             }
-            
+
             // return to let Jetty continuation to work as it will resubmit and invoke the service
             // method again when its resumed
             return;
@@ -230,20 +283,49 @@ public class CamelContinuationServlet extends CamelServlet {
             throw e;
         } catch (Exception e) {
             log.error("Error processing request", e);
-            throw new ServletException(e);
+            throw new CamelException(e);
         } finally {
             consumer.doneUoW(result);
+            consumer.releaseExchange(result, false);
+        }
+    }
+
+    private boolean isInitial(HttpServletRequest request) {
+        return request.getDispatcherType() != DispatcherType.ASYNC;
+    }
+
+    private class ExpiredListener implements AsyncListener {
+        @Override
+        public void onComplete(AsyncEvent event) {
+        }
+
+        @Override
+        public void onTimeout(AsyncEvent event) {
+            HttpServletRequest request = (HttpServletRequest) event.getSuppliedRequest();
+            String id = (String) request.getAttribute(EXCHANGE_ATTRIBUTE_ID);
+            // remember this id as expired
+            expiredExchanges.put(id, id);
+            log.warn("Continuation expired of exchangeId: {}", id);
+            request.setAttribute(TIMEOUT_ERROR, Boolean.TRUE);
+        }
+
+        @Override
+        public void onError(AsyncEvent event) {
+        }
+
+        @Override
+        public void onStartAsync(AsyncEvent event) {
         }
     }
 
     private void updateHttpPath(Exchange exchange, String contextPath) {
-        String httpPath = (String) exchange.getIn().getHeader(Exchange.HTTP_PATH);
+        String httpPath = (String) exchange.getIn().getHeader(JettyHttpConstants.HTTP_PATH);
         // encode context path in case it contains unsafe chars, because HTTP_PATH isn't decoded at this moment
         String encodedContextPath = UnsafeUriCharactersEncoder.encodeHttpURI(contextPath);
 
         // here we just remove the CamelServletContextPath part from the HTTP_PATH
         if (contextPath != null && httpPath.startsWith(encodedContextPath)) {
-            exchange.getIn().setHeader(Exchange.HTTP_PATH, httpPath.substring(encodedContextPath.length()));
+            exchange.getIn().setHeader(JettyHttpConstants.HTTP_PATH, httpPath.substring(encodedContextPath.length()));
         }
     }
 

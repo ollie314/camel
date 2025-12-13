@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,27 +18,33 @@ package org.apache.camel.component.jetty;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 
-import javax.servlet.Filter;
-import javax.servlet.FilterChain;
-import javax.servlet.FilterConfig;
-import javax.servlet.ServletException;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
+import jakarta.servlet.Filter;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.FilterConfig;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * The camel filter wrapper that processes only initially dispatched requests.
- * Re-dispatched requests are ignored.
+ * The camel filter wrapper that processes only initially dispatched requests. Re-dispatched requests are ignored.
  */
 public class CamelFilterWrapper implements Filter {
-    
-    private Filter wrapped;
+
+    private static final Logger LOG = LoggerFactory.getLogger(CamelFilterWrapper.class);
+    private final Filter wrapped;
 
     public CamelFilterWrapper(Filter wrapped) {
         this.wrapped = wrapped;
     }
-    
-    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException {
+
+    @Override
+    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
+            throws IOException, ServletException {
         if (request.getAttribute(CamelContinuationServlet.EXCHANGE_ATTRIBUTE_NAME) == null) {
             wrapped.doFilter(request, response, chain);
         } else {
@@ -46,21 +52,26 @@ public class CamelFilterWrapper implements Filter {
         }
     }
 
+    @Override
     public void destroy() {
         wrapped.destroy();
     }
 
+    @Override
     public void init(FilterConfig config) throws ServletException {
-        Object o = config.getServletContext().getAttribute("javax.servlet.context.tempdir");
+        Object o = config.getServletContext().getAttribute("jakarta.servlet.context.tempdir");
         if (o == null) {
             //when run in embedded mode, Jetty 8 will forget to set this property,
-            //but the MultiPartFilter requires it (will NPE if not set) so we'll 
+            //but the MultiPartFilter requires it (will NPE if not set) so we'll
             //go ahead and set it to the default tmp dir on the system.
             try {
-                File file = File.createTempFile("camel", "");
-                file.delete();
-                config.getServletContext().setAttribute("javax.servlet.context.tempdir",
-                                                        file.getParentFile());
+                File file = Files.createTempFile("camel", "").toFile();
+                boolean result = file.delete();
+                if (!result) {
+                    LOG.error("failed to delete {}", file);
+                }
+                config.getServletContext().setAttribute("jakarta.servlet.context.tempdir",
+                        file.getParentFile());
             } catch (IOException e) {
                 //ignore
             }

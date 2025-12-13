@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,36 +20,33 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.camel.CamelContext;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.impl.JndiRegistry;
+import org.apache.camel.support.jsse.KeyManagersParameters;
+import org.apache.camel.support.jsse.KeyStoreParameters;
+import org.apache.camel.support.jsse.SSLContextParameters;
+import org.apache.camel.support.jsse.TrustManagersParameters;
 import org.apache.camel.test.AvailablePortFinder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.apache.camel.util.jsse.KeyManagersParameters;
-import org.apache.camel.util.jsse.KeyStoreParameters;
-import org.apache.camel.util.jsse.SSLContextParameters;
-import org.apache.camel.util.jsse.TrustManagersParameters;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
-@SuppressWarnings("unchecked")
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 public class LumberjackComponentSSLTest extends CamelTestSupport {
     private static int port;
 
-    @BeforeClass
+    @BeforeAll
     public static void beforeClass() {
         port = AvailablePortFinder.getNextAvailable();
     }
 
     @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry registry = super.createRegistry();
-        registry.bind("ssl", createServerSSLContextParameters());
-        return registry;
-    }
-
-    @Override
     protected RouteBuilder createRouteBuilder() {
+
+        context.getRegistry().bind("ssl", createServerSSLContextParameters(context));
+
         return new RouteBuilder() {
             public void configure() {
                 // Lumberjack configured with SSL
@@ -62,17 +59,18 @@ public class LumberjackComponentSSLTest extends CamelTestSupport {
     public void shouldListenToMessagesOverSSL() throws Exception {
         // We're expecting 25 messages with Maps
         MockEndpoint mock = getMockEndpoint("mock:output");
-        mock.expectedMessageCount(25);
+        mock.expectedMessageCount(60);
         mock.allMessages().body().isInstanceOf(Map.class);
+        List<Integer> windows = Arrays.asList(15, 10, 15, 10, 10);
 
         // When sending messages
-        List<Integer> responses = LumberjackUtil.sendMessages(port, createClientSSLContextParameters());
+        List<Integer> responses = LumberjackUtil.sendMessages(port, createClientSSLContextParameters(), windows);
 
         // Then we should have the messages we're expecting
         mock.assertIsSatisfied();
 
         // And we should have replied with 2 acknowledgments for each window frame
-        assertEquals(Arrays.asList(10, 15), responses);
+        assertEquals(windows, responses);
     }
 
     /**
@@ -80,7 +78,7 @@ public class LumberjackComponentSSLTest extends CamelTestSupport {
      *
      * @return The {@link SSLContextParameters} Camel object for the Lumberjack component
      */
-    private SSLContextParameters createServerSSLContextParameters() {
+    private SSLContextParameters createServerSSLContextParameters(CamelContext context) {
         SSLContextParameters sslContextParameters = new SSLContextParameters();
 
         KeyManagersParameters keyManagersParameters = new KeyManagersParameters();
@@ -90,6 +88,7 @@ public class LumberjackComponentSSLTest extends CamelTestSupport {
         keyManagersParameters.setKeyPassword("changeit");
         keyManagersParameters.setKeyStore(keyStore);
         sslContextParameters.setKeyManagers(keyManagersParameters);
+        sslContextParameters.setCamelContext(context);
 
         return sslContextParameters;
     }
@@ -103,6 +102,7 @@ public class LumberjackComponentSSLTest extends CamelTestSupport {
         trustStore.setResource("org/apache/camel/component/lumberjack/keystore.jks");
         trustManagersParameters.setKeyStore(trustStore);
         sslContextParameters.setTrustManagers(trustManagersParameters);
+        sslContextParameters.setCamelContext(context);
 
         return sslContextParameters;
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,25 +16,13 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
-
-import org.apache.camel.CamelContext;
-import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class JmsSetBodyNullErrorHandlerUseOriginalMessageTest extends CamelTestSupport {
-
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createPersistentConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-        return camelContext;
-    }
+public class JmsSetBodyNullErrorHandlerUseOriginalMessageTest extends AbstractPersistentJMSTest {
 
     @Test
     public void testSetNull() throws Exception {
@@ -42,32 +30,31 @@ public class JmsSetBodyNullErrorHandlerUseOriginalMessageTest extends CamelTestS
         getMockEndpoint("mock:bar").expectedMessageCount(1);
         getMockEndpoint("mock:bar").message(0).body().isNull();
 
-        template.sendBody("activemq:queue:foo", "Hello World");
+        template.sendBody("activemq:queue:JmsSetBodyNullErrorHandlerUseOriginalMessageTest", "Hello World");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
-        String body = consumer.receiveBody("activemq:queue:dead", 5000, String.class);
+        String body = consumer.receiveBody("activemq:queue:JmsSetBodyNullErrorHandlerUseOriginalMessageTest.dead", 5000,
+                String.class);
         assertEquals("Hello World", body);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                errorHandler(deadLetterChannel("activemq:queue:dead").useOriginalMessage());
+            public void configure() {
+                errorHandler(deadLetterChannel("activemq:queue:JmsSetBodyNullErrorHandlerUseOriginalMessageTest.dead")
+                        .useOriginalMessage());
 
-                from("activemq:queue:foo")
-                    .to("mock:foo")
-                    .process(new Processor() {
-                        @Override
-                        public void process(Exchange exchange) throws Exception {
+                from("activemq:queue:JmsSetBodyNullErrorHandlerUseOriginalMessageTest")
+                        .to("mock:foo")
+                        .process(exchange -> {
                             // an end user may set the message body explicit to null
                             exchange.getIn().setBody(null);
-                        }
-                    })
-                    .to("mock:bar")
-                    .throwException(new IllegalArgumentException("Forced"));
+                        })
+                        .to("mock:bar")
+                        .throwException(new IllegalArgumentException("Forced"));
             }
         };
     }

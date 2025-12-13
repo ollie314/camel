@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,6 +16,8 @@
  */
 package org.apache.camel.component.chunk;
 
+import org.apache.camel.spi.Metadata;
+
 /**
  * Chunk component constants
  */
@@ -24,18 +26,20 @@ public final class ChunkConstants {
     /**
      * Header containing a Chunk template location
      */
+    @Metadata(description = "A URI for the template resource to use instead of the endpoint configured.", javaType = "String")
     public static final String CHUNK_RESOURCE_URI = "ChunkResourceUri";
 
     /**
      * Header containing the Chunk template code
      */
+    @Metadata(description = "The template to use instead of the endpoint configured.", javaType = "String")
     public static final String CHUNK_TEMPLATE = "ChunkTemplate";
 
     /**
      * Chunk endpoint URI prefix
      */
     public static final String CHUNK_ENDPOINT_URI_PREFIX = "chunk:";
-    
+
     /**
      * Chunk Template extension
      */

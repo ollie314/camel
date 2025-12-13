@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,38 +19,45 @@ package org.apache.camel.processor.jpa;
 import java.io.File;
 import java.util.List;
 
-import javax.persistence.Query;
+import jakarta.persistence.Query;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.processor.idempotent.jpa.MessageProcessed;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
+
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
 
 /**
  * Unit test using jpa idempotent repository for the file consumer.
  */
 public class FileConsumerJpaIdempotentTest extends AbstractJpaTest {
 
-    protected static final String SELECT_ALL_STRING = "select x from " + MessageProcessed.class.getName() + " x where x.processorName = ?1";
+    protected static final String SELECT_ALL_STRING
+            = "select x from " + MessageProcessed.class.getName() + " x where x.processorName = ?1";
     protected static final String PROCESSOR_NAME = "FileConsumer";
 
-    @Before
-    public void setUp() throws Exception {
+    @BeforeEach
+    public void cleanupDir() {
         deleteDirectory("target/idempotent");
-        super.setUp();
+    }
+
+    @BeforeEach
+    public void setMessages() {
         template.sendBodyAndHeader("file://target/idempotent/", "Hello World", Exchange.FILE_NAME, "report.txt");
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("file://target/idempotent/?idempotent=true&idempotentRepository=#jpaStore&move=done/${file:name}").routeId("foo").autoStartup(false)
-                    .to("mock:result");
+            public void configure() {
+                from("file://target/idempotent/?idempotent=true&idempotentRepository=#jpaStore&move=done/${file:name}")
+                        .routeId("foo").autoStartup(false)
+                        .to("mock:result");
             }
         };
     }
@@ -79,9 +86,9 @@ public class FileConsumerJpaIdempotentTest extends AbstractJpaTest {
         mock.expectedBodiesReceived("Hello World");
         mock.expectedMessageCount(1);
 
-        context.startRoute("foo");
+        context.getRouteController().startRoute("foo");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         Thread.sleep(1000);
 
@@ -96,7 +103,7 @@ public class FileConsumerJpaIdempotentTest extends AbstractJpaTest {
 
         // should NOT consume the file again, let 2 secs pass to let the consumer try to consume it but it should not
         Thread.sleep(2000);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override

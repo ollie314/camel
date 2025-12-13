@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,78 +20,141 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.io.Reader;
 import java.lang.ref.WeakReference;
-import java.util.LinkedHashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
 
 import org.apache.camel.CamelContext;
+import org.apache.camel.CamelContextAware;
 import org.apache.camel.Exchange;
 import org.apache.camel.spi.DataFormat;
 import org.apache.camel.spi.DataFormatName;
-import org.apache.camel.support.ServiceSupport;
-import org.apache.camel.util.IOHelper;
+import org.apache.camel.spi.annotations.Dataformat;
+import org.apache.camel.support.ExchangeHelper;
+import org.apache.camel.support.PatternHelper;
+import org.apache.camel.support.service.ServiceSupport;
 import org.yaml.snakeyaml.DumperOptions;
-import org.yaml.snakeyaml.TypeDescription;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.BaseConstructor;
 import org.yaml.snakeyaml.constructor.Constructor;
-import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
+import org.yaml.snakeyaml.inspector.TagInspector;
 import org.yaml.snakeyaml.nodes.Tag;
 import org.yaml.snakeyaml.representer.Representer;
 import org.yaml.snakeyaml.resolver.Resolver;
 
-
 /**
- * A <a href="http://camel.apache.org/data-format.html">data format</a> ({@link DataFormat})
- * using <a href="http://www.snakeyaml.org">SnakeYAML</a> to marshal to and from YAML.
+ * Marshal and unmarshal Java objects to and from YAML using <a href="http://www.snakeyaml.org">SnakeYAML</a>
  */
-public class SnakeYAMLDataFormat extends ServiceSupport implements DataFormat, DataFormatName {
+@Dataformat("snakeYaml")
+public final class SnakeYAMLDataFormat extends ServiceSupport implements DataFormat, DataFormatName, CamelContextAware {
 
-    private ThreadLocal<WeakReference<Yaml>> yamlCache;
+    private CamelContext camelContext;
+    private final ThreadLocal<WeakReference<Yaml>> yamlCache;
     private BaseConstructor constructor;
     private Representer representer;
     private DumperOptions dumperOptions;
     private Resolver resolver;
     private ClassLoader classLoader;
+    private String unmarshalTypeName;
     private Class<?> unmarshalType;
-    private List<TypeDescription> typeDescriptions;
-    private Map<Class<?>, Tag> classTags;
-    private boolean useApplicationContextClassLoader;
+    private boolean useApplicationContextClassLoader = true;
     private boolean prettyFlow;
+    private boolean allowAnyType;
+    private String typeFilters;
+    private int maxAliasesForCollections = 50;
+    private boolean allowRecursiveKeys;
 
     public SnakeYAMLDataFormat() {
-        this(Object.class);
+        this(null);
     }
 
     public SnakeYAMLDataFormat(Class<?> type) {
-        this.unmarshalType = type;
         this.yamlCache = new ThreadLocal<>();
-        this.useApplicationContextClassLoader = true;
-        this.prettyFlow = false;
+        this.unmarshalType = type;
     }
 
     @Override
     public String getDataFormatName() {
-        return "yaml-snakeyaml";
+        return "snakeYaml";
+    }
+
+    @Override
+    public CamelContext getCamelContext() {
+        return camelContext;
+    }
+
+    @Override
+    public void setCamelContext(CamelContext camelContext) {
+        this.camelContext = camelContext;
     }
 
     @Override
     public void marshal(final Exchange exchange, final Object graph, final OutputStream stream) throws Exception {
-        try (final OutputStreamWriter osw = new OutputStreamWriter(stream, IOHelper.getCharsetName(exchange))) {
-            getYaml(exchange.getContext()).dump(graph, osw);
+        try (OutputStreamWriter osw = new OutputStreamWriter(stream, ExchangeHelper.getCharsetName(exchange))) {
+            getYaml().dump(graph, osw);
         }
     }
 
     @Override
     public Object unmarshal(final Exchange exchange, final InputStream stream) throws Exception {
-        try (final InputStreamReader isr = new InputStreamReader(stream, IOHelper.getCharsetName(exchange))) {
-            return getYaml(exchange.getContext()).loadAs(isr, unmarshalType);
+        return unmarshal(exchange, (Object) stream);
+    }
+
+    @Override
+    public Object unmarshal(Exchange exchange, Object body) throws Exception {
+        Class<?> unmarshalObjectType = unmarshalType != null ? unmarshalType : Object.class;
+
+        if (body instanceof String s) {
+            return getYaml().loadAs(s, unmarshalObjectType);
+        } else if (body instanceof Reader r) {
+            return getYaml().loadAs(r, unmarshalObjectType);
+        } else {
+            // fallback to InputStream
+            InputStream is = exchange.getContext().getTypeConverter().mandatoryConvertTo(InputStream.class, exchange, body);
+            Reader r = new InputStreamReader(is, ExchangeHelper.getCharsetName(exchange));
+            return getYaml().loadAs(r, unmarshalObjectType);
         }
     }
 
-    protected Yaml getYaml(CamelContext context) {
+    @Override
+    protected void doStart() throws Exception {
+        super.doStart();
+
+        if (unmarshalTypeName != null && unmarshalType == null) {
+            setUnmarshalType(camelContext.getClassResolver().resolveClass(unmarshalTypeName));
+        }
+        if (unmarshalType != null) {
+            if (this.typeFilters == null) {
+                this.typeFilters = unmarshalType.getName();
+            } else {
+                this.typeFilters += "," + unmarshalType.getName();
+            }
+        }
+        if (allowAnyType) {
+            typeFilters = "*";
+        }
+        if (this.constructor == null) {
+            this.constructor = defaultConstructor(camelContext);
+        }
+        if (this.representer == null) {
+            this.representer = defaultRepresenter();
+        }
+        if (this.dumperOptions == null) {
+            this.dumperOptions = defaultDumperOptions();
+        }
+        if (this.resolver == null) {
+            this.resolver = defaultResolver();
+        }
+    }
+
+    @Override
+    protected void doStop() throws Exception {
+        super.doStop();
+        yamlCache.remove();
+    }
+
+    private Yaml getYaml() {
         Yaml yaml = null;
         WeakReference<Yaml> ref = yamlCache.get();
 
@@ -100,68 +163,21 @@ public class SnakeYAMLDataFormat extends ServiceSupport implements DataFormat, D
         }
 
         if (yaml == null) {
-            BaseConstructor yamlConstructor = this.constructor;
-            Representer yamlRepresenter = this.representer;
-            DumperOptions yamlDumperOptions = this.dumperOptions;
-            Resolver yamlResolver = this.resolver;
-            ClassLoader yamlClassLoader = this.classLoader;
-
-            if (yamlClassLoader == null && useApplicationContextClassLoader) {
-                yamlClassLoader = context.getApplicationContextClassLoader();
-            }
-
-            if (yamlConstructor == null) {
-                yamlConstructor = yamlClassLoader == null
-                    ? new Constructor()
-                    : new CustomClassLoaderConstructor(yamlClassLoader);
-
-                if (typeDescriptions != null) {
-                    for (TypeDescription typeDescription : typeDescriptions) {
-                        ((Constructor)yamlConstructor).addTypeDescription(typeDescription);
-                    }
-                }
-            }
-            if (yamlRepresenter == null) {
-                yamlRepresenter = new Representer();
-
-                if (classTags != null) {
-                    for (Map.Entry<Class<?>, Tag> entry : classTags.entrySet()) {
-                        yamlRepresenter.addClassTag(entry.getKey(), entry.getValue());
-                    }
-                }
-            }
-            if (yamlDumperOptions == null) {
-                yamlDumperOptions = new DumperOptions();
-                yamlDumperOptions.setPrettyFlow(prettyFlow);
-            }
-            if (yamlResolver == null) {
-                yamlResolver = new Resolver();
-            }
-
-            yaml = new Yaml(yamlConstructor, yamlRepresenter, yamlDumperOptions, yamlResolver);
+            LoaderOptions options = new LoaderOptions();
+            options.setTagInspector(new TrustedTagInspector());
+            options.setAllowRecursiveKeys(allowRecursiveKeys);
+            options.setMaxAliasesForCollections(maxAliasesForCollections);
+            yaml = new Yaml(constructor, representer, dumperOptions, options, resolver);
             yamlCache.set(new WeakReference<>(yaml));
         }
 
         return yaml;
     }
 
-    @Override
-    protected void doStart() throws Exception {
-        // noop
-    }
-
-    @Override
-    protected void doStop() throws Exception {
-        // noop
-    }
-
     public BaseConstructor getConstructor() {
         return constructor;
     }
 
-    /**
-     * BaseConstructor to construct incoming documents.
-     */
     public void setConstructor(BaseConstructor constructor) {
         this.constructor = constructor;
     }
@@ -170,9 +186,6 @@ public class SnakeYAMLDataFormat extends ServiceSupport implements DataFormat, D
         return representer;
     }
 
-    /**
-     * Representer to emit outgoing objects.
-     */
     public void setRepresenter(Representer representer) {
         this.representer = representer;
     }
@@ -181,9 +194,6 @@ public class SnakeYAMLDataFormat extends ServiceSupport implements DataFormat, D
         return dumperOptions;
     }
 
-    /**
-     * DumperOptions to configure outgoing objects.
-     */
     public void setDumperOptions(DumperOptions dumperOptions) {
         this.dumperOptions = dumperOptions;
     }
@@ -192,91 +202,46 @@ public class SnakeYAMLDataFormat extends ServiceSupport implements DataFormat, D
         return resolver;
     }
 
-    /**
-     * Resolver to detect implicit type
-     */
     public void setResolver(Resolver resolver) {
         this.resolver = resolver;
+    }
+
+    public void setTypeFilters(String typeFilters) {
+        this.typeFilters = typeFilters;
+    }
+
+    public void setTypeFilters(Class<?> typeFilters) {
+        this.typeFilters = typeFilters.getName();
     }
 
     public ClassLoader getClassLoader() {
         return classLoader;
     }
 
-    /**
-     * Set a custom classloader
-     */
     public void setClassLoader(ClassLoader classLoader) {
         this.classLoader = classLoader;
+    }
+
+    public String getUnmarshalTypeName() {
+        return unmarshalTypeName;
+    }
+
+    public void setUnmarshalTypeName(String unmarshalTypeName) {
+        this.unmarshalTypeName = unmarshalTypeName;
     }
 
     public Class<?> getUnmarshalType() {
         return this.unmarshalType;
     }
 
-    /**
-     * Class of the object to be created
-     */
     public void setUnmarshalType(Class<?> unmarshalType) {
         this.unmarshalType = unmarshalType;
     }
-
-    public List<TypeDescription> getTypeDescriptions() {
-        return typeDescriptions;
-    }
-
-    /**
-     * Make YAML aware how to parse a custom Class.
-     */
-    public void setTypeDescriptions(List<TypeDescription> typeDescriptions) {
-        this.typeDescriptions = typeDescriptions;
-    }
-
-    public void addTypeDescriptions(TypeDescription... typeDescriptions) {
-        if (this.typeDescriptions == null) {
-            this.typeDescriptions = new LinkedList<>();
-        }
-
-        for (TypeDescription typeDescription : typeDescriptions) {
-            this.typeDescriptions.add(typeDescription);
-        }
-    }
-
-    public void addTypeDescription(Class<?> type, Tag tag) {
-        if (this.typeDescriptions == null) {
-            this.typeDescriptions = new LinkedList<>();
-        }
-
-        this.typeDescriptions.add(new TypeDescription(type, tag));
-    }
-
-    public Map<Class<?>, Tag> getClassTags() {
-        return classTags;
-    }
-
-    /**
-     * Define a tag for the <code>Class</code> to serialize.
-     */
-    public void setClassTags(Map<Class<?>, Tag> classTags) {
-        this.classTags = classTags;
-    }
-
-    public void addClassTags(Class<?> type, Tag tag) {
-        if (this.classTags == null) {
-            this.classTags = new LinkedHashMap<>();
-        }
-
-        this.classTags.put(type, tag);
-    }
-
 
     public boolean isUseApplicationContextClassLoader() {
         return useApplicationContextClassLoader;
     }
 
-    /**
-     * Use ApplicationContextClassLoader as custom ClassLoader
-     */
     public void setUseApplicationContextClassLoader(boolean useApplicationContextClassLoader) {
         this.useApplicationContextClassLoader = useApplicationContextClassLoader;
     }
@@ -285,20 +250,113 @@ public class SnakeYAMLDataFormat extends ServiceSupport implements DataFormat, D
         return prettyFlow;
     }
 
-    /**
-     * Force the emitter to produce a pretty YAML document when using the flow
-     * style.
-     */
     public void setPrettyFlow(boolean prettyFlow) {
         this.prettyFlow = prettyFlow;
     }
 
-    /**
-     * Convenience method to set class tag for bot <code>Constructor</code> and
-     * <code>Representer</code>
-     */
-    public void addTag(Class<?> type, Tag tag) {
-        addClassTags(type, tag);
-        addTypeDescription(type, tag);
+    public boolean isAllowAnyType() {
+        return allowAnyType;
+    }
+
+    public void setAllowAnyType(boolean allowAnyType) {
+        this.allowAnyType = allowAnyType;
+    }
+
+    public int getMaxAliasesForCollections() {
+        return maxAliasesForCollections;
+    }
+
+    public void setMaxAliasesForCollections(int maxAliasesForCollections) {
+        this.maxAliasesForCollections = maxAliasesForCollections;
+    }
+
+    public boolean isAllowRecursiveKeys() {
+        return allowRecursiveKeys;
+    }
+
+    public void setAllowRecursiveKeys(boolean allowRecursiveKeys) {
+        this.allowRecursiveKeys = allowRecursiveKeys;
+    }
+
+    // ***************************
+    // Defaults
+    // ***************************
+
+    private BaseConstructor defaultConstructor(CamelContext context) {
+        LoaderOptions options = new LoaderOptions();
+        options.setTagInspector(new TrustedTagInspector());
+        options.setAllowRecursiveKeys(allowRecursiveKeys);
+        options.setMaxAliasesForCollections(maxAliasesForCollections);
+
+        BaseConstructor yamlConstructor;
+        if (typeFilters != null) {
+            ClassLoader yamlClassLoader = this.classLoader;
+            if (yamlClassLoader == null && useApplicationContextClassLoader) {
+                yamlClassLoader = context.getApplicationContextClassLoader();
+            }
+            yamlConstructor = yamlClassLoader != null
+                    ? typeFilterConstructor(yamlClassLoader, options)
+                    : typeFilterConstructor(options);
+        } else {
+            yamlConstructor = new SafeConstructor(options);
+        }
+        return yamlConstructor;
+    }
+
+    private Representer defaultRepresenter() {
+        return new Representer(new DumperOptions());
+    }
+
+    private DumperOptions defaultDumperOptions() {
+        DumperOptions yamlDumperOptions = new DumperOptions();
+        yamlDumperOptions.setPrettyFlow(prettyFlow);
+        return yamlDumperOptions;
+    }
+
+    private Resolver defaultResolver() {
+        return new Resolver();
+    }
+
+    // ***************************
+    // Constructors
+    // ***************************
+
+    private boolean allowTypeFilter(String className) {
+        if (typeFilters == null) {
+            return true;
+        }
+        return PatternHelper.matchPatterns(className, typeFilters.split(","));
+    }
+
+    private Constructor typeFilterConstructor(LoaderOptions options) {
+        return new Constructor(options) {
+            @Override
+            protected Class<?> getClassForName(String name) throws ClassNotFoundException {
+                if (!allowTypeFilter(name)) {
+                    throw new IllegalArgumentException("Type " + name + " is not allowed");
+                }
+                return super.getClassForName(name);
+            }
+        };
+    }
+
+    private Constructor typeFilterConstructor(
+            final ClassLoader classLoader, LoaderOptions options) {
+        return new CustomClassLoaderConstructor(classLoader, options) {
+            @Override
+            protected Class<?> getClassForName(String name) throws ClassNotFoundException {
+                if (!allowTypeFilter(name)) {
+                    throw new IllegalArgumentException("Type " + name + " is not allowed");
+                }
+                return super.getClassForName(name);
+            }
+        };
+    }
+
+    final class TrustedTagInspector implements TagInspector {
+        @Override
+        public boolean isGlobalTagAllowed(Tag tag) {
+            return true;
+        }
     }
 }

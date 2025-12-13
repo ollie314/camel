@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,28 +23,46 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
-import org.apache.camel.impl.DefaultExchange;
-import org.apache.camel.impl.DefaultExchangeHolder;
+import org.apache.camel.api.management.ManagedResource;
+import org.apache.camel.spi.Configurer;
+import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.RecoverableAggregationRepository;
-import org.apache.camel.support.ServiceSupport;
+import org.apache.camel.support.DefaultExchange;
+import org.apache.camel.support.DefaultExchangeHolder;
+import org.apache.camel.support.service.ServiceSupport;
 import org.apache.camel.util.ObjectHelper;
 import org.ehcache.Cache;
 import org.ehcache.CacheManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Metadata(label = "bean",
+          description = "Aggregation repository that uses Caffeine Cache to store exchanges.",
+          annotations = { "interfaceName=org.apache.camel.spi.AggregationRepository" })
+@Configurer(metadataOnly = true)
+@ManagedResource(description = "EHCache based aggregation repository")
 public class EhcacheAggregationRepository extends ServiceSupport implements RecoverableAggregationRepository {
+
     private static final Logger LOG = LoggerFactory.getLogger(EhcacheAggregationRepository.class);
 
     private CamelContext camelContext;
     private CacheManager cacheManager;
+    @Metadata(description = "Name of cache", required = true)
     private String cacheName;
     private Cache<String, DefaultExchangeHolder> cache;
-    private boolean allowSerializedHeaders;
 
+    @Metadata(label = "advanced",
+              description = "Whether headers on the Exchange that are Java objects and Serializable should be included and saved to the repository")
+    private boolean allowSerializedHeaders;
+    @Metadata(description = "Whether or not recovery is enabled", defaultValue = "true")
     private boolean useRecovery = true;
-    private String deadLetterChannel;
+    @Metadata(description = "Sets an optional dead letter channel which exhausted recovered Exchange should be send to.")
+    private String deadLetterUri;
+    @Metadata(description = "Sets the interval between recovery scans", defaultValue = "5000")
     private long recoveryInterval = 5000;
+    @Metadata(description = "Sets an optional limit of the number of redelivery attempt of recovered Exchange should be attempted, before its exhausted."
+                            + " When this limit is hit, then the Exchange is moved to the dead letter channel.",
+              defaultValue = "3")
     private int maximumRedeliveries = 3;
 
     public CamelContext getCamelContext() {
@@ -88,16 +106,6 @@ public class EhcacheAggregationRepository extends ServiceSupport implements Reco
     }
 
     @Override
-    public void setDeadLetterUri(String deadLetterUri) {
-        this.deadLetterChannel = deadLetterUri;
-    }
-
-    @Override
-    public String getDeadLetterUri() {
-        return deadLetterChannel;
-    }
-
-    @Override
     public boolean isUseRecovery() {
         return useRecovery;
     }
@@ -107,12 +115,12 @@ public class EhcacheAggregationRepository extends ServiceSupport implements Reco
         this.useRecovery = useRecovery;
     }
 
-    public String getDeadLetterChannel() {
-        return deadLetterChannel;
+    public String getDeadLetterUri() {
+        return deadLetterUri;
     }
 
-    public void setDeadLetterChannel(String deadLetterChannel) {
-        this.deadLetterChannel = deadLetterChannel;
+    public void setDeadLetterUri(String deadLetterUri) {
+        this.deadLetterUri = deadLetterUri;
     }
 
     public long getRecoveryInterval() {
@@ -163,7 +171,7 @@ public class EhcacheAggregationRepository extends ServiceSupport implements Reco
 
     @Override
     public void remove(CamelContext camelContext, String key, Exchange exchange) {
-        LOG.trace("Removing an exchange with ID {} for key {} ", exchange.getExchangeId(), key);
+        LOG.trace("Removing an exchange with ID {} for key {}", exchange.getExchangeId(), key);
         cache.remove(key);
     }
 
@@ -212,6 +220,7 @@ public class EhcacheAggregationRepository extends ServiceSupport implements Reco
 
     @Override
     protected void doStop() throws Exception {
+        // noop
     }
 
     public static Exchange unmarshallExchange(CamelContext camelContext, DefaultExchangeHolder holder) {

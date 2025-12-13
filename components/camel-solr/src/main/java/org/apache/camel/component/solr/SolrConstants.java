@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,28 +16,60 @@
  */
 package org.apache.camel.component.solr;
 
-public final class SolrConstants {
+import org.apache.camel.Exchange;
+import org.apache.camel.spi.Metadata;
 
-    public static final String FIELD = "SolrField.";
-    public static final String OPERATION = "SolrOperation";
-    public static final String PARAM = "SolrParam.";
-    public static final String OPERATION_COMMIT = "COMMIT";
-    public static final String OPERATION_ROLLBACK = "ROLLBACK";
-    public static final String OPERATION_OPTIMIZE = "OPTIMIZE";
-    public static final String OPERATION_INSERT = "INSERT";
-    public static final String OPERATION_INSERT_STREAMING = "INSERT_STREAMING";
-    public static final String OPERATION_ADD_BEAN = "ADD_BEAN";
-    public static final String OPERATION_ADD_BEANS = "ADD_BEANS";
-    public static final String OPERATION_DELETE_BY_ID = "DELETE_BY_ID";
-    public static final String OPERATION_DELETE_BY_QUERY = "DELETE_BY_QUERY";
+public interface SolrConstants {
 
-    public static final String PARAM_STREAMING_QUEUE_SIZE = "streamingQueueSize";
-    public static final String PARAM_STREAMING_THREAD_COUNT = "streamingThreadCount";
-    public static final int DEFUALT_STREAMING_QUEUE_SIZE = 10;
-    public static final boolean DEFAULT_SHOULD_HTTPS = false;
-    public static final int DEFAULT_STREAMING_THREAD_COUNT = 2;
+    @Metadata(description = "The operation to perform.", javaType = "String")
+    String PARAM_OPERATION = "CamelSolrOperation";
+    @Metadata(description = "The collection to execute the request against.", javaType = "String")
+    String PARAM_COLLECTION = "CamelSolrCollection";
+    @Metadata(description = "The request handler to execute the solr request against.", javaType = "String")
+    String PARAM_REQUEST_HANDLER = "CamelSolrRequestHandler";
+    @Metadata(description = "The query to execute.", javaType = "String")
+    String PARAM_QUERY_STRING = "CamelSolrQueryString";
+    @Metadata(description = "The size of the response.", javaType = "Integer")
+    String PARAM_SIZE = "CamelSolrSize";
+    @Metadata(description = "The starting index of the response.", javaType = "Integer")
+    String PARAM_FROM = "CamelSolrFrom";
+    @Metadata(description = "The solr parameters to use for the request.",
+              javaType = "org.apache.solr.common.params.SolrParams")
+    String PARAM_SOLR_PARAMS = "CamelSolrParams";
+    @Metadata(description = "For the delete instruction, interpret body as query/queries instead of id/ids.",
+              javaType = "boolean", defaultValue = "false")
+    String PARAM_DELETE_BY_QUERY = "CamelSolrDeleteByQuery";
+    @Metadata(description = "The content type is used to identify the type when inserting files.", javaType = "String")
+    String PARAM_CONTENT_TYPE = Exchange.CONTENT_TYPE;
 
-    private SolrConstants() {
-        throw new AssertionError();
-    }
+    String HEADER_FIELD_PREFIX = "SolrField.";
+    String HEADER_PARAM_PREFIX = "SolrParam.";
+
+    String PROPERTY_ACTION_CONTEXT = "SolrActionContext";
+
+    String OPERATION_COMMIT = "COMMIT";
+    String OPERATION_SOFT_COMMIT = "SOFT_COMMIT";
+    String OPERATION_ROLLBACK = "ROLLBACK";
+    String OPERATION_OPTIMIZE = "OPTIMIZE";
+    String OPERATION_INSERT = "INSERT";
+    String OPERATION_INSERT_STREAMING = "INSERT_STREAMING";
+    String OPERATION_ADD_BEAN = "ADD_BEAN";
+    String OPERATION_ADD_BEANS = "ADD_BEANS";
+    String OPERATION_DELETE_BY_ID = "DELETE_BY_ID";
+    String OPERATION_DELETE_BY_QUERY = "DELETE_BY_QUERY";
+    String OPERATION_QUERY = "QUERY";
+
+    String HEADER_PARAM_OPERATION_COMMIT = "commit";
+    String HEADER_PARAM_OPERATION_SOFT_COMMIT = "softCommit";
+    String HEADER_PARAM_OPERATION_OPTIMIZE = "optimize";
+    String HEADER_PARAM_OPERATION_ROLLBACK = "rollback";
+
+    String DEFAULT_HOST = "localhost";
+    int DEFAULT_PORT = 8983;
+    String DEFAULT_BASE_PATH = "/solr";
+    String DEFAULT_COLLECTION = "collection1";
+
+    int DEFAULT_CONNECT_TIMEOUT = 60000;
+    int DEFAULT_REQUEST_TIMEOUT = 600000;
+
 }

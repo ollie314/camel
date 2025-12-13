@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,37 +18,64 @@ package org.apache.camel.component.sjms;
 
 import java.io.File;
 import java.util.Map;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.Queue;
-import javax.jms.Session;
-import javax.jms.Topic;
 
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import jakarta.jms.Topic;
+
+import org.apache.camel.Exchange;
 import org.apache.camel.RuntimeExchangeException;
 import org.apache.camel.component.sjms.jms.JmsBinding;
 import org.apache.camel.component.sjms.jms.JmsMessageHelper;
-import org.apache.camel.impl.DefaultMessage;
-import org.apache.camel.util.ExchangeHelper;
+import org.apache.camel.support.DefaultMessage;
+import org.apache.camel.support.ExchangeHelper;
+import org.apache.camel.trait.message.MessageTrait;
 import org.apache.camel.util.ObjectHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.camel.support.MessageHelper.copyBody;
+
 /**
  * Represents a {@link org.apache.camel.Message} for working with JMS
- *
- * @version
  */
 public class SjmsMessage extends DefaultMessage {
     private static final Logger LOG = LoggerFactory.getLogger(SjmsMessage.class);
+
     private Message jmsMessage;
     private Session jmsSession;
     private JmsBinding binding;
 
-    public SjmsMessage(Message jmsMessage, Session jmsSession, JmsBinding binding) {
+    public SjmsMessage(Exchange exchange, Message jmsMessage, Session jmsSession, JmsBinding binding) {
+        super(exchange);
         setJmsMessage(jmsMessage);
         setJmsSession(jmsSession);
         setBinding(binding);
+
+        setPayloadForTrait(MessageTrait.REDELIVERY, JmsMessageHelper.evalRedeliveryMessageTrait(jmsMessage));
+    }
+
+    public void init(Exchange exchange, Message jmsMessage, Session jmsSession, JmsBinding binding) {
+        setExchange(exchange);
+        setJmsMessage(jmsMessage);
+        setJmsSession(jmsSession);
+        setBinding(binding);
+        // need to populate initial headers when we use pooled exchanges
+        populateInitialHeaders(getHeaders());
+
+        setPayloadForTrait(MessageTrait.REDELIVERY, JmsMessageHelper.evalRedeliveryMessageTrait(jmsMessage));
+    }
+
+    @Override
+    public void reset() {
+        super.reset();
+        setExchange(null);
+        jmsMessage = null;
+        jmsSession = null;
+        binding = null;
     }
 
     @Override
@@ -57,7 +84,7 @@ public class SjmsMessage extends DefaultMessage {
         if (jmsMessage != null) {
             try {
                 return "SjmsMessage[JmsMessageID: " + jmsMessage.getJMSMessageID() + "]";
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 // ignore
             }
         }
@@ -88,18 +115,17 @@ public class SjmsMessage extends DefaultMessage {
             setMessageId(that.getMessageId());
         }
 
+        // cover over exchange if none has been assigned
+        if (getExchange() == null) {
+            setExchange(that.getExchange());
+        }
+
         // copy body and fault flag
-        setBody(that.getBody());
-        setFault(that.isFault());
+        copyBody(that, this);
 
         // we have already cleared the headers
         if (that.hasHeaders()) {
             getHeaders().putAll(that.getHeaders());
-        }
-
-        getAttachments().clear();
-        if (that.hasAttachments()) {
-            getAttachmentObjects().putAll(that.getAttachmentObjects());
         }
     }
 
@@ -156,6 +182,7 @@ public class SjmsMessage extends DefaultMessage {
         }
     }
 
+    @Override
     public Object getHeader(String name) {
         Object answer = null;
 
@@ -204,7 +231,9 @@ public class SjmsMessage extends DefaultMessage {
 
     @Override
     public SjmsMessage newInstance() {
-        return new SjmsMessage(null, null, binding);
+        SjmsMessage answer = new SjmsMessage(null, null, null, binding);
+        answer.setCamelContext(getCamelContext());
+        return answer;
     }
 
     /**
@@ -215,8 +244,7 @@ public class SjmsMessage extends DefaultMessage {
     }
 
     /**
-     * Ensure that the headers have been populated from the underlying JMS message
-     * before we start mutating the headers
+     * Ensure that the headers have been populated from the underlying JMS message before we start mutating the headers
      */
     protected void ensureInitialHeaders() {
         if (jmsMessage != null && !hasPopulatedHeaders()) {
@@ -238,39 +266,40 @@ public class SjmsMessage extends DefaultMessage {
     protected void populateInitialHeaders(Map<String, Object> map) {
         if (jmsMessage != null && map != null) {
             map.putAll(getBinding().extractHeadersFromJms(jmsMessage, getExchange()));
+            try {
+                map.put(Exchange.MESSAGE_TIMESTAMP, jmsMessage.getJMSTimestamp());
+            } catch (JMSException e) {
+                // ignore
+            }
         }
     }
 
     @Override
     protected String createMessageId() {
         if (jmsMessage == null) {
-            LOG.trace("No javax.jms.Message set so generating a new message id");
+            LOG.trace("No jakarta.jms.Message set so generating a new message id");
             return super.createMessageId();
         }
         try {
-            String id = getDestinationAsString(jmsMessage.getJMSDestination()) + jmsMessage.getJMSMessageID();
+            String id = getDestinationAsString(jmsMessage.getJMSDestination());
+            if (id != null) {
+                id += jmsMessage.getJMSMessageID();
+            } else {
+                id = jmsMessage.getJMSMessageID();
+            }
             return getSanitizedString(id);
         } catch (JMSException e) {
             throw new RuntimeExchangeException("Unable to retrieve JMSMessageID from JMS Message", getExchange(), e);
         }
     }
 
-    @Override
-    protected Boolean isTransactedRedelivered() {
-        if (jmsMessage != null) {
-            return JmsMessageHelper.getJMSRedelivered(jmsMessage);
-        } else {
-            return null;
-        }
-    }
-
     private String getDestinationAsString(Destination destination) throws JMSException {
-        String result;
+        String result = null;
         if (destination == null) {
             result = "null destination!" + File.separator;
         } else if (destination instanceof Topic) {
             result = "topic" + File.separator + ((Topic) destination).getTopicName() + File.separator;
-        } else {
+        } else if (destination instanceof Queue) {
             result = "queue" + File.separator + ((Queue) destination).getQueueName() + File.separator;
         }
         return result;

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,67 +16,83 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
-
 import org.apache.camel.CamelContext;
-import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
-/**
- * @version 
- */
-public class JmsInOutSynchronousFalseTest extends CamelTestSupport {
+@Timeout(60)
+@TestInstance(TestInstance.Lifecycle.PER_METHOD)
+public class JmsInOutSynchronousFalseTest extends AbstractJMSTest {
 
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
     private static String beforeThreadName;
     private static String afterThreadName;
-    private String url = "activemq:queue:in?synchronous=false";
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
+    private final String url = "activemq:queue:JmsInOutSynchronousFalseTest?synchronous=false";
+
+    private String reply;
+
+    @BeforeEach
+    public void sendMessage() {
+        reply = template.requestBody("direct:start", "Hello World", String.class);
+    }
+
+    @Timeout(30)
     @Test
-    public void testSynchronous() throws Exception {
-        String reply = template.requestBody("direct:start", "Hello World", String.class);
+    public void testSynchronous() {
         assertEquals("Bye World", reply);
-
-        assertFalse("Should use different threads", beforeThreadName.equalsIgnoreCase(afterThreadName));
+        assertFalse(beforeThreadName.equalsIgnoreCase(afterThreadName), "Should use different threads");
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-        return camelContext;
+    @Override
+    protected String getComponentName() {
+        return "activemq";
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .to("log:before")
-                    .process(new Processor() {
-                        public void process(Exchange exchange) throws Exception {
-                            beforeThreadName = Thread.currentThread().getName();
-                        }
-                    })
-                    .to(url)
-                    .process(new Processor() {
-                        public void process(Exchange exchange) throws Exception {
-                            afterThreadName = Thread.currentThread().getName();
-                        }
-                    })
-                    .to("log:after")
-                    .to("mock:result");
+                        .to("log:before")
+                        .process(exchange -> beforeThreadName = Thread.currentThread().getName())
+                        .to(url)
+                        .process(exchange -> afterThreadName = Thread.currentThread().getName())
+                        .to("log:after")
+                        .to("mock:result");
 
-                from("activemq:queue:in").process(new Processor() {
-                    public void process(Exchange exchange) throws Exception {
-                        exchange.getOut().setBody("Bye World");
-                    }
-                });
+                from("activemq:queue:JmsInOutSynchronousFalseTest")
+                        .process(exchange -> exchange.getMessage().setBody("Bye World"));
             }
         };
     }
 
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
+    }
 }

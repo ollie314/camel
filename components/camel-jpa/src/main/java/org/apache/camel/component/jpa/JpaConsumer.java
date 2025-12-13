@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,35 +24,33 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Queue;
 
-import javax.persistence.Entity;
-import javax.persistence.EntityManager;
-import javax.persistence.EntityManagerFactory;
-import javax.persistence.LockModeType;
-import javax.persistence.OptimisticLockException;
-import javax.persistence.PersistenceException;
-import javax.persistence.PessimisticLockException;
-import javax.persistence.Query;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.OptimisticLockException;
+import jakarta.persistence.PersistenceException;
+import jakarta.persistence.PessimisticLockException;
+import jakarta.persistence.Query;
 
 import org.apache.camel.Exchange;
+import org.apache.camel.ExchangePropertyKey;
 import org.apache.camel.Processor;
-import org.apache.camel.impl.ScheduledBatchPollingConsumer;
+import org.apache.camel.support.ObjectHelper;
+import org.apache.camel.support.ScheduledBatchPollingConsumer;
+import org.apache.camel.util.AnnotationHelper;
 import org.apache.camel.util.CastUtils;
-import org.apache.camel.util.ObjectHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
-import org.springframework.transaction.TransactionStatus;
-import org.springframework.transaction.support.TransactionCallback;
-import org.springframework.transaction.support.TransactionTemplate;
 
-/**
- * @version 
- */
 public class JpaConsumer extends ScheduledBatchPollingConsumer {
+
     private static final Logger LOG = LoggerFactory.getLogger(JpaConsumer.class);
+
     private static final Map<String, Object> NOWAIT;
     private final EntityManagerFactory entityManagerFactory;
-    private final TransactionTemplate transactionTemplate;
+    private final TransactionStrategy transactionStrategy;
     private EntityManager entityManager;
     private QueryFactory queryFactory;
     private DeleteHandler<Object> deleteHandler;
@@ -67,14 +65,15 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
     private boolean skipLockedEntity;
 
     static {
-        NOWAIT = new HashMap<String, Object>();
-        NOWAIT.put("javax.persistence.lock.timeout", 0L);
+        NOWAIT = new HashMap<>();
+        NOWAIT.put("jakarta.persistence.lock.timeout", 0L);
     }
 
     private static final class DataHolder {
         private Exchange exchange;
         private Object result;
         private EntityManager manager;
+
         private DataHolder() {
         }
     }
@@ -82,7 +81,19 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
     public JpaConsumer(JpaEndpoint endpoint, Processor processor) {
         super(endpoint, processor);
         this.entityManagerFactory = endpoint.getEntityManagerFactory();
-        this.transactionTemplate = endpoint.createTransactionTemplate();
+        this.transactionStrategy = endpoint.getTransactionStrategy();
+    }
+
+    private void recreateEntityManagerIfNeeded() {
+        // Recreate EntityManager in case it is disposed due to transaction rollback
+        if (entityManager == null) {
+            if (getEndpoint().isSharedEntityManager()) {
+                this.entityManager = SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory);
+            } else {
+                this.entityManager = entityManagerFactory.createEntityManager();
+            }
+            LOG.trace("Recreated EntityManager {} on {}", entityManager, this);
+        }
     }
 
     @Override
@@ -90,27 +101,27 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
         // must reset for each poll
         shutdownRunningTask = null;
         pendingExchanges = 0;
-        
-        // Recreate EntityManager in case it is disposed due to transaction rollback
-        if (entityManager == null) {
-            entityManager = entityManagerFactory.createEntityManager();
-            LOG.trace("Recreated EntityManager {} on {}", entityManager, this);
-        }
 
-        Object messagePolled = transactionTemplate.execute(new TransactionCallback<Object>() {
-            public Object doInTransaction(TransactionStatus status) {
+        recreateEntityManagerIfNeeded();
+
+        final int[] messagePolled = { 0 };
+        try {
+            transactionStrategy.executeInTransaction(() -> {
                 if (getEndpoint().isJoinTransaction()) {
                     entityManager.joinTransaction();
                 }
 
-                Queue<DataHolder> answer = new LinkedList<DataHolder>();
+                Queue<DataHolder> answer = new LinkedList<>();
 
-                Query query = getQueryFactory().createQuery(entityManager);
-                configureParameters(query);
-                LOG.trace("Created query {}", query);
+                Query toExecute = getQueryFactory().createQuery(entityManager);
+                configureParameters(toExecute);
+                LOG.trace("Created query {}", toExecute);
 
-                List<?> results = query.getResultList();
+                List<?> results = toExecute.getResultList();
                 LOG.trace("Got result list from query {}", results);
+
+                // okay we have some response from jpa so lets mark the consumer as ready
+                forceConsumerAsReady();
 
                 for (Object result : results) {
                     DataHolder holder = new DataHolder();
@@ -121,28 +132,21 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
                 }
 
                 PersistenceException cause = null;
-                int messagePolled = 0;
                 try {
-                    messagePolled = processBatch(CastUtils.cast(answer));
+                    messagePolled[0] = processBatch(CastUtils.cast(answer));
+                } catch (PersistenceException e) {
+                    cause = e;
                 } catch (Exception e) {
-                    if (e instanceof PersistenceException) {
-                        cause = (PersistenceException) e;
-                    } else {
-                        cause = new PersistenceException(e);
-                    }
+                    cause = new PersistenceException(e);
                 }
 
                 if (cause != null) {
                     if (!isTransacted()) {
-                        LOG.warn("Error processing last message due: {}. Will commit all previous successful processed message, and ignore this last failure.", cause.getMessage(), cause);
+                        LOG.warn(
+                                "Error processing last message due: {}. Will commit all previous successful processed message, and ignore this last failure.",
+                                cause.getMessage(), cause);
                     } else {
-                        // Potentially EntityManager could be in an inconsistent state after transaction rollback,
-                        // so disposing it to have it recreated in next poll. cf. Java Persistence API 3.3.2 Transaction Rollback
-                        LOG.info("Disposing EntityManager {} on {} due to coming transaction rollback", entityManager, this);
-                        entityManager.close();
-                        entityManager = null;
-                        
-                        // rollback all by throwning exception
+                        // rollback all by throwing exception
                         throw cause;
                     }
                 }
@@ -152,51 +156,67 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
                 entityManager.flush();
                 // must clear after flush
                 entityManager.clear();
-                return messagePolled;
-            }
-        });
+            });
+        } catch (Exception e) {
+            // Potentially EntityManager could be in an inconsistent state after transaction rollback,
+            // so disposing it to have it recreated in next poll. cf. Java Persistence API 3.3.2 Transaction Rollback
+            LOG.debug("Disposing EntityManager {} on {} due to coming transaction rollback", entityManager, this);
+            entityManager.close();
+            entityManager = null;
+            throw new PersistenceException(e);
+        }
 
-        return getEndpoint().getCamelContext().getTypeConverter().convertTo(int.class, messagePolled);
+        return getEndpoint().getCamelContext().getTypeConverter().convertTo(int.class, messagePolled[0]);
     }
 
-
+    @Override
     public int processBatch(Queue<Object> exchanges) throws Exception {
         int total = exchanges.size();
 
         // limit if needed
         if (maxMessagesPerPoll > 0 && total > maxMessagesPerPoll) {
-            LOG.debug("Limiting to maximum messages to poll " + maxMessagesPerPoll + " as there were " + total + " messages in this poll.");
+            LOG.debug("Limiting to maximum messages to poll {} as there were {} messages in this poll.",
+                    maxMessagesPerPoll, total);
             total = maxMessagesPerPoll;
         }
 
         for (int index = 0; index < total && isBatchAllowed(); index++) {
             // only loop if we are started (allowed to run)
-            DataHolder holder = ObjectHelper.cast(DataHolder.class, exchanges.poll());
-            EntityManager entityManager = holder.manager;
+            DataHolder holder = org.apache.camel.util.ObjectHelper.cast(DataHolder.class, exchanges.poll());
+            EntityManager batchEntityManager = holder.manager;
             Exchange exchange = holder.exchange;
             Object result = holder.result;
 
             // add current index and total as properties
-            exchange.setProperty(Exchange.BATCH_INDEX, index);
-            exchange.setProperty(Exchange.BATCH_SIZE, total);
-            exchange.setProperty(Exchange.BATCH_COMPLETE, index == total - 1);
+            exchange.setProperty(ExchangePropertyKey.BATCH_INDEX, index);
+            exchange.setProperty(ExchangePropertyKey.BATCH_SIZE, total);
+            exchange.setProperty(ExchangePropertyKey.BATCH_COMPLETE, index == total - 1);
 
             // update pending number of exchanges
             pendingExchanges = total - index - 1;
-            if (lockEntity(result, entityManager)) {
+            if (lockEntity(result, batchEntityManager)) {
                 // Run the @PreConsumed callback
-                createPreDeleteHandler().deleteObject(entityManager, result, exchange);
+                createPreDeleteHandler().deleteObject(batchEntityManager, result, exchange);
 
                 // process the current exchange
                 LOG.debug("Processing exchange: {}", exchange);
-                getProcessor().process(exchange);
-                if (exchange.getException() != null) {
-                    // if we failed then throw exception
-                    throw exchange.getException();
+                try {
+                    getProcessor().process(exchange);
+                } catch (Exception e) {
+                    exchange.setException(e);
                 }
 
-                // Run the @Consumed callback
-                getDeleteHandler().deleteObject(entityManager, result, exchange);
+                try {
+                    if (exchange.getException() != null) {
+                        // if we failed then throw exception
+                        throw exchange.getException();
+                    } else {
+                        // Run the @Consumed callback
+                        getDeleteHandler().deleteObject(batchEntityManager, result, exchange);
+                    }
+                } finally {
+                    releaseExchange(exchange, false);
+                }
             }
         }
 
@@ -214,7 +234,8 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
         if (queryFactory == null) {
             queryFactory = createQueryFactory();
             if (queryFactory == null) {
-                throw new IllegalArgumentException("No queryType property configured on this consumer, nor an entityType configured on the endpoint so cannot consume");
+                throw new IllegalArgumentException(
+                        "No queryType property configured on this consumer, nor an entityType configured on the endpoint so cannot consume");
             }
         }
         return queryFactory;
@@ -249,7 +270,7 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
     public void setParameters(Map<String, Object> params) {
         this.parameters = params;
     }
-    
+
     public Map<String, Object> getParameters() {
         return parameters;
     }
@@ -285,7 +306,7 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
     public void setQuery(String query) {
         this.query = query;
     }
-    
+
     public Class<?> getResultClass() {
         return resultClass;
     }
@@ -301,18 +322,17 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
     /**
      * Sets whether to run in transacted mode or not.
      * <p/>
-     * This option is default <tt>false</tt>. When <tt>false</tt> then all the good messages
-     * will commit, and the first failed message will rollback.
-     * However when <tt>true</tt>, then all messages will rollback, if just one message failed.
+     * This option is default <tt>false</tt>. When <tt>false</tt> then all the good messages will commit, and the first
+     * failed message will rollback. However when <tt>true</tt>, then all messages will rollback, if just one message
+     * failed.
      */
     public void setTransacted(boolean transacted) {
         this.transacted = transacted;
     }
 
     /**
-     * Sets whether to use NOWAIT on lock and silently skip the entity. This
-     * allows different instances to process entities at the same time but not
-     * processing the same entity.
+     * Sets whether to use NOWAIT on lock and silently skip the entity. This allows different instances to process
+     * entities at the same time but not processing the same entity.
      */
     public void setSkipLockedEntity(boolean skipLockedEntity) {
         this.skipLockedEntity = skipLockedEntity;
@@ -326,12 +346,11 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
     // -------------------------------------------------------------------------
 
     /**
-     * A strategy method to lock an object with an exclusive lock so that it can
-     * be processed
-     * 
-     * @param entity the entity to be locked
-     * @param entityManager entity manager
-     * @return true if the entity was locked
+     * A strategy method to lock an object with an exclusive lock so that it can be processed
+     *
+     * @param  entity        the entity to be locked
+     * @param  entityManager entity manager
+     * @return               true if the entity was locked
      */
     protected boolean lockEntity(Object entity, EntityManager entityManager) {
         if (!getEndpoint().isConsumeLockEntity()) {
@@ -346,19 +365,15 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
             }
             return true;
         } catch (Exception e) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Failed to achieve lock on entity: " + entity + ". Reason: " + e, e);
-            }
+            LOG.debug("Failed to achieve lock on entity: {}. Reason: {}", entity, e.getMessage(), e);
+
             if (e instanceof PessimisticLockException || e instanceof OptimisticLockException) {
                 //transaction marked as rollback can't continue gracefully
                 throw (PersistenceException) e;
             }
             //TODO: Find if possible an alternative way to handle results of native queries.
             //Result of native queries are Arrays and cannot be locked by all JPA Providers.
-            if (entity.getClass().isArray()) {
-                return true;
-            }
-            return false;
+            return entity.getClass().isArray();
         }
     }
 
@@ -371,11 +386,11 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
             if (resultClass != null) {
                 return QueryBuilder.nativeQuery(nativeQuery, resultClass);
             } else {
-                return QueryBuilder.nativeQuery(nativeQuery);                
+                return QueryBuilder.nativeQuery(nativeQuery);
             }
         } else {
             Class<?> entityType = getEndpoint().getEntityType();
-            
+
             if (entityType == null) {
                 return null;
             } else {
@@ -390,12 +405,12 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
             }
         }
     }
-    
+
     protected String getEntityName(Class<?> clazz) {
         Entity entity = clazz.getAnnotation(Entity.class);
 
         // Check if the property name has been defined for Entity annotation
-        if (entity != null && !entity.name().equals("")) {
+        if (entity != null && !entity.name().isEmpty()) {
             return entity.name();
         } else {
             return null;
@@ -407,23 +422,21 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
         final Class<?> entityType = getEndpoint().getEntityType();
         if (entityType != null) {
             // Inspect the method(s) annotated with @PreConsumed
-            List<Method> methods = ObjectHelper.findMethodsWithAnnotation(entityType, PreConsumed.class);
+            List<Method> methods = AnnotationHelper.findMethodsWithAnnotation(entityType, PreConsumed.class);
             if (methods.size() > 1) {
-                throw new IllegalStateException("Only one method can be annotated with the @PreConsumed annotation but found: " + methods);
+                throw new IllegalStateException(
+                        "Only one method can be annotated with the @PreConsumed annotation but found: " + methods);
             } else if (methods.size() == 1) {
                 // Inspect the parameters of the @PreConsumed method
                 final Method method = methods.get(0);
                 final boolean useExchangeParameter = checkParameters(method);
-                return new DeleteHandler<Object>() {
-                    @Override
-                    public void deleteObject(EntityManager entityManager, Object entityBean, Exchange exchange) {
-                        // The entityBean could be an Object array
-                        if (entityType.isInstance(entityBean)) {
-                            if (useExchangeParameter) {
-                                ObjectHelper.invokeMethod(method, entityBean, exchange);
-                            } else {
-                                ObjectHelper.invokeMethod(method, entityBean);
-                            }
+                return (EntityManager em, Object entityBean, Exchange exchange) -> {
+                    // The entityBean could be an Object array
+                    if (entityType.isInstance(entityBean)) {
+                        if (useExchangeParameter) {
+                            ObjectHelper.invokeMethod(method, entityBean, exchange);
+                        } else {
+                            ObjectHelper.invokeMethod(method, entityBean);
                         }
                     }
                 };
@@ -431,11 +444,7 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
         }
 
         // else do nothing
-        return new DeleteHandler<Object>() {
-            @Override
-            public void deleteObject(EntityManager entityManager, Object entityBean, Exchange exchange) {
-                // Do nothing
-            }
+        return (EntityManager em, Object entityBean, Exchange exchange) -> {
         };
     }
 
@@ -443,47 +452,40 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
         // look for @Consumed to allow custom callback when the Entity has been consumed
         final Class<?> entityType = getEndpoint().getEntityType();
         if (entityType != null) {
-            List<Method> methods = ObjectHelper.findMethodsWithAnnotation(entityType, Consumed.class);
+            List<Method> methods = AnnotationHelper.findMethodsWithAnnotation(entityType, Consumed.class);
             if (methods.size() > 1) {
-                throw new IllegalArgumentException("Only one method can be annotated with the @Consumed annotation but found: " + methods);
+                throw new IllegalArgumentException(
+                        "Only one method can be annotated with the @Consumed annotation but found: " + methods);
             } else if (methods.size() == 1) {
                 final Method method = methods.get(0);
                 final boolean useExchangeParameter = checkParameters(method);
-                return new DeleteHandler<Object>() {
-                    public void deleteObject(EntityManager entityManager, Object entityBean, Exchange exchange) {
-                        if (entityType.isInstance(entityBean)) {
-                            if (useExchangeParameter) {
-                                ObjectHelper.invokeMethod(method, entityBean, exchange);
-                            } else {
-                                ObjectHelper.invokeMethod(method, entityBean);
-                            }
+                return (EntityManager em, Object entityBean, Exchange exchange) -> {
+                    if (entityType.isInstance(entityBean)) {
+                        if (useExchangeParameter) {
+                            ObjectHelper.invokeMethod(method, entityBean, exchange);
+                        } else {
+                            ObjectHelper.invokeMethod(method, entityBean);
                         }
                     }
                 };
             }
         }
         if (getEndpoint().isConsumeDelete()) {
-            return new DeleteHandler<Object>() {
-                public void deleteObject(EntityManager entityManager, Object entityBean, Exchange exchange) {
-                    entityManager.remove(entityBean);
-                }
-            };
-        } else {
-            return new DeleteHandler<Object>() {
-                public void deleteObject(EntityManager entityManager, Object entityBean, Exchange exchange) {
-                    // do nothing
-                }
-            };
+            return (EntityManager em, Object entityBean, Exchange exchange) -> em.remove(entityBean);
         }
+
+        return (EntityManager em, Object entityBean, Exchange exchange) -> {
+        };
+
     }
-    
+
     protected boolean checkParameters(Method method) {
         boolean result = false;
-        Class<?>[] parameters = method.getParameterTypes();
-        if (parameters.length == 1 && parameters[0].isAssignableFrom(Exchange.class)) {
+        Class<?>[] receivedParameters = method.getParameterTypes();
+        if (receivedParameters.length == 1 && receivedParameters[0].isAssignableFrom(Exchange.class)) {
             result = true;
-        } 
-        if (parameters.length > 0 && !result) {
+        }
+        if (receivedParameters.length > 0 && !result) {
             throw new IllegalStateException("@PreConsumed annotated method cannot have parameter other than Exchange");
         }
         return result;
@@ -503,14 +505,16 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
     }
 
     protected Exchange createExchange(Object result, EntityManager entityManager) {
-        Exchange exchange = getEndpoint().createExchange();
+        Exchange exchange = createExchange(false);
         exchange.getIn().setBody(result);
         exchange.getIn().setHeader(JpaConstants.ENTITY_MANAGER, entityManager);
         return exchange;
     }
 
     @Override
-    protected void doStart() throws Exception {
+    protected void doInit() throws Exception {
+        super.doInit();
+
         // need to setup entity manager first
         if (getEndpoint().isSharedEntityManager()) {
             this.entityManager = SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory);
@@ -518,8 +522,6 @@ public class JpaConsumer extends ScheduledBatchPollingConsumer {
             this.entityManager = entityManagerFactory.createEntityManager();
         }
         LOG.trace("Created EntityManager {} on {}", entityManager, this);
-
-        super.doStart();
     }
 
     @Override

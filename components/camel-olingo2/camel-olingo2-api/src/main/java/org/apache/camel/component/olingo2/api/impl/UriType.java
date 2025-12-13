@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,6 +17,7 @@
 package org.apache.camel.component.olingo2.api.impl;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 
 /**
  * Copied from Olingo2 core package.
@@ -29,9 +30,9 @@ public enum UriType {
     /**
      * Entity set
      */
-    URI1(SystemQueryOption.$format, SystemQueryOption.$filter, SystemQueryOption.$inlinecount,
-        SystemQueryOption.$orderby, SystemQueryOption.$skiptoken, SystemQueryOption.$skip, SystemQueryOption.$top,
-        SystemQueryOption.$expand, SystemQueryOption.$select),
+    URI1(SystemQueryOption.$format, SystemQueryOption.$filter, SystemQueryOption.$inlinecount, SystemQueryOption.$orderby,
+         SystemQueryOption.$skiptoken, SystemQueryOption.$skip,
+         SystemQueryOption.$top, SystemQueryOption.$expand, SystemQueryOption.$select),
     /**
      * Entity set with key predicate
      */
@@ -55,9 +56,9 @@ public enum UriType {
     /**
      * Navigation property of an entity with target multiplicity '*'
      */
-    URI6B(SystemQueryOption.$format, SystemQueryOption.$filter, SystemQueryOption.$inlinecount,
-        SystemQueryOption.$orderby, SystemQueryOption.$skiptoken, SystemQueryOption.$skip, SystemQueryOption.$top,
-        SystemQueryOption.$expand, SystemQueryOption.$select),
+    URI6B(SystemQueryOption.$format, SystemQueryOption.$filter, SystemQueryOption.$inlinecount, SystemQueryOption.$orderby,
+          SystemQueryOption.$skiptoken, SystemQueryOption.$skip,
+          SystemQueryOption.$top, SystemQueryOption.$expand, SystemQueryOption.$select),
     /**
      * Link to a single entity
      */
@@ -65,8 +66,9 @@ public enum UriType {
     /**
      * Link to multiple entities
      */
-    URI7B(SystemQueryOption.$format, SystemQueryOption.$filter, SystemQueryOption.$inlinecount,
-        SystemQueryOption.$orderby, SystemQueryOption.$skiptoken, SystemQueryOption.$skip, SystemQueryOption.$top),
+    URI7B(SystemQueryOption.$format, SystemQueryOption.$filter, SystemQueryOption.$inlinecount, SystemQueryOption.$orderby,
+          SystemQueryOption.$skiptoken, SystemQueryOption.$skip,
+          SystemQueryOption.$top),
     /**
      * Metadata document
      */
@@ -116,12 +118,10 @@ public enum UriType {
      */
     URI50B(SystemQueryOption.$filter, SystemQueryOption.$orderby, SystemQueryOption.$skip, SystemQueryOption.$top);
 
-    private ArrayList<SystemQueryOption> whiteList = new ArrayList<SystemQueryOption>();
+    private final ArrayList<SystemQueryOption> whiteList = new ArrayList<>();
 
     UriType(final SystemQueryOption... compatibleQueryOptions) {
-        for (SystemQueryOption queryOption : compatibleQueryOptions) {
-            whiteList.add(queryOption);
-        }
+        whiteList.addAll(Arrays.asList(compatibleQueryOptions));
     }
 
     public boolean isCompatible(final SystemQueryOption queryOption) {

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,28 +18,17 @@ package org.apache.camel.component.shiro.security;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
-import org.apache.shiro.crypto.AesCipherService;
-import org.apache.shiro.crypto.CipherService;
-import org.apache.shiro.util.ByteSource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.shiro.crypto.cipher.AesCipherService;
+import org.apache.shiro.crypto.cipher.CipherService;
+import org.apache.shiro.lang.util.ByteSource;
 
 public class ShiroSecurityTokenInjector implements Processor {
-    private static final Logger LOG = LoggerFactory.getLogger(ShiroSecurityTokenInjector.class);
-                                                              
-    private final byte[] bits128 = {
-        (byte) 0x08, (byte) 0x09, (byte) 0x0A, (byte) 0x0B,
-        (byte) 0x0C, (byte) 0x0D, (byte) 0x0E, (byte) 0x0F,
-        (byte) 0x10, (byte) 0x11, (byte) 0x12, (byte) 0x13,
-        (byte) 0x14, (byte) 0x15, (byte) 0x16, (byte) 0x17};
     private byte[] passPhrase;
     private ShiroSecurityToken securityToken;
     private CipherService cipherService;
     private boolean base64;
-    
-    public ShiroSecurityTokenInjector() {
-        this.passPhrase = bits128;
 
+    public ShiroSecurityTokenInjector() {
         // Set up AES encryption based cipher service, by default
         cipherService = new AesCipherService();
     }
@@ -55,13 +44,11 @@ public class ShiroSecurityTokenInjector implements Processor {
         this.cipherService = cipherService;
     }
 
-    public ByteSource encrypt() throws Exception {
-        if (passPhrase == bits128) {
-            LOG.warn("Using the default encryption key is not secure");
-        }
+    public ByteSource encrypt() {
         return ShiroSecurityHelper.encrypt(securityToken, passPhrase, cipherService);
     }
 
+    @Override
     public void process(Exchange exchange) throws Exception {
         ByteSource bytes = encrypt();
 
@@ -106,5 +93,4 @@ public class ShiroSecurityTokenInjector implements Processor {
     public void setBase64(boolean base64) {
         this.base64 = base64;
     }
-
 }

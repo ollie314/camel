@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,26 +17,31 @@
 package org.apache.camel.component.jms.issues;
 
 import java.util.Map;
-import javax.jms.ConnectionFactory;
 
 import org.apache.camel.CamelContext;
-import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.jms.CamelJmsTestHelper;
+import org.apache.camel.component.jms.AbstractJMSTest;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+public class JmsGetHeaderKeyFormatIssueTest extends AbstractJMSTest {
 
-/**
- * @version 
- */
-public class JmsGetHeaderKeyFormatIssueTest extends CamelTestSupport {
-
-    private String uri = "activemq:queue:hello?jmsKeyFormatStrategy=default";
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
+    private final String uri = "activemq:queue:JmsGetHeaderKeyFormatIssueTest?jmsKeyFormatStrategy=default";
 
     @Test
     public void testSendWithHeaders() throws Exception {
@@ -47,39 +52,45 @@ public class JmsGetHeaderKeyFormatIssueTest extends CamelTestSupport {
 
         template.sendBodyAndHeader(uri, "Hello World", "HEADER_1", "VALUE_1");
 
-        assertMockEndpointsSatisfied();
-    }
-
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-        return camelContext;
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected String getComponentName() {
+        return "activemq";
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from(uri)
-                    .process(new Processor() {
-                        public void process(Exchange exchange) throws Exception {
+                        .process(exchange -> {
                             Map<String, Object> headers = exchange.getIn().getHeaders();
                             assertEquals("VALUE_1", headers.get("HEADER_1"));
                             assertEquals("VALUE_1", exchange.getIn().getHeader("HEADER_1"));
-                        }
-                    })
-                    .setHeader("HEADER_1", constant("VALUE_2"))
-                    .process(new Processor() {
-                        public void process(Exchange exchange) throws Exception {
+                        })
+                        .setHeader("HEADER_1", constant("VALUE_2"))
+                        .process(exchange -> {
                             Map<String, Object> headers = exchange.getIn().getHeaders();
                             assertEquals("VALUE_2", headers.get("HEADER_1"));
                             assertEquals("VALUE_2", exchange.getIn().getHeader("HEADER_1"));
-                        }
-                    })
-                    .to("mock:result");
+                        })
+                        .to("mock:result");
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
     }
 }

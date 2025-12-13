@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,6 +21,7 @@ import java.lang.reflect.Method;
 import java.util.Map;
 
 import com.braintreegateway.BraintreeGateway;
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
@@ -30,28 +31,31 @@ import org.apache.camel.component.braintree.internal.BraintreeConstants;
 import org.apache.camel.component.braintree.internal.BraintreePropertiesHelper;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
-import org.apache.camel.spi.UriPath;
-import org.apache.camel.util.component.AbstractApiEndpoint;
-import org.apache.camel.util.component.ApiMethod;
-import org.apache.camel.util.component.ApiMethodPropertiesHelper;
+import org.apache.camel.support.component.AbstractApiEndpoint;
+import org.apache.camel.support.component.ApiMethod;
+import org.apache.camel.support.component.ApiMethodPropertiesHelper;
 
 /**
- * The braintree component is used for integrating with the Braintree Payment System.
+ * Process payments using Braintree Payments.
  */
-@UriEndpoint(scheme = "braintree", title = "Braintree", syntax = "braintree:apiName/methodName", consumerClass = BraintreeConsumer.class, label = "api,cloud,payment")
+@UriEndpoint(firstVersion = "2.17.0", scheme = "braintree", title = "Braintree", syntax = "braintree:apiName/methodName",
+             producerOnly = true,
+             apiSyntax = "apiName/methodName",
+             category = { Category.SAAS, Category.FINANCE })
 public class BraintreeEndpoint extends AbstractApiEndpoint<BraintreeApiName, BraintreeConfiguration> {
 
     @UriParam
     private final BraintreeConfiguration configuration;
 
     private Object apiProxy;
-    private final BraintreeGateway gateway;
 
-    public BraintreeEndpoint(String uri, BraintreeComponent component,
-                         BraintreeApiName apiName, String methodName, BraintreeConfiguration configuration, BraintreeGateway gateway) {
+    public BraintreeEndpoint(String uri,
+                             BraintreeComponent component,
+                             BraintreeApiName apiName,
+                             String methodName,
+                             BraintreeConfiguration configuration) {
         super(uri, component, apiName, methodName, BraintreeApiCollection.getCollection().getHelper(apiName), configuration);
         this.configuration = configuration;
-        this.gateway = gateway;
     }
 
     @Override
@@ -61,15 +65,17 @@ public class BraintreeEndpoint extends AbstractApiEndpoint<BraintreeApiName, Bra
 
     @Override
     public Consumer createConsumer(Processor processor) throws Exception {
-        BraintreeConsumer consumer = new BraintreeConsumer(this, processor);
-        // also set consumer.* properties
-        configureConsumer(consumer);
-        return consumer;
+        throw new UnsupportedOperationException("Consumer not supported");
+    }
+
+    @Override
+    public BraintreeComponent getComponent() {
+        return (BraintreeComponent) super.getComponent();
     }
 
     @Override
     protected ApiMethodPropertiesHelper<BraintreeConfiguration> getPropertiesHelper() {
-        return BraintreePropertiesHelper.getHelper();
+        return BraintreePropertiesHelper.getHelper(getCamelContext());
     }
 
     @Override
@@ -79,18 +85,11 @@ public class BraintreeEndpoint extends AbstractApiEndpoint<BraintreeApiName, Bra
 
     @Override
     protected void afterConfigureProperties() {
+        BraintreeGateway gateway = getComponent().getGateway(this.configuration);
         try {
             Method method = gateway.getClass().getMethod(apiName.getName());
-            if (method != null) {
-                apiProxy = method.invoke(gateway);
-            } else {
-                throw new IllegalArgumentException("Invalid API name " + apiName);
-            }
-        } catch (NoSuchMethodException e) {
-            throw new IllegalArgumentException(e);
-        } catch (InvocationTargetException e) {
-            throw new IllegalArgumentException(e);
-        } catch (IllegalAccessException e) {
+            apiProxy = method.invoke(gateway);
+        } catch (NoSuchMethodException | InvocationTargetException | IllegalAccessException e) {
             throw new IllegalArgumentException(e);
         }
     }

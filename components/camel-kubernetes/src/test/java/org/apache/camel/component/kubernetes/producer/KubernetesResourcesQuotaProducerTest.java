@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,125 +16,165 @@
  */
 package org.apache.camel.component.kubernetes.producer;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
-import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceQuota;
+import io.fabric8.kubernetes.api.model.ResourceQuotaBuilder;
+import io.fabric8.kubernetes.api.model.ResourceQuotaListBuilder;
 import io.fabric8.kubernetes.api.model.ResourceQuotaSpec;
-
+import io.fabric8.kubernetes.api.model.ResourceQuotaSpecBuilder;
+import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.NamespacedKubernetesClient;
+import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient;
+import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer;
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.kubernetes.KubernetesConstants;
 import org.apache.camel.component.kubernetes.KubernetesTestSupport;
-import org.apache.camel.util.ObjectHelper;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@EnableKubernetesMockClient
 public class KubernetesResourcesQuotaProducerTest extends KubernetesTestSupport {
 
-    @Test
-    public void listTest() throws Exception {
-        if (ObjectHelper.isEmpty(authToken)) {
-            return;
-        }
-        List<ResourceQuota> result = template.requestBody("direct:list", "",
-                List.class);
+    KubernetesMockServer server;
+    NamespacedKubernetesClient client;
 
-        assertTrue(result.size() == 0);
+    @BindToRegistry("kubernetesClient")
+    public KubernetesClient getClient() {
+        return client;
     }
 
     @Test
-    public void createAndDeleteResourceQuota() throws Exception {
-        if (ObjectHelper.isEmpty(authToken)) {
-            return;
-        }
-        Exchange ex = template.request("direct:create", new Processor() {
+    void listTest() {
+        server.expect().withPath("/api/v1/resourcequotas")
+                .andReturn(200, new ResourceQuotaListBuilder().addNewItem().and().addNewItem().and().addNewItem().and().build())
+                .once();
+        server.expect().withPath("/api/v1/namespaces/test/resourcequotas")
+                .andReturn(200, new ResourceQuotaListBuilder().addNewItem().and().addNewItem().and().build())
+                .once();
+        List<?> result = template.requestBody("direct:list", "", List.class);
+        assertEquals(3, result.size());
 
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                        "default");
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_RESOURCES_QUOTA_NAME,
-                        "test");
-                Map<String, String> labels = new HashMap<String, String>();
-                labels.put("this", "rocks");
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_RESOURCES_QUOTA_LABELS,
-                        labels);
-                ResourceQuotaSpec rsSpec = new ResourceQuotaSpec();
-                Map<String, Quantity> mp = new HashMap<String, Quantity>();
-                mp.put("pods", new Quantity("100"));
-                rsSpec.setHard(mp);
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_RESOURCE_QUOTA_SPEC,
-                        rsSpec);
-            }
+        Exchange ex = template.request("direct:list",
+                exchange -> exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test"));
+        assertEquals(2, ex.getMessage().getBody(List.class).size());
+    }
+
+    @Test
+    public void listByLabelsTest() throws Exception {
+        Map<String, String> labels = Map.of(
+                "key1", "value1",
+                "key2", "value2");
+
+        String urlEncodedLabels = toUrlEncoded(labels.entrySet().stream().map(e -> e.getKey() + "=" + e.getValue())
+                .collect(Collectors.joining(",")));
+
+        server.expect().withPath("/api/v1/resourcequotas?labelSelector=" + urlEncodedLabels)
+                .andReturn(200, new ResourceQuotaListBuilder().addNewItem().and().addNewItem().and().addNewItem().and().build())
+                .once();
+        server.expect().withPath("/api/v1/namespaces/test/resourcequotas?labelSelector=" + urlEncodedLabels)
+                .andReturn(200, new ResourceQuotaListBuilder().addNewItem().and().addNewItem().and().build())
+                .once();
+        Exchange ex = template.request("direct:listByLabels",
+                exchange -> exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_RESOURCES_QUOTA_LABELS, labels));
+
+        assertEquals(3, ex.getMessage().getBody(List.class).size());
+
+        ex = template.request("direct:listByLabels", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_RESOURCES_QUOTA_LABELS, labels);
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
         });
 
-        ResourceQuota rs = ex.getOut().getBody(ResourceQuota.class);
+        assertEquals(2, ex.getMessage().getBody(List.class).size());
+    }
 
-        assertEquals(rs.getMetadata().getName(), "test");
-        
-        ex = template.request("direct:get", new Processor() {
+    @Test
+    void createResourceQuota() {
+        Map<String, String> labels = Map.of("my.label.key", "my.label.value");
+        ResourceQuotaSpec spec = new ResourceQuotaSpecBuilder().withScopes("SomeScope").build();
+        ResourceQuota rq1
+                = new ResourceQuotaBuilder().withNewMetadata().withName("rq1").withNamespace("test").withLabels(labels).and()
+                        .withSpec(spec).build();
+        server.expect().post().withPath("/api/v1/namespaces/test/resourcequotas").andReturn(200, rq1).once();
 
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                        "default");
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_RESOURCES_QUOTA_NAME,
-                        "test");
-            }
-        });
-        
-        ResourceQuota rsGet = ex.getOut().getBody(ResourceQuota.class);
-        
-        assertEquals(rsGet.getMetadata().getName(), "test");
-        assertEquals(rsGet.getSpec().getHard().get("pods"), new Quantity("100"));
-
-        ex = template.request("direct:delete", new Processor() {
-
-            @Override
-            public void process(Exchange exchange) throws Exception {
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_NAMESPACE_NAME,
-                        "default");
-                exchange.getIn().setHeader(
-                        KubernetesConstants.KUBERNETES_RESOURCES_QUOTA_NAME,
-                        "test");
-            }
+        Exchange ex = template.request("direct:create", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_RESOURCES_QUOTA_LABELS, labels);
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_RESOURCES_QUOTA_NAME, "rq1");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_RESOURCE_QUOTA_SPEC, spec);
         });
 
-        boolean rqDeleted = ex.getOut().getBody(Boolean.class);
+        ResourceQuota result = ex.getMessage().getBody(ResourceQuota.class);
+
+        assertEquals("test", result.getMetadata().getNamespace());
+        assertEquals("rq1", result.getMetadata().getName());
+        assertEquals(labels, result.getMetadata().getLabels());
+        assertEquals(List.of("SomeScope"), result.getSpec().getScopes());
+    }
+
+    @Test
+    void updateResourceQuota() {
+        Map<String, String> labels = Map.of("my.label.key", "my.label.value");
+        ResourceQuotaSpec spec = new ResourceQuotaSpecBuilder().withScopes("SomeScope").build();
+        ResourceQuota rq1
+                = new ResourceQuotaBuilder().withNewMetadata().withName("rq1").withNamespace("test").withLabels(labels).and()
+                        .withSpec(spec).build();
+        server.expect().get().withPath("/api/v1/namespaces/test/resourcequotas/rq1").andReturn(200,
+                new ResourceQuotaBuilder().withNewMetadata().withName("rq1").withNamespace("test").endMetadata().build())
+                .once();
+        server.expect().put().withPath("/api/v1/namespaces/test/resourcequotas/rq1").andReturn(200, rq1).once();
+
+        Exchange ex = template.request("direct:update", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_RESOURCES_QUOTA_LABELS, labels);
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_RESOURCES_QUOTA_NAME, "rq1");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_RESOURCE_QUOTA_SPEC, spec);
+        });
+
+        ResourceQuota result = ex.getMessage().getBody(ResourceQuota.class);
+
+        assertEquals("test", result.getMetadata().getNamespace());
+        assertEquals("rq1", result.getMetadata().getName());
+        assertEquals(labels, result.getMetadata().getLabels());
+        assertEquals(List.of("SomeScope"), result.getSpec().getScopes());
+    }
+
+    @Test
+    void deleteResourceQuota() {
+        ResourceQuota rq1 = new ResourceQuotaBuilder().withNewMetadata().withName("rq1").withNamespace("test").and().build();
+        server.expect().withPath("/api/v1/namespaces/test/resourcequotas/rq1").andReturn(200, rq1).once();
+
+        Exchange ex = template.request("direct:delete", exchange -> {
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_NAMESPACE_NAME, "test");
+            exchange.getIn().setHeader(KubernetesConstants.KUBERNETES_RESOURCES_QUOTA_NAME, "rq1");
+        });
+
+        boolean rqDeleted = ex.getMessage().getBody(Boolean.class);
 
         assertTrue(rqDeleted);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:list")
-                        .toF("kubernetes://%s?oauthToken=%s&category=resourcesQuota&operation=listResourcesQuota",
-                                host, authToken);
+                        .to("kubernetes-resources-quota:///?kubernetesClient=#kubernetesClient&operation=listResourcesQuota");
                 from("direct:listByLabels")
-                        .toF("kubernetes://%s?oauthToken=%s&category=resourcesQuota&operation=listResourcesQuotaByLabels",
-                                host, authToken);
-                from("direct:get")
-                        .toF("kubernetes://%s?oauthToken=%s&category=resourcesQuota&operation=getResourceQuota",
-                                host, authToken);
+                        .to("kubernetes-resources-quota:///?kubernetesClient=#kubernetesClient&operation=listResourcesQuotaByLabels");
                 from("direct:create")
-                        .toF("kubernetes://%s?oauthToken=%s&category=resourcesQuota&operation=createResourceQuota",
-                                host, authToken);
+                        .to("kubernetes-resources-quota:///?kubernetesClient=#kubernetesClient&operation=createResourceQuota");
+                from("direct:update")
+                        .to("kubernetes-resources-quota:///?kubernetesClient=#kubernetesClient&operation=updateResourceQuota");
                 from("direct:delete")
-                        .toF("kubernetes://%s?oauthToken=%s&category=resourcesQuota&operation=deleteResourceQuota",
-                                host, authToken);
+                        .to("kubernetes-resources-quota:///?kubernetesClient=#kubernetesClient&operation=deleteResourceQuota");
             }
         };
     }

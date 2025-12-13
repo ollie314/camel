@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,8 +26,8 @@ import io.undertow.util.Headers;
 public class NotFoundHandler implements HttpHandler {
 
     @Override
-    public void handleRequest(HttpServerExchange exchange) throws Exception {
-        exchange.setResponseCode(404);
+    public void handleRequest(HttpServerExchange exchange) {
+        exchange.setStatusCode(404);
         exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/plain");
         exchange.getResponseSender().send("No matching path found");
     }

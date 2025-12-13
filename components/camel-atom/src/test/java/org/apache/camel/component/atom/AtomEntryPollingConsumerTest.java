@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,57 +16,34 @@
  */
 package org.apache.camel.component.atom;
 
-import java.text.SimpleDateFormat;
-import javax.naming.Context;
-
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.apache.camel.util.jndi.JndiContext;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
 /**
  * Unit test for AtomEntryPollingConsumer
  */
+@DisabledOnOs(OS.AIX)
 public class AtomEntryPollingConsumerTest extends CamelTestSupport {
 
+    @DisplayName("Tests whether can consume from the atom feed")
     @Test
-    public void testResult() throws Exception {
+    void testCanConsume() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:result1");
         mock.expectedMessageCount(7);
         mock.assertIsSatisfied();
     }
 
-    @Test
-    public void testResult2() throws Exception {
-        MockEndpoint mock = getMockEndpoint("mock:result2");
-        mock.expectedMessageCount(7);
-        mock.assertIsSatisfied();
-    }
-
-    @Test
-    public void testResult3() throws Exception {
-        MockEndpoint mock = getMockEndpoint("mock:result3");
-        mock.expectedMessageCount(4);
-        mock.assertIsSatisfied();
-    }
-
     @Override
-    protected Context createJndiContext() throws Exception {
-        JndiContext jndi = new JndiContext();
-        SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z");
-        jndi.bind("myDate", df.parse("2007-11-13 14:35:00 +0100"));
-        return jndi;
-    }
-
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("atom:file:src/test/data/feed.atom?splitEntries=true&consumer.delay=500").to("mock:result1");
-
-                from("atom:file:src/test/data/feed.atom?splitEntries=true&filter=false&consumer.delay=500").to("mock:result2");
-
-                from("atom:file:src/test/data/feed.atom?splitEntries=true&filter=true&lastUpdate=#myDate&consumer.delay=500").to("mock:result3");
+            public void configure() {
+                from("atom:file:src/test/data/feed.atom?splitEntries=true&delay=500")
+                        .to("mock:result1");
             }
         };
     }

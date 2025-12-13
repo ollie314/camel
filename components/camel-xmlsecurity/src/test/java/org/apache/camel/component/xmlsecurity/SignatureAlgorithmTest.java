@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -56,6 +56,7 @@ import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.ProducerTemplate;
+import org.apache.camel.RuntimeCamelException;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.component.xmlsecurity.api.KeyAccessor;
@@ -71,32 +72,29 @@ import org.apache.camel.component.xmlsecurity.util.TimestampProperty;
 import org.apache.camel.component.xmlsecurity.util.ValidationFailedHandlerIgnoreManifestFailures;
 import org.apache.camel.component.xmlsecurity.util.XmlSignature2Message2MessageWithTimestampProperty;
 import org.apache.camel.impl.DefaultCamelContext;
-import org.apache.camel.impl.JndiRegistry;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Before;
-import org.junit.Test;
-
+import org.apache.camel.spi.Registry;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.apache.camel.test.junit5.TestSupport;
+import org.junit.jupiter.api.Test;
 
 /**
- * Test signing using all available signature methods, apart from EC-algorithms which are
- * tested in ECDSASignatureTest.
+ * Test signing using all available signature methods, apart from EC-algorithms which are tested in ECDSASignatureTest.
  */
 public class SignatureAlgorithmTest extends CamelTestSupport {
 
     private static String payload;
     private KeyPair keyPair;
-    
+
     static {
         boolean includeNewLine = true;
-        if (System.getProperty("java.version") != null
-            && System.getProperty("java.version").startsWith("1.9")) {
+        if (!TestSupport.isJavaVendor("Azul")) {
             includeNewLine = false;
         }
         payload = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-            + (includeNewLine ? "\n" : "")
-            + "<root xmlns=\"http://test/test\"><test>Test Message</test></root>";
+                  + (includeNewLine ? "\n" : "")
+                  + "<root xmlns=\"http://test/test\"><test>Test Message</test></root>";
     }
-    
+
     public SignatureAlgorithmTest() throws Exception {
         // BouncyCastle is required for some algorithms
         if (Security.getProvider("BC") == null) {
@@ -104,15 +102,13 @@ public class SignatureAlgorithmTest extends CamelTestSupport {
             Class<?> c = Class.forName("org.bouncycastle.jce.provider.BouncyCastleProvider");
             cons = c.getConstructor(new Class[] {});
 
-            Provider provider = (java.security.Provider)cons.newInstance();
+            Provider provider = (java.security.Provider) cons.newInstance();
             Security.insertProviderAt(provider, 2);
         }
     }
 
     @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry registry = super.createRegistry();
-        
+    protected void bindToRegistry(Registry registry) throws Exception {
         Key secretKey = getSecretKey("testkey".getBytes("ASCII"));
 
         registry.bind("accessor", getKeyAccessor(keyPair.getPrivate()));
@@ -137,167 +133,165 @@ public class SignatureAlgorithmTest extends CamelTestSupport {
         registry.bind("xpathsToIdAttributes", xpaths);
 
         registry.bind("parentXpathBean", getParentXPathBean());
-
-        return registry;
     }
 
     @Override
-    protected RouteBuilder[] createRouteBuilders() throws Exception {
-        return new RouteBuilder[] {new RouteBuilder() {
-            public void configure() throws Exception {
+    protected RouteBuilder[] createRouteBuilders() {
+        return new RouteBuilder[] { new RouteBuilder() {
+            public void configure() {
                 // START SNIPPET: signature and digest algorithm
                 from("direct:hmacsha1")
-                        .to("xmlsecurity:sign:hmacsha1?keyAccessor=#secretKeyAccessor"
+                        .to("xmlsecurity-sign:hmacsha1?keyAccessor=#secretKeyAccessor"
                             + "&signatureAlgorithm=http://www.w3.org/2000/09/xmldsig#hmac-sha1")
                         // .log("Body: + ${body}")
-                        .to("xmlsecurity:verify:signaturedigestalgorithm?keySelector=#secretKeySelector").to("mock:result");
+                        .to("xmlsecurity-verify:signaturedigestalgorithm?keySelector=#secretKeySelector").to("mock:result");
                 // END SNIPPET: signature and digest algorithm
             }
         }, new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: signature and digest algorithm
                 from("direct:hmacsha224")
-                        .to("xmlsecurity:sign:hmacsha224?keyAccessor=#secretKeyAccessor"
+                        .to("xmlsecurity-sign:hmacsha224?keyAccessor=#secretKeyAccessor"
                             + "&signatureAlgorithm=http://www.w3.org/2001/04/xmldsig-more#hmac-sha224")
-                        .to("xmlsecurity:verify:signaturedigestalgorithm?keySelector=#secretKeySelector").to("mock:result");
+                        .to("xmlsecurity-verify:signaturedigestalgorithm?keySelector=#secretKeySelector").to("mock:result");
                 // END SNIPPET: signature and digest algorithm
             }
         }, new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: signature and digest algorithm
                 from("direct:hmacsha256")
-                        .to("xmlsecurity:sign:hmacsha256?keyAccessor=#secretKeyAccessor"
+                        .to("xmlsecurity-sign:hmacsha256?keyAccessor=#secretKeyAccessor"
                             + "&signatureAlgorithm=http://www.w3.org/2001/04/xmldsig-more#hmac-sha256")
-                        .to("xmlsecurity:verify:signaturedigestalgorithm?keySelector=#secretKeySelector").to("mock:result");
+                        .to("xmlsecurity-verify:signaturedigestalgorithm?keySelector=#secretKeySelector").to("mock:result");
                 // END SNIPPET: signature and digest algorithm
             }
         }, new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: signature and digest algorithm
                 from("direct:hmacsha384")
-                        .to("xmlsecurity:sign:hmacsha384?keyAccessor=#secretKeyAccessor"
+                        .to("xmlsecurity-sign:hmacsha384?keyAccessor=#secretKeyAccessor"
                             + "&signatureAlgorithm=http://www.w3.org/2001/04/xmldsig-more#hmac-sha384")
-                        .to("xmlsecurity:verify:signaturedigestalgorithm?keySelector=#secretKeySelector").to("mock:result");
+                        .to("xmlsecurity-verify:signaturedigestalgorithm?keySelector=#secretKeySelector").to("mock:result");
                 // END SNIPPET: signature and digest algorithm
             }
         }, new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: signature and digest algorithm
                 from("direct:hmacsha512")
-                        .to("xmlsecurity:sign:hmacsha512?keyAccessor=#secretKeyAccessor"
+                        .to("xmlsecurity-sign:hmacsha512?keyAccessor=#secretKeyAccessor"
                             + "&signatureAlgorithm=http://www.w3.org/2001/04/xmldsig-more#hmac-sha512")
-                        .to("xmlsecurity:verify:signaturedigestalgorithm?keySelector=#secretKeySelector").to("mock:result");
+                        .to("xmlsecurity-verify:signaturedigestalgorithm?keySelector=#secretKeySelector").to("mock:result");
                 // END SNIPPET: signature and digest algorithm
             }
         }, new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: signature and digest algorithm
                 from("direct:hmacripemd160")
-                        .to("xmlsecurity:sign:hmacripemd160?keyAccessor=#secretKeyAccessor"
+                        .to("xmlsecurity-sign:hmacripemd160?keyAccessor=#secretKeyAccessor"
                             + "&signatureAlgorithm=http://www.w3.org/2001/04/xmldsig-more#hmac-ripemd160")
-                        .to("xmlsecurity:verify:signaturedigestalgorithm?keySelector=#secretKeySelector").to("mock:result");
+                        .to("xmlsecurity-verify:signaturedigestalgorithm?keySelector=#secretKeySelector").to("mock:result");
                 // END SNIPPET: signature and digest algorithm
             }
         }, new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: signature and digest algorithm
                 from("direct:rsasha1")
-                        .to("xmlsecurity:sign:rsasha1?keyAccessor=#accessor"
+                        .to("xmlsecurity-sign:rsasha1?keyAccessor=#accessor"
                             + "&signatureAlgorithm=http://www.w3.org/2000/09/xmldsig#rsa-sha1")
-                        .to("xmlsecurity:verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
+                        .to("xmlsecurity-verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
                 // END SNIPPET: signature and digest algorithm
             }
         }, new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: signature and digest algorithm
                 from("direct:rsasha224")
-                        .to("xmlsecurity:sign:rsasha224?keyAccessor=#accessor"
+                        .to("xmlsecurity-sign:rsasha224?keyAccessor=#accessor"
                             + "&signatureAlgorithm=http://www.w3.org/2001/04/xmldsig-more#rsa-sha224")
-                        .to("xmlsecurity:verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
+                        .to("xmlsecurity-verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
                 // END SNIPPET: signature and digest algorithm
             }
         }, new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: signature and digest algorithm
                 from("direct:rsasha256")
-                        .to("xmlsecurity:sign:rsasha256?keyAccessor=#accessor"
+                        .to("xmlsecurity-sign:rsasha256?keyAccessor=#accessor"
                             + "&signatureAlgorithm=http://www.w3.org/2001/04/xmldsig-more#rsa-sha256")
-                        .to("xmlsecurity:verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
+                        .to("xmlsecurity-verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
                 // END SNIPPET: signature and digest algorithm
             }
         }, new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: signature and digest algorithm
                 from("direct:rsasha384")
-                        .to("xmlsecurity:sign:rsasha384?keyAccessor=#accessor"
+                        .to("xmlsecurity-sign:rsasha384?keyAccessor=#accessor"
                             + "&signatureAlgorithm=http://www.w3.org/2001/04/xmldsig-more#rsa-sha384")
-                        .to("xmlsecurity:verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
+                        .to("xmlsecurity-verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
                 // END SNIPPET: signature and digest algorithm
             }
         }, new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: signature and digest algorithm
                 from("direct:rsasha512")
-                        .to("xmlsecurity:sign:rsasha512?keyAccessor=#accessor"
+                        .to("xmlsecurity-sign:rsasha512?keyAccessor=#accessor"
                             + "&signatureAlgorithm=http://www.w3.org/2001/04/xmldsig-more#rsa-sha512")
-                        .to("xmlsecurity:verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
+                        .to("xmlsecurity-verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
                 // END SNIPPET: signature and digest algorithm
             }
         }, new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: signature and digest algorithm
                 from("direct:rsaripemd160")
-                        .to("xmlsecurity:sign:rsaripemd160?keyAccessor=#accessor"
+                        .to("xmlsecurity-sign:rsaripemd160?keyAccessor=#accessor"
                             + "&signatureAlgorithm=http://www.w3.org/2001/04/xmldsig-more#rsa-ripemd160")
-                        .to("xmlsecurity:verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
+                        .to("xmlsecurity-verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
                 // END SNIPPET: signature and digest algorithm
             }
         }, new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: signature and digest algorithm
                 from("direct:rsasha1_mgf1")
-                        .to("xmlsecurity:sign:rsasha1_mgf1?keyAccessor=#accessor"
+                        .to("xmlsecurity-sign:rsasha1_mgf1?keyAccessor=#accessor"
                             + "&signatureAlgorithm=http://www.w3.org/2007/05/xmldsig-more#sha1-rsa-MGF1")
-                        .to("xmlsecurity:verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
+                        .to("xmlsecurity-verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
                 // END SNIPPET: signature and digest algorithm
             }
         }, new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: signature and digest algorithm
                 from("direct:rsasha224_mgf1")
-                        .to("xmlsecurity:sign:rsasha224_mgf1?keyAccessor=#accessor"
+                        .to("xmlsecurity-sign:rsasha224_mgf1?keyAccessor=#accessor"
                             + "&signatureAlgorithm=http://www.w3.org/2007/05/xmldsig-more#sha224-rsa-MGF1")
-                        .to("xmlsecurity:verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
+                        .to("xmlsecurity-verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
                 // END SNIPPET: signature and digest algorithm
             }
         }, new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: signature and digest algorithm
                 from("direct:rsasha256_mgf1")
-                        .to("xmlsecurity:sign:rsasha256_mgf1?keyAccessor=#accessor"
+                        .to("xmlsecurity-sign:rsasha256_mgf1?keyAccessor=#accessor"
                             + "&signatureAlgorithm=http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1")
-                        .to("xmlsecurity:verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
+                        .to("xmlsecurity-verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
                 // END SNIPPET: signature and digest algorithm
             }
         }, new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: signature and digest algorithm
                 from("direct:rsasha384_mgf1")
-                        .to("xmlsecurity:sign:rsasha384_mgf1?keyAccessor=#accessor"
+                        .to("xmlsecurity-sign:rsasha384_mgf1?keyAccessor=#accessor"
                             + "&signatureAlgorithm=http://www.w3.org/2007/05/xmldsig-more#sha384-rsa-MGF1")
-                        .to("xmlsecurity:verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
+                        .to("xmlsecurity-verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
                 // END SNIPPET: signature and digest algorithm
             }
         }, new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: signature and digest algorithm
                 from("direct:rsasha512_mgf1")
-                        .to("xmlsecurity:sign:rsasha512_mgf1?keyAccessor=#accessor"
+                        .to("xmlsecurity-sign:rsasha512_mgf1?keyAccessor=#accessor"
                             + "&signatureAlgorithm=http://www.w3.org/2007/05/xmldsig-more#sha512-rsa-MGF1")
-                        .to("xmlsecurity:verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
+                        .to("xmlsecurity-verify:signaturedigestalgorithm?keySelector=#selector").to("mock:result");
                 // END SNIPPET: signature and digest algorithm
             }
-        }};
+        } };
     }
 
     //
@@ -307,44 +301,44 @@ public class SignatureAlgorithmTest extends CamelTestSupport {
     public void testHMACSHA1() throws Exception {
         setupMock();
         sendBody("direct:hmacsha1", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testHMACSHA224() throws Exception {
         setupMock();
         sendBody("direct:hmacsha224", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testHMACSHA256() throws Exception {
         setupMock();
         sendBody("direct:hmacsha256", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testHMACSHA384() throws Exception {
         setupMock();
         sendBody("direct:hmacsha384", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testHMACSHA512() throws Exception {
         setupMock();
         sendBody("direct:hmacsha512", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testHMACRIPEMD160() throws Exception {
         setupMock();
         sendBody("direct:hmacripemd160", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     //
     // Public Key algorithms
     //
@@ -352,86 +346,94 @@ public class SignatureAlgorithmTest extends CamelTestSupport {
     public void testRSASHA1() throws Exception {
         setupMock();
         sendBody("direct:rsasha1", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testRSASHA224() throws Exception {
         setupMock();
         sendBody("direct:rsasha224", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testRSASHA256() throws Exception {
         setupMock();
         sendBody("direct:rsasha256", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testRSASHA384() throws Exception {
         setupMock();
         sendBody("direct:rsasha384", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testRSASHA512() throws Exception {
         setupMock();
         sendBody("direct:rsasha512", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testRSARIPEMD160() throws Exception {
         setupMock();
         sendBody("direct:rsaripemd160", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testRSASHA1MGF1() throws Exception {
         setupMock();
         sendBody("direct:rsasha1_mgf1", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testRSASHA224MGF1() throws Exception {
         setupMock();
         sendBody("direct:rsasha224_mgf1", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testRSASHA256MGF1() throws Exception {
         setupMock();
         sendBody("direct:rsasha256_mgf1", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testRSASHA384MGF1() throws Exception {
         setupMock();
         sendBody("direct:rsasha384_mgf1", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     @Test
     public void testRSASHA512MGF1() throws Exception {
         setupMock();
         sendBody("direct:rsasha512_mgf1", payload);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
-    
+
     private MockEndpoint setupMock() {
         return setupMock(payload);
     }
 
     private MockEndpoint setupMock(String payload) {
+        String payload2;
+        int pos = payload.indexOf('\n');
+        if (pos != -1) {
+            payload2 = payload.substring(0, pos) + payload.substring(pos + 1);
+        } else {
+            payload2 = payload.replaceFirst("\\?>", "\\?>\n");
+        }
         MockEndpoint mock = getMockEndpoint("mock:result");
-        mock.expectedBodiesReceived(payload);
+        mock.expectedMessageCount(1);
+        mock.message(0).body(String.class).in(payload, payload2);
         return mock;
     }
 
@@ -454,21 +456,20 @@ public class SignatureAlgorithmTest extends CamelTestSupport {
             } else {
                 template.sendBodyAndHeaders("direct:in", payload, headers);
             }
-            assertMockEndpointsSatisfied();
+            MockEndpoint.assertIsSatisfied(SignatureAlgorithmTest.this.context);
             return mock.getReceivedExchanges().get(0);
         } finally {
             context.stop();
         }
     }
 
-    @Before
-    public void setUp() throws Exception {
+    @Override
+    public void doPreSetup() {
         setUpKeys("RSA", 2048);
-        disableJMX();
-        super.setUp();
+        testConfigurationBuilder.withDisableJMX();
     }
 
-    public void setUpKeys(String algorithm, int keylength) throws Exception {
+    public void setUpKeys(String algorithm, int keylength) {
         keyPair = getKeyPair(algorithm, keylength);
     }
 
@@ -477,7 +478,7 @@ public class SignatureAlgorithmTest extends CamelTestSupport {
         try {
             keyGen = KeyPairGenerator.getInstance(algorithm);
         } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
+            throw new RuntimeCamelException(e);
         }
         keyGen.initialize(keylength, new SecureRandom());
         return keyGen.generateKeyPair();
@@ -500,7 +501,7 @@ public class SignatureAlgorithmTest extends CamelTestSupport {
     }
 
     private AlgorithmMethod getCanonicalizationMethod() {
-        List<String> inclusivePrefixes = new ArrayList<String>(1);
+        List<String> inclusivePrefixes = new ArrayList<>(1);
         inclusivePrefixes.add("ds");
         return XmlSignatureHelper.getCanonicalizationMethod(CanonicalizationMethod.EXCLUSIVE, inclusivePrefixes);
     }
@@ -509,12 +510,12 @@ public class SignatureAlgorithmTest extends CamelTestSupport {
         KeyAccessor accessor = new KeyAccessor() {
 
             @Override
-            public KeySelector getKeySelector(Message message) throws Exception {
+            public KeySelector getKeySelector(Message message) {
                 return KeySelector.singletonKeySelector(key);
             }
 
             @Override
-            public KeyInfo getKeyInfo(Message mess, Node messageBody, KeyInfoFactory keyInfoFactory) throws Exception {
+            public KeyInfo getKeyInfo(Message mess, Node messageBody, KeyInfoFactory keyInfoFactory) {
                 return null;
             }
         };
@@ -531,13 +532,14 @@ public class SignatureAlgorithmTest extends CamelTestSupport {
     }
 
     /**
-     * KeySelector which retrieves the public key from the KeyValue element and
-     * returns it. NOTE: If the key algorithm doesn't match signature algorithm,
-     * then the public key will be ignored.
+     * KeySelector which retrieves the public key from the KeyValue element and returns it. NOTE: If the key algorithm
+     * doesn't match signature algorithm, then the public key will be ignored.
      */
     static class KeyValueKeySelector extends KeySelector {
-        public KeySelectorResult select(KeyInfo keyInfo, KeySelector.Purpose purpose, AlgorithmMethod method, XMLCryptoContext context)
-            throws KeySelectorException {
+        @Override
+        public KeySelectorResult select(
+                KeyInfo keyInfo, KeySelector.Purpose purpose, AlgorithmMethod method, XMLCryptoContext context)
+                throws KeySelectorException {
             if (keyInfo == null) {
                 throw new KeySelectorException("Null KeyInfo object!");
             }
@@ -565,8 +567,8 @@ public class SignatureAlgorithmTest extends CamelTestSupport {
         }
 
         static boolean algEquals(String algURI, String algName) {
-            return (algName.equalsIgnoreCase("DSA") && algURI.equalsIgnoreCase(SignatureMethod.DSA_SHA1))
-                    || (algName.equalsIgnoreCase("RSA") && algURI.equalsIgnoreCase(SignatureMethod.RSA_SHA1));
+            return algName.equalsIgnoreCase("DSA") && algURI.equalsIgnoreCase(SignatureMethod.DSA_SHA1)
+                    || algName.equalsIgnoreCase("RSA") && algURI.equalsIgnoreCase(SignatureMethod.RSA_SHA1);
         }
     }
 
@@ -577,6 +579,7 @@ public class SignatureAlgorithmTest extends CamelTestSupport {
             this.pk = pk;
         }
 
+        @Override
         public Key getKey() {
             return pk;
         }
@@ -601,7 +604,7 @@ public class SignatureAlgorithmTest extends CamelTestSupport {
     public static KeySelector getDefaultKeySelectorDsa() throws Exception {
         return TestKeystore.getKeySelector("bobdsa");
     }
-    
+
     public static XmlSignatureChecker getEnvelopingXmlSignatureChecker() {
         return new EnvelopingXmlSignatureChecker();
     }
@@ -635,13 +638,15 @@ public class SignatureAlgorithmTest extends CamelTestSupport {
     public static SecretKey getSecretKey(final byte[] secret) {
         return new SecretKey() {
             private static final long serialVersionUID = 5629454124145851381L;
-            
-            public String getFormat()   {
+
+            public String getFormat() {
                 return "RAW";
             }
-            public byte[] getEncoded()  {
+
+            public byte[] getEncoded() {
                 return secret;
             }
+
             public String getAlgorithm() {
                 return "SECRET";
             }

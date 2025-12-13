@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,10 @@ package org.apache.camel.component.netty.http;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class NettyHttpProducerWithHeaderTest extends BaseNettyTest {
 
@@ -27,10 +30,11 @@ public class NettyHttpProducerWithHeaderTest extends BaseNettyTest {
         getMockEndpoint("mock:input").expectedHeaderReceived(Exchange.HTTP_METHOD, "GET");
         getMockEndpoint("mock:input").expectedHeaderReceived("myTraceId", "mockCorrelationID");
 
-        String out = template.requestBodyAndHeader("netty-http:http://localhost:{{port}}/foo", null, "myTraceId", "mockCorrelationID", String.class);
+        String out = template.requestBodyAndHeader("netty-http:http://localhost:{{port}}/foo", null, "myTraceId",
+                "mockCorrelationID", String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -39,20 +43,21 @@ public class NettyHttpProducerWithHeaderTest extends BaseNettyTest {
         getMockEndpoint("mock:input").expectedHeaderReceived("myTraceId", "mockCorrelationID");
         getMockEndpoint("mock:input").expectedBodiesReceived("Hello World");
 
-        String out = template.requestBodyAndHeader("netty-http:http://localhost:{{port}}/foo", "Hello World", "myTraceId", "mockCorrelationID", String.class);
+        String out = template.requestBodyAndHeader("netty-http:http://localhost:{{port}}/foo", "Hello World", "myTraceId",
+                "mockCorrelationID", String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("netty-http:http://0.0.0.0:{{port}}/foo")
-                    .to("mock:input")
-                    .transform().constant("Bye World");
+                        .to("mock:input")
+                        .transform().constant("Bye World");
             }
         };
     }

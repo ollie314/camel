@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,14 +17,14 @@
 package org.apache.camel.dataformat.bindy;
 
 /**
- * The PatternFormat extends the format interface and allows to retrieve the
- * pattern linked to a format (Date, Double, ...)
+ * The PatternFormat extends the format interface and allows to retrieve the pattern linked to a format (Date, Double,
+ * ...)
  */
 public interface PatternFormat<T> extends Format<T> {
 
     /**
      * Method used to retrieve the pattern for the format
-     * 
+     *
      * @return String the pattern
      */
     String getPattern();

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,27 +20,34 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
-import com.orbitz.consul.Consul;
-import com.orbitz.consul.KeyValueClient;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Rule;
-import org.junit.rules.TestName;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.camel.BindToRegistry;
+import org.apache.camel.test.infra.consul.services.ConsulService;
+import org.apache.camel.test.infra.consul.services.ConsulServiceFactory;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.apache.camel.test.junit5.TestNameExtension;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.kiwiproject.consul.Consul;
 
 public class ConsulTestSupport extends CamelTestSupport {
-    public static final Logger LOGGER = LoggerFactory.getLogger(ConsulTestSupport.class);
+    @RegisterExtension
+    public static ConsulService service = ConsulServiceFactory.createService();
+
+    @RegisterExtension
+    @Order(10)
+    TestNameExtension testNameExtension = new TestNameExtension();
+
     public static final String KV_PREFIX = "/camel";
 
-    @Rule
-    public final TestName testName = new TestName();
-
-    protected Consul getConsul() {
-        return Consul.builder().build();
+    @BindToRegistry("consul")
+    public ConsulComponent getConsulComponent() {
+        ConsulComponent component = new ConsulComponent();
+        component.getConfiguration().setUrl(service.getConsulUrl());
+        return component;
     }
 
-    protected KeyValueClient getKeyValueClient() {
-        return getConsul().keyValueClient();
+    protected Consul getConsul() {
+        return Consul.builder().withUrl(service.getConsulUrl()).build();
     }
 
     protected String generateRandomString() {
@@ -59,6 +66,8 @@ public class ConsulTestSupport extends CamelTestSupport {
     }
 
     protected String generateKey() {
-        return KV_PREFIX + "/" + testName.getMethodName() + "/" + generateRandomString();
+        String key = KV_PREFIX + "/" + testNameExtension.getCurrentTestName() + "/" + generateRandomString();
+        key = key.replace("()", "");
+        return key;
     }
 }

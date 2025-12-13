@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,22 +21,20 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 
-import javax.persistence.EntityManager;
-import javax.persistence.Query;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 
 /**
  * A builder of query expressions
- * 
- * @version 
  */
 public abstract class QueryBuilder implements QueryFactory {
     ParameterBuilder parameterBuilder;
 
     /**
      * Creates a query builder using the JPA query syntax
-     * 
-     * @param query JPA query language to create
-     * @return a query builder
+     *
+     * @param  query JPA query language to create
+     * @return       a query builder
      */
     public static QueryBuilder query(final String query) {
         return new QueryBuilder() {
@@ -82,7 +80,7 @@ public abstract class QueryBuilder implements QueryFactory {
             }
         };
     }
-    
+
     /**
      * Creates a native SQL query with a provided resultClass
      */
@@ -101,20 +99,19 @@ public abstract class QueryBuilder implements QueryFactory {
 
     /**
      * Specifies the parameters to the query
-     * 
-     * @param parameters the parameters to be configured on the query
-     * @return this query builder
+     *
+     * @param  parameters the parameters to be configured on the query
+     * @return            this query builder
      */
     public QueryBuilder parameters(Object... parameters) {
         return parameters(Arrays.asList(parameters));
     }
 
     /**
-     * Specifies the parameters to the query as an ordered collection of
-     * parameters
-     * 
-     * @param parameters the parameters to be configured on the query
-     * @return this query builder
+     * Specifies the parameters to the query as an ordered collection of parameters
+     *
+     * @param  parameters the parameters to be configured on the query
+     * @return            this query builder
      */
     public QueryBuilder parameters(final Collection<?> parameters) {
         checkNoParametersConfigured();
@@ -136,9 +133,9 @@ public abstract class QueryBuilder implements QueryFactory {
 
     /**
      * Specifies the parameters to the query as a Map of key/value pairs
-     * 
-     * @param parameterMap the parameters to be configured on the query
-     * @return this query builder
+     *
+     * @param  parameterMap the parameters to be configured on the query
+     * @return              this query builder
      */
     public QueryBuilder parameters(final Map<String, Object> parameterMap) {
         checkNoParametersConfigured();
@@ -160,10 +157,12 @@ public abstract class QueryBuilder implements QueryFactory {
 
     protected void checkNoParametersConfigured() {
         if (parameterBuilder != null) {
-            throw new IllegalArgumentException("Cannot add parameters to a QueryBuilder which already has parameters configured");
+            throw new IllegalArgumentException(
+                    "Cannot add parameters to a QueryBuilder which already has parameters configured");
         }
     }
 
+    @Override
     public Query createQuery(EntityManager entityManager) {
         Query query = makeQueryObject(entityManager);
         populateQuery(entityManager, query);

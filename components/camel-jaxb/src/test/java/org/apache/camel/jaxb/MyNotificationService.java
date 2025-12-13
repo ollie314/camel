@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,7 +27,7 @@ public class MyNotificationService {
         NotificationType notification = new NotificationType();
         notification.setEvent("Hello");
 
-        exchange.getOut().setBody(notification);
+        exchange.getMessage().setBody(notification);
     }
 
     public void sendNotification(Exchange exchange) {

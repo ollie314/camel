@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,23 +16,30 @@
  */
 package org.apache.camel.component.sap.netweaver;
 
+import java.util.Map;
+
+import org.apache.camel.Category;
 import org.apache.camel.Component;
 import org.apache.camel.Consumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
-import org.apache.camel.impl.DefaultEndpoint;
+import org.apache.camel.spi.EndpointServiceLocation;
 import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriPath;
+import org.apache.camel.support.DefaultEndpoint;
 
 /**
- * The sap-netweaver component integrates with the SAP NetWeaver Gateway using HTTP transports.
+ * Send requests to SAP NetWeaver Gateway using HTTP.
  */
-@UriEndpoint(scheme = "sap-netweaver", title = "SAP NetWeaver", syntax = "sap-netweaver:url", producerOnly = true, label = "sap")
-public class NetWeaverEndpoint extends DefaultEndpoint {
+@UriEndpoint(firstVersion = "2.12.0", scheme = "sap-netweaver", title = "SAP NetWeaver", syntax = "sap-netweaver:url",
+             producerOnly = true, category = { Category.SAAS },
+             headersClass = NetWeaverConstants.class)
+public class NetWeaverEndpoint extends DefaultEndpoint implements EndpointServiceLocation {
 
-    @UriPath @Metadata(required = "true")
+    @UriPath
+    @Metadata(required = true)
     private String url;
     @UriParam(defaultValue = "true")
     private boolean json = true;
@@ -40,13 +47,33 @@ public class NetWeaverEndpoint extends DefaultEndpoint {
     private boolean jsonAsMap = true;
     @UriParam(defaultValue = "true")
     private boolean flatternMap = true;
-    @UriParam @Metadata(required = "true")
+    @UriParam
+    @Metadata(required = true, secret = true)
     private String username;
-    @UriParam @Metadata(required = "true")
+    @UriParam
+    @Metadata(required = true, secret = true)
     private String password;
 
     public NetWeaverEndpoint(String endpointUri, Component component) {
         super(endpointUri, component);
+    }
+
+    @Override
+    public String getServiceUrl() {
+        return url;
+    }
+
+    @Override
+    public String getServiceProtocol() {
+        return "http";
+    }
+
+    @Override
+    public Map<String, String> getServiceMetadata() {
+        if (username != null) {
+            return Map.of("username", username);
+        }
+        return null;
     }
 
     @Override
@@ -57,11 +84,6 @@ public class NetWeaverEndpoint extends DefaultEndpoint {
     @Override
     public Consumer createConsumer(Processor processor) throws Exception {
         throw new UnsupportedOperationException("Consumer is not supported");
-    }
-
-    @Override
-    public boolean isSingleton() {
-        return true;
     }
 
     public String getUrl() {
@@ -124,7 +146,8 @@ public class NetWeaverEndpoint extends DefaultEndpoint {
     }
 
     /**
-     * If the JSON Map contains only a single entry, then flattern by storing that single entry value as the message body.
+     * If the JSON Map contains only a single entry, then flattern by storing that single entry value as the message
+     * body.
      */
     public void setFlatternMap(boolean flatternMap) {
         this.flatternMap = flatternMap;

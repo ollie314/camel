@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,10 +24,14 @@ import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 public abstract class AbstractJdbcGeneratedKeysTest extends AbstractJdbcTestSupport {
 
     @SuppressWarnings("unchecked")
-    protected void testRetrieveGeneratedKeys(String query, Map<String, Object> parameters) throws Exception {
+    protected void testRetrieveGeneratedKeys(String query, Map<String, Object> parameters) {
         // first we create our exchange using the endpoint
         Endpoint endpoint = context.getEndpoint("direct:hello");
 
@@ -42,28 +46,29 @@ public abstract class AbstractJdbcGeneratedKeysTest extends AbstractJdbcTestSupp
 
         // assertions of the response
         assertNotNull(out);
-        assertNotNull(out.getOut());
-        assertNotNull(out.getOut().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_DATA));
-        assertNotNull(out.getOut().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_ROW_COUNT));
+        assertNotNull(out.getMessage().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_DATA));
+        assertNotNull(out.getMessage().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_ROW_COUNT));
 
-        List<Map<String, Object>> generatedKeys = out.getOut().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_DATA, List.class);
-        assertNotNull("out body could not be converted to an ArrayList - was: "
-            + out.getOut().getBody(), generatedKeys);
+        List<Map<String, Object>> generatedKeys
+                = out.getMessage().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_DATA, List.class);
+        assertNotNull(generatedKeys, "out body could not be converted to an ArrayList - was: " + out.getMessage().getBody());
         assertEquals(1, generatedKeys.size());
 
         Map<String, Object> row = generatedKeys.get(0);
-        assertEquals("auto increment value should be 2", BigDecimal.valueOf(2), row.get("1"));
+        assertEquals(BigDecimal.valueOf(2), row.get("1"), "auto increment value should be 2");
 
-        assertEquals("generated keys row count should be one", 1, out.getOut().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_ROW_COUNT));
+        assertEquals(1, out.getMessage().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_ROW_COUNT),
+                "generated keys row count should be one");
     }
 
-    protected void testRetrieveGeneratedKeys(String query) throws Exception {
+    protected void testRetrieveGeneratedKeys(String query) {
         testRetrieveGeneratedKeys(query, null);
     }
 
     @SuppressWarnings("unchecked")
-    protected void testRetrieveGeneratedKeysWithStringGeneratedColumns(String query,
-                                                                       Map<String, Object> parameters) throws Exception {
+    protected void testRetrieveGeneratedKeysWithStringGeneratedColumns(
+            String query,
+            Map<String, Object> parameters) {
         // first we create our exchange using the endpoint
         Endpoint endpoint = context.getEndpoint("direct:hello");
 
@@ -71,7 +76,7 @@ public abstract class AbstractJdbcGeneratedKeysTest extends AbstractJdbcTestSupp
         // then we set the SQL on the in body and add possible parameters
         exchange.getIn().setBody(query);
         exchange.getIn().setHeader(JdbcConstants.JDBC_RETRIEVE_GENERATED_KEYS, true);
-        exchange.getIn().setHeader(JdbcConstants.JDBC_GENERATED_COLUMNS, new String[]{"ID"});
+        exchange.getIn().setHeader(JdbcConstants.JDBC_GENERATED_COLUMNS, new String[] { "ID" });
         setHeaders(exchange, parameters);
 
         // now we send the exchange to the endpoint, and receives the response from Camel
@@ -79,28 +84,29 @@ public abstract class AbstractJdbcGeneratedKeysTest extends AbstractJdbcTestSupp
 
         // assertions of the response
         assertNotNull(out);
-        assertNotNull(out.getOut());
-        assertNotNull(out.getOut().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_DATA));
-        assertNotNull(out.getOut().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_ROW_COUNT));
+        assertNotNull(out.getMessage().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_DATA));
+        assertNotNull(out.getMessage().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_ROW_COUNT));
 
-        List<Map<String, Object>> generatedKeys = out.getOut().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_DATA, List.class);
-        assertNotNull("out body could not be converted to an ArrayList - was: "
-            + out.getOut().getBody(), generatedKeys);
+        List<Map<String, Object>> generatedKeys
+                = out.getMessage().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_DATA, List.class);
+        assertNotNull(generatedKeys, "out body could not be converted to an ArrayList - was: " + out.getMessage().getBody());
         assertEquals(1, generatedKeys.size());
 
         Map<String, Object> row = generatedKeys.get(0);
-        assertEquals("auto increment value should be 2", BigDecimal.valueOf(2), row.get("1"));
+        assertEquals(BigDecimal.valueOf(2), row.get("1"), "auto increment value should be 2");
 
-        assertEquals("generated keys row count should be one", 1, out.getOut().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_ROW_COUNT));
+        assertEquals(1, out.getMessage().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_ROW_COUNT),
+                "generated keys row count should be one");
     }
 
-    protected void testRetrieveGeneratedKeysWithStringGeneratedColumns(String query) throws Exception {
+    protected void testRetrieveGeneratedKeysWithStringGeneratedColumns(String query) {
         testRetrieveGeneratedKeysWithStringGeneratedColumns(query, null);
     }
 
     @SuppressWarnings("unchecked")
-    protected void testRetrieveGeneratedKeysWithIntGeneratedColumns(String query,
-                                                                    Map<String, Object> parameters) throws Exception {
+    protected void testRetrieveGeneratedKeysWithIntGeneratedColumns(
+            String query,
+            Map<String, Object> parameters) {
         // first we create our exchange using the endpoint
         Endpoint endpoint = context.getEndpoint("direct:hello");
 
@@ -108,7 +114,7 @@ public abstract class AbstractJdbcGeneratedKeysTest extends AbstractJdbcTestSupp
         // then we set the SQL on the in body and add possible parameters
         exchange.getIn().setBody(query);
         exchange.getIn().setHeader(JdbcConstants.JDBC_RETRIEVE_GENERATED_KEYS, true);
-        exchange.getIn().setHeader(JdbcConstants.JDBC_GENERATED_COLUMNS, new int[]{1});
+        exchange.getIn().setHeader(JdbcConstants.JDBC_GENERATED_COLUMNS, new int[] { 1 });
         setHeaders(exchange, parameters);
 
         // now we send the exchange to the endpoint, and receives the response from Camel
@@ -116,27 +122,28 @@ public abstract class AbstractJdbcGeneratedKeysTest extends AbstractJdbcTestSupp
 
         // assertions of the response
         assertNotNull(out);
-        assertNotNull(out.getOut());
-        assertNotNull(out.getOut().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_DATA));
-        assertNotNull(out.getOut().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_ROW_COUNT));
+        assertNotNull(out.getMessage().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_DATA));
+        assertNotNull(out.getMessage().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_ROW_COUNT));
 
-        List<Map<String, Object>> generatedKeys = out.getOut().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_DATA, List.class);
-        assertNotNull("out body could not be converted to an ArrayList - was: "
-            + out.getOut().getBody(), generatedKeys);
+        List<Map<String, Object>> generatedKeys
+                = out.getMessage().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_DATA, List.class);
+        assertNotNull(generatedKeys, "out body could not be converted to an ArrayList - was: " + out.getMessage().getBody());
         assertEquals(1, generatedKeys.size());
 
         Map<String, Object> row = generatedKeys.get(0);
-        assertEquals("auto increment value should be 2", BigDecimal.valueOf(2), row.get("1"));
+        assertEquals(BigDecimal.valueOf(2), row.get("1"), "auto increment value should be 2");
 
-        assertEquals("generated keys row count should be one", 1, out.getOut().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_ROW_COUNT));
+        assertEquals(1, out.getMessage().getHeader(JdbcConstants.JDBC_GENERATED_KEYS_ROW_COUNT),
+                "generated keys row count should be one");
     }
 
-    protected void testRetrieveGeneratedKeysWithIntGeneratedColumns(String query) throws Exception {
+    protected void testRetrieveGeneratedKeysWithIntGeneratedColumns(String query) {
         testRetrieveGeneratedKeysWithIntGeneratedColumns(query, null);
     }
 
-    protected void testGivenAnInvalidGeneratedColumnsHeaderThenAnExceptionIsThrown(String query,
-                                                                                   Map<String, Object> parameters) throws Exception {
+    protected void testGivenAnInvalidGeneratedColumnsHeaderThenAnExceptionIsThrown(
+            String query,
+            Map<String, Object> parameters) {
         // first we create our exchange using the endpoint
         Endpoint endpoint = context.getEndpoint("direct:hello");
 
@@ -147,7 +154,7 @@ public abstract class AbstractJdbcGeneratedKeysTest extends AbstractJdbcTestSupp
         setHeaders(exchange, parameters);
 
         // set wrong data type for generated columns
-        exchange.getIn().setHeader(JdbcConstants.JDBC_GENERATED_COLUMNS, new Object[]{});
+        exchange.getIn().setHeader(JdbcConstants.JDBC_GENERATED_COLUMNS, new Object[] {});
 
         // now we send the exchange to the endpoint, and receives the response from Camel
         template.send(endpoint, exchange);
@@ -155,7 +162,7 @@ public abstract class AbstractJdbcGeneratedKeysTest extends AbstractJdbcTestSupp
         assertTrue(exchange.isFailed());
     }
 
-    protected void testGivenAnInvalidGeneratedColumnsHeaderThenAnExceptionIsThrown(String query) throws Exception {
+    protected void testGivenAnInvalidGeneratedColumnsHeaderThenAnExceptionIsThrown(String query) {
         testGivenAnInvalidGeneratedColumnsHeaderThenAnExceptionIsThrown(query, null);
     }
 
@@ -168,6 +175,6 @@ public abstract class AbstractJdbcGeneratedKeysTest extends AbstractJdbcTestSupp
     }
 
     @Override
-    protected abstract RouteBuilder createRouteBuilder() throws Exception;
+    protected abstract RouteBuilder createRouteBuilder();
 
 }

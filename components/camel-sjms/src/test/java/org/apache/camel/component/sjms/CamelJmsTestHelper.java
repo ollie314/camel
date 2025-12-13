@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,20 +19,18 @@ package org.apache.camel.component.sjms;
 import java.io.File;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.jms.ConnectionFactory;
+import jakarta.jms.ConnectionFactory;
 
-import org.apache.activemq.ActiveMQConnectionFactory;
-import org.apache.activemq.pool.PooledConnectionFactory;
+import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import org.apache.camel.util.FileUtil;
+import org.messaginghub.pooled.jms.JmsPoolConnectionFactory;
 
 /**
  * A helper for unit testing with Apache ActiveMQ as embedded JMS broker.
- *
- * @version
  */
 public final class CamelJmsTestHelper {
 
-    private static AtomicInteger counter = new AtomicInteger(0);
+    private static AtomicInteger counter = new AtomicInteger();
 
     private CamelJmsTestHelper() {
     }
@@ -49,20 +47,11 @@ public final class CamelJmsTestHelper {
             url = url + "&" + options;
         }
         ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory(url);
-        // optimize AMQ to be as fast as possible so unit testing is quicker
-        connectionFactory.setCopyMessageOnSend(false);
-        connectionFactory.setOptimizeAcknowledge(true);
-        connectionFactory.setOptimizedMessageDispatch(true);
 
-        // When using asyncSend, producers will not be guaranteed to send in the order we
-        // have in the tests (which may be confusing for queues) so we need this set to false.
-        // Another way of guaranteeing order is to use persistent messages or transactions.
-        connectionFactory.setUseAsyncSend(false);
-
-        connectionFactory.setAlwaysSessionAsync(false);
-        // use a pooled connection factory
-        PooledConnectionFactory pooled = new PooledConnectionFactory(connectionFactory);
+        JmsPoolConnectionFactory pooled = new JmsPoolConnectionFactory();
+        pooled.setConnectionFactory(connectionFactory);
         pooled.setMaxConnections(8);
+
         return pooled;
     }
 
@@ -85,16 +74,12 @@ public final class CamelJmsTestHelper {
             url = url + "&" + options;
         }
         ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory(url);
-        // optimize AMQ to be as fast as possible so unit testing is quicker
-        connectionFactory.setCopyMessageOnSend(false);
-        connectionFactory.setOptimizeAcknowledge(true);
-        connectionFactory.setOptimizedMessageDispatch(true);
-        connectionFactory.setUseAsyncSend(true);
-        connectionFactory.setAlwaysSessionAsync(false);
 
         // use a pooled connection factory
-        PooledConnectionFactory pooled = new PooledConnectionFactory(connectionFactory);
+        JmsPoolConnectionFactory pooled = new JmsPoolConnectionFactory();
+        pooled.setConnectionFactory(connectionFactory);
         pooled.setMaxConnections(8);
+
         return pooled;
     }
 }

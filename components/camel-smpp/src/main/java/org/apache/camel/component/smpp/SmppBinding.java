@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,15 +17,13 @@
 package org.apache.camel.component.smpp;
 
 import java.io.UnsupportedEncodingException;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
+import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
 import org.jsmpp.bean.AlertNotification;
-import org.jsmpp.bean.Alphabet;
 import org.jsmpp.bean.Command;
 import org.jsmpp.bean.DataSm;
 import org.jsmpp.bean.DeliverSm;
@@ -40,12 +38,9 @@ import org.jsmpp.util.DefaultDecomposer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
 /**
- * A Strategy used to convert between a Camel {@link Exchange} and
- * {@link SmppMessage} to and from a SMPP {@link Command}
- * 
- * @version 
+ * A Strategy used to convert between a Camel {@link Exchange} and {@link SmppMessage} to and from a SMPP
+ * {@link Command}
  */
 public class SmppBinding {
 
@@ -68,16 +63,15 @@ public class SmppBinding {
      */
     public SmppCommand createSmppCommand(SMPPSession session, Exchange exchange) {
         SmppCommandType commandType = SmppCommandType.fromExchange(exchange);
-        SmppCommand command = commandType.createCommand(session, configuration);
-        
-        return command;
+
+        return commandType.createCommand(session, configuration);
     }
 
     /**
      * Create a new SmppMessage from the inbound alert notification
      */
-    public SmppMessage createSmppMessage(AlertNotification alertNotification) {
-        SmppMessage smppMessage = new SmppMessage(alertNotification, configuration);
+    public SmppMessage createSmppMessage(CamelContext camelContext, AlertNotification alertNotification) {
+        SmppMessage smppMessage = new SmppMessage(camelContext, alertNotification, configuration);
 
         smppMessage.setHeader(SmppConstants.MESSAGE_TYPE, SmppMessageType.AlertNotification.toString());
         smppMessage.setHeader(SmppConstants.SEQUENCE_NUMBER, alertNotification.getSequenceNumber());
@@ -96,32 +90,21 @@ public class SmppBinding {
     /**
      * Create a new SmppMessage from the inbound deliver sm or deliver receipt
      */
-    public SmppMessage createSmppMessage(DeliverSm deliverSm) throws Exception {
-        SmppMessage smppMessage = new SmppMessage(deliverSm, configuration);
+    public SmppMessage createSmppMessage(CamelContext camelContext, DeliverSm deliverSm) throws Exception {
+        SmppMessage smppMessage = new SmppMessage(camelContext, deliverSm, configuration);
 
-        String messagePayload = null;
-
-        if (deliverSm.getShortMessage() == null && deliverSm.getOptionalParameters() != null) {
-            List<OptionalParameter> oplist = Arrays.asList(deliverSm.getOptionalParameters());
-
-            for (OptionalParameter optPara : oplist) {
-                if (OptionalParameter.Tag.MESSAGE_PAYLOAD.code() == optPara.tag && OctetString.class
-                    .isInstance(optPara)) {
-                    messagePayload = ((OctetString) optPara).getValueAsString();
-                    break;
-                }
-            }
-        }
+        byte[] body = SmppUtils.getMessageBody(deliverSm);
+        String decodedBody = SmppUtils.decodeBody(body, deliverSm.getDataCoding(), configuration.getEncoding());
 
         if (deliverSm.isSmscDeliveryReceipt()) {
             smppMessage.setHeader(SmppConstants.MESSAGE_TYPE, SmppMessageType.DeliveryReceipt.toString());
 
             DeliveryReceipt smscDeliveryReceipt = null;
-
-            if (deliverSm.getShortMessage() != null) {
-                smscDeliveryReceipt = deliverSm.getShortMessageAsDeliveryReceipt();
-            } else if (messagePayload != null) {
-                smscDeliveryReceipt = DefaultDecomposer.getInstance().deliveryReceipt(messagePayload);
+            if (decodedBody != null) {
+                smscDeliveryReceipt = DefaultDecomposer.getInstance().deliveryReceipt(decodedBody);
+            } else if (body != null) {
+                // fallback approach
+                smscDeliveryReceipt = DefaultDecomposer.getInstance().deliveryReceipt(body);
             }
 
             if (smscDeliveryReceipt != null) {
@@ -137,28 +120,11 @@ public class SmppBinding {
                 smppMessage.setHeader(SmppConstants.SUBMITTED, smscDeliveryReceipt.getSubmitted());
                 smppMessage.setHeader(SmppConstants.FINAL_STATUS, smscDeliveryReceipt.getFinalStatus());
             }
-
-            if (deliverSm.getOptionalParameters() != null && deliverSm.getOptionalParameters().length > 0) {
-                // the deprecated way
-                Map<String, Object> optionalParameters = createOptionalParameterByName(deliverSm);
-                smppMessage.setHeader(SmppConstants.OPTIONAL_PARAMETERS, optionalParameters);
-
-                // the new way
-                Map<Short, Object> optionalParameter = createOptionalParameterByCode(deliverSm);
-                smppMessage.setHeader(SmppConstants.OPTIONAL_PARAMETER, optionalParameter);
-            }
         } else {
             smppMessage.setHeader(SmppConstants.MESSAGE_TYPE, SmppMessageType.DeliverSm.toString());
 
-            if (deliverSm.getShortMessage() != null) {
-                Alphabet alphabet = Alphabet.parseDataCoding(deliverSm.getDataCoding());
-                if (SmppUtils.is8Bit(alphabet)) {
-                    smppMessage.setBody(deliverSm.getShortMessage());
-                } else {
-                    smppMessage.setBody(String.valueOf(new String(deliverSm.getShortMessage(), configuration.getEncoding())));
-                }
-            } else if (messagePayload != null) {
-                smppMessage.setBody(messagePayload);
+            if (body != null) {
+                smppMessage.setBody((decodedBody != null) ? decodedBody : body);
             }
 
             smppMessage.setHeader(SmppConstants.SEQUENCE_NUMBER, deliverSm.getSequenceNumber());
@@ -175,66 +141,75 @@ public class SmppBinding {
             smppMessage.setHeader(SmppConstants.SERVICE_TYPE, deliverSm.getServiceType());
         }
 
+        if (deliverSm.getOptionalParameters() != null && deliverSm.getOptionalParameters().length > 0) {
+            // the deprecated way
+            Map<String, Object> optionalParameters = createOptionalParameterByName(deliverSm);
+            smppMessage.setHeader(SmppConstants.OPTIONAL_PARAMETERS, optionalParameters);
+
+            // the new way
+            Map<Short, Object> optionalParameter = createOptionalParameterByCode(deliverSm);
+            smppMessage.setHeader(SmppConstants.OPTIONAL_PARAMETER, optionalParameter);
+        }
         return smppMessage;
     }
 
     private Map<String, Object> createOptionalParameterByName(DeliverSm deliverSm) {
-        List<OptionalParameter> oplist = Arrays.asList(deliverSm.getOptionalParameters());
-
-        Map<String, Object> optParams = new HashMap<String, Object>();
-        for (OptionalParameter optPara : oplist) {
+        Map<String, Object> optParams = new HashMap<>();
+        for (OptionalParameter optPara : deliverSm.getOptionalParameters()) {
             try {
                 Tag valueOfTag = OptionalParameter.Tag.valueOf(optPara.tag);
                 if (valueOfTag != null) {
-                    if (COctetString.class.isInstance(optPara)) {
+                    if (optPara instanceof COctetString) {
                         optParams.put(valueOfTag.toString(), ((COctetString) optPara).getValueAsString());
-                    } else if (org.jsmpp.bean.OptionalParameter.OctetString.class.isInstance(optPara)) {
+                    } else if (optPara instanceof OctetString) {
                         optParams.put(valueOfTag.toString(), ((OctetString) optPara).getValueAsString());
-                    } else if (org.jsmpp.bean.OptionalParameter.Byte.class.isInstance(optPara)) {
-                        optParams.put(valueOfTag.toString(), Byte.valueOf(((org.jsmpp.bean.OptionalParameter.Byte) optPara).getValue()));
-                    } else if (org.jsmpp.bean.OptionalParameter.Short.class.isInstance(optPara)) {
-                        optParams.put(valueOfTag.toString(), Short.valueOf(((org.jsmpp.bean.OptionalParameter.Short) optPara).getValue()));
-                    } else if (org.jsmpp.bean.OptionalParameter.Int.class.isInstance(optPara)) {
-                        optParams.put(valueOfTag.toString(), Integer.valueOf(((org.jsmpp.bean.OptionalParameter.Int) optPara).getValue()));
-                    } else if (Null.class.isInstance(optPara)) {
+                    } else if (optPara instanceof OptionalParameter.Byte) {
+                        optParams.put(valueOfTag.toString(),
+                                ((OptionalParameter.Byte) optPara).getValue());
+                    } else if (optPara instanceof OptionalParameter.Short) {
+                        optParams.put(valueOfTag.toString(),
+                                ((OptionalParameter.Short) optPara).getValue());
+                    } else if (optPara instanceof OptionalParameter.Int) {
+                        optParams.put(valueOfTag.toString(),
+                                ((OptionalParameter.Int) optPara).getValue());
+                    } else if (optPara instanceof Null) {
                         optParams.put(valueOfTag.toString(), null);
                     }
                 } else {
-                    LOG.debug("Skipping optional parameter with tag {} because it was not recogized", optPara.tag);
+                    LOG.debug("Skipping optional parameter with tag {} because it was not recognized", optPara.tag);
                 }
             } catch (IllegalArgumentException e) {
-                LOG.debug("Skipping optional parameter with tag {} due " + e.getMessage(), optPara.tag);
+                LOG.debug("Skipping optional parameter with tag {} due to {}", optPara.tag, e.getMessage());
             }
         }
-
         return optParams;
     }
 
     private Map<Short, Object> createOptionalParameterByCode(DeliverSm deliverSm) {
-        List<OptionalParameter> oplist = Arrays.asList(deliverSm.getOptionalParameters());
-
-        Map<Short, Object> optParams = new HashMap<Short, Object>();
-        for (OptionalParameter optPara : oplist) {
-            if (COctetString.class.isInstance(optPara)) {
-                optParams.put(Short.valueOf(optPara.tag), ((COctetString) optPara).getValueAsString());
-            } else if (org.jsmpp.bean.OptionalParameter.OctetString.class.isInstance(optPara)) {
-                optParams.put(Short.valueOf(optPara.tag), ((OctetString) optPara).getValue());
-            } else if (org.jsmpp.bean.OptionalParameter.Byte.class.isInstance(optPara)) {
-                optParams.put(Short.valueOf(optPara.tag), Byte.valueOf(((org.jsmpp.bean.OptionalParameter.Byte) optPara).getValue()));
-            } else if (org.jsmpp.bean.OptionalParameter.Short.class.isInstance(optPara)) {
-                optParams.put(Short.valueOf(optPara.tag), Short.valueOf(((org.jsmpp.bean.OptionalParameter.Short) optPara).getValue()));
-            } else if (org.jsmpp.bean.OptionalParameter.Int.class.isInstance(optPara)) {
-                optParams.put(Short.valueOf(optPara.tag), Integer.valueOf(((org.jsmpp.bean.OptionalParameter.Int) optPara).getValue()));
-            } else if (Null.class.isInstance(optPara)) {
-                optParams.put(Short.valueOf(optPara.tag), null);
+        Map<Short, Object> optParams = new HashMap<>();
+        for (OptionalParameter optPara : deliverSm.getOptionalParameters()) {
+            if (optPara instanceof COctetString) {
+                optParams.put(optPara.tag, ((COctetString) optPara).getValueAsString());
+            } else if (optPara instanceof OctetString) {
+                optParams.put(optPara.tag, ((OctetString) optPara).getValue());
+            } else if (optPara instanceof OptionalParameter.Byte) {
+                optParams.put(optPara.tag,
+                        ((OptionalParameter.Byte) optPara).getValue());
+            } else if (optPara instanceof OptionalParameter.Short) {
+                optParams.put(optPara.tag,
+                        ((OptionalParameter.Short) optPara).getValue());
+            } else if (optPara instanceof OptionalParameter.Int) {
+                optParams.put(optPara.tag,
+                        ((OptionalParameter.Int) optPara).getValue());
+            } else if (optPara instanceof Null) {
+                optParams.put(optPara.tag, null);
             }
         }
-
         return optParams;
     }
 
-    public SmppMessage createSmppMessage(DataSm dataSm, String smppMessageId) {
-        SmppMessage smppMessage = new SmppMessage(dataSm, configuration);
+    public SmppMessage createSmppMessage(CamelContext camelContext, DataSm dataSm, String smppMessageId) {
+        SmppMessage smppMessage = new SmppMessage(camelContext, dataSm, configuration);
 
         smppMessage.setHeader(SmppConstants.MESSAGE_TYPE, SmppMessageType.DataSm.toString());
         smppMessage.setHeader(SmppConstants.ID, smppMessageId);
@@ -253,10 +228,10 @@ public class SmppBinding {
 
         return smppMessage;
     }
-    
+
     /**
      * Returns the current date. Externalized for better test support.
-     * 
+     *
      * @return the current date
      */
     Date getCurrentDate() {
@@ -265,7 +240,7 @@ public class SmppBinding {
 
     /**
      * Returns the smpp configuration
-     * 
+     *
      * @return the configuration
      */
     public SmppConfiguration getConfiguration() {
@@ -274,7 +249,7 @@ public class SmppBinding {
 
     /**
      * Set the smpp configuration.
-     * 
+     *
      * @param configuration smppConfiguration
      */
     public void setConfiguration(SmppConfiguration configuration) {

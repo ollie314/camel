@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,39 +16,46 @@
  */
 package org.apache.camel.component.mail;
 
+import java.util.Locale;
 import java.util.Map;
 
-import javax.activation.DataHandler;
-import javax.activation.FileDataSource;
+import jakarta.activation.DataHandler;
+import jakarta.activation.FileDataSource;
 
 import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
-import org.apache.camel.Message;
 import org.apache.camel.Producer;
+import org.apache.camel.attachment.AttachmentMessage;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mail.Mailbox.MailboxUser;
+import org.apache.camel.component.mail.Mailbox.Protocol;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import org.jvnet.mock_javamail.Mailbox;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit test for Camel html attachments and Mail attachments.
  */
 public class MailHtmlAttachmentTest extends CamelTestSupport {
+    private static final MailboxUser james = Mailbox.getOrCreateUser("james", "secret");
 
     @Test
-    public void testSendAndRecieveMailWithAttachments() throws Exception {
+    public void testSendAndReceiveMailWithAttachments() throws Exception {
         // clear mailbox
         Mailbox.clearAll();
 
         // START SNIPPET: e1
 
         // create an exchange with a normal body and attachment to be produced as email
-        Endpoint endpoint = context.getEndpoint("smtp://james@mymailserver.com?password=secret&contentType=text/html");
+        Endpoint endpoint = context.getEndpoint(james.uriPrefix(Protocol.smtp) + "&contentType=text/html");
 
         // create the exchange with the mail message that is multipart with a file and a Hello World text/plain message.
         Exchange exchange = endpoint.createExchange();
-        Message in = exchange.getIn();
+        AttachmentMessage in = exchange.getIn(AttachmentMessage.class);
         in.setBody("<html><body><h1>Hello</h1>World</body></html>");
         in.addAttachment("logo.jpeg", new DataHandler(new FileDataSource("src/test/data/logo.jpeg")));
 
@@ -62,31 +69,28 @@ public class MailHtmlAttachmentTest extends CamelTestSupport {
         // END SNIPPET: e1
 
         // need some time for the mail to arrive on the inbox (consumed and sent to the mock)
-        Thread.sleep(2000);
-
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMessageCount(1);
-        Exchange out = mock.assertExchangeReceived(0);
-        mock.assertIsSatisfied();
-
+        mock.assertIsSatisfied(5000);
+        Exchange out = mock.getReceivedExchanges().get(0);
         // plain text
         assertEquals("<html><body><h1>Hello</h1>World</body></html>", out.getIn().getBody(String.class));
 
         // attachment
-        Map<String, DataHandler> attachments = out.getIn().getAttachments();
-        assertNotNull("Should have attachments", attachments);
+        Map<String, DataHandler> attachments = out.getIn(AttachmentMessage.class).getAttachments();
+        assertNotNull(attachments, "Should have attachments");
         assertEquals(1, attachments.size());
 
-        DataHandler handler = out.getIn().getAttachment("logo.jpeg");
-        assertNotNull("The logo should be there", handler);
+        DataHandler handler = out.getIn(AttachmentMessage.class).getAttachment("logo.jpeg");
+        assertNotNull(handler, "The logo should be there");
         byte[] bytes = context.getTypeConverter().convertTo(byte[].class, handler.getInputStream());
-        assertNotNull("content should be there", bytes);
-        assertTrue("logo should be more than 1000 bytes", bytes.length > 1000);
+        assertNotNull(bytes, "content should be there");
+        assertTrue(bytes.length > 1000, "logo should be more than 1000 bytes");
 
         // content type should match
-        boolean match1 = "image/jpeg; name=logo.jpeg".equals(handler.getContentType());
-        boolean match2 = "application/octet-stream; name=logo.jpeg".equals(handler.getContentType());
-        assertTrue("Should match 1 or 2", match1 || match2);
+        boolean match1 = "image/jpeg; name=logo.jpeg".equals(handler.getContentType().toLowerCase(Locale.ROOT));
+        boolean match2 = "application/octet-stream; name=logo.jpeg".equals(handler.getContentType().toLowerCase(Locale.ROOT));
+        assertTrue(match1 || match2, "Should match 1 or 2");
 
         // save logo for visual inspection
         template.sendBodyAndHeader("file://target", bytes, Exchange.FILE_NAME, "maillogo.jpg");
@@ -94,10 +98,11 @@ public class MailHtmlAttachmentTest extends CamelTestSupport {
         producer.stop();
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("pop3://james@mymailserver.com?password=secret&consumer.delay=1000").to("mock:result");
+            public void configure() {
+                from(james.uriPrefix(Protocol.imap) + "&initialDelay=100&delay=100&closeFolder=false").to("mock:result");
             }
         };
     }

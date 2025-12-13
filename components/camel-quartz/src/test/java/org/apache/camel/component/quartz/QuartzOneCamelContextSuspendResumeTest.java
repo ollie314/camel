@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,32 +19,30 @@ package org.apache.camel.component.quartz;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.impl.DefaultCamelContext;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+
 public class QuartzOneCamelContextSuspendResumeTest {
 
     private DefaultCamelContext camel1;
 
-    @Before
+    @BeforeEach
     public void setUp() throws Exception {
         camel1 = new DefaultCamelContext();
-        camel1.setName("camel-1");
         camel1.addRoutes(new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("quartz://myGroup/myTimerName?cron=0/1+*+*+*+*+?").to("mock:one");
             }
         });
         camel1.start();
     }
 
-    @After
-    public void tearDown() throws Exception {
+    @AfterEach
+    public void tearDown() {
         camel1.stop();
     }
 
@@ -54,15 +52,14 @@ public class QuartzOneCamelContextSuspendResumeTest {
         mock1.expectedMinimumMessageCount(2);
         mock1.assertIsSatisfied();
 
-        camel1.suspend();
+        assertDoesNotThrow(() -> camel1.suspend());
 
         // should resume triggers when we start camel 1 again
         mock1.reset();
         mock1.expectedMinimumMessageCount(2);
-        camel1.resume();
+        assertDoesNotThrow(() -> camel1.resume());
 
         mock1.assertIsSatisfied();
     }
-
 
 }

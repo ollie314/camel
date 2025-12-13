@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,39 +17,48 @@
 package org.apache.camel.component.scp;
 
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.security.Provider;
 import java.security.Provider.Service;
 import java.security.PublicKey;
 import java.security.Security;
 import java.util.Arrays;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.function.Consumer;
 
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.Session;
 import com.jcraft.jsch.UserInfo;
-
 import org.apache.camel.test.AvailablePortFinder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.apache.sshd.SshServer;
+import org.apache.camel.test.junit5.CamelTestSupport;
 import org.apache.sshd.common.NamedFactory;
+import org.apache.sshd.common.kex.KeyExchangeFactory;
 import org.apache.sshd.common.keyprovider.FileKeyPairProvider;
-import org.apache.sshd.server.Command;
-import org.apache.sshd.server.PasswordAuthenticator;
-import org.apache.sshd.server.PublickeyAuthenticator;
-import org.apache.sshd.server.command.ScpCommandFactory;
+import org.apache.sshd.common.signature.BuiltinSignatures;
+import org.apache.sshd.common.signature.Signature;
+import org.apache.sshd.scp.server.ScpCommandFactory;
+import org.apache.sshd.server.SshServer;
+import org.apache.sshd.server.auth.password.PasswordAuthenticator;
+import org.apache.sshd.server.auth.pubkey.PublickeyAuthenticator;
 import org.apache.sshd.server.session.ServerSession;
-import org.apache.sshd.server.sftp.SftpSubsystem;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
+import org.apache.sshd.sftp.server.SftpSubsystemFactory;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.apache.camel.test.junit5.TestSupport.createDirectory;
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
 
 public abstract class ScpServerTestSupport extends CamelTestSupport {
     protected static final Logger LOG = LoggerFactory.getLogger(ScpServerTestSupport.class);
     protected static final String SCP_ROOT_DIR = "target/test-classes/scp";
     protected static final String KNOWN_HOSTS = "known_hosts";
     protected static int port;
+
+    protected Consumer<SshServer> serverConfigurer;
 
     private boolean acceptLocalhostConnections = true;
     private String knownHostsFile;
@@ -73,27 +82,23 @@ public abstract class ScpServerTestSupport extends CamelTestSupport {
         return sshd;
     }
 
-    @BeforeClass
-    public static void initPort() throws Exception {
-        port = AvailablePortFinder.getNextAvailable(21000);
+    @BeforeAll
+    public static void initPort() {
+        port = AvailablePortFinder.getNextAvailable();
     }
 
     @Override
-    @Before
-    public void setUp() throws Exception {
+    @BeforeEach
+    public void doPreSetup() throws Exception {
         deleteDirectory(getScpPath());
         createDirectory(getScpPath());
 
         setupComplete = startSshd();
         setupKnownHosts();
-        super.setUp();
     }
 
     @Override
-    @After
-    public void tearDown() throws Exception {
-        super.tearDown();
-
+    public void doPostTearDown() {
         if (sshd != null) {
             try {
                 sshd.stop(true);
@@ -119,8 +124,8 @@ public abstract class ScpServerTestSupport extends CamelTestSupport {
     protected boolean startSshd() {
         sshd = SshServer.setUpDefaultServer();
         sshd.setPort(getPort());
-        sshd.setKeyPairProvider(new FileKeyPairProvider(new String[]{"src/test/resources/hostkey.pem"}));
-        sshd.setSubsystemFactories(Arrays.<NamedFactory<Command>>asList(new SftpSubsystem.Factory()));
+        sshd.setKeyPairProvider(new FileKeyPairProvider(Paths.get("src/test/resources/hostkey.pem")));
+        sshd.setSubsystemFactories(Arrays.asList(new SftpSubsystemFactory()));
         sshd.setCommandFactory(new ScpCommandFactory());
         sshd.setPasswordAuthenticator(new PasswordAuthenticator() {
             @Override
@@ -135,6 +140,14 @@ public abstract class ScpServerTestSupport extends CamelTestSupport {
                 return true;
             }
         });
+        List<NamedFactory<Signature>> signatures = new LinkedList<NamedFactory<Signature>>(sshd.getSignatureFactories());
+        signatures.remove(BuiltinSignatures.rsa);
+        sshd.setSignatureFactories(signatures);
+        List<KeyExchangeFactory> kexFactories = new LinkedList<KeyExchangeFactory>(sshd.getKeyExchangeFactories());
+        sshd.setKeyExchangeFactories(kexFactories);
+        if (serverConfigurer != null) {
+            serverConfigurer.accept(sshd);
+        }
         try {
             sshd.start();
             return true;
@@ -143,7 +156,7 @@ public abstract class ScpServerTestSupport extends CamelTestSupport {
         }
         return false;
     }
-    
+
     protected void setupKnownHosts() {
         knownHostsFile = SCP_ROOT_DIR + "/" + KNOWN_HOSTS;
         if (!acceptLocalhostConnections) {
@@ -152,10 +165,10 @@ public abstract class ScpServerTestSupport extends CamelTestSupport {
 
         // For security reasons (avoiding man in the middle attacks),
         // camel-jsch will only connect to known hosts. For unit testing
-        // we use a known key, but since the port is dynamic, the 
-        // known_hosts file will be generated by the following code and 
-        // should contain a line like below (if 
-        // "HashKnownHosts"=="yes" the hostname:port part will be 
+        // we use a known key, but since the port is dynamic, the
+        // known_hosts file will be generated by the following code and
+        // should contain a line like below (if
+        // "HashKnownHosts"=="yes" the hostname:port part will be
         // hashed and look a bit more complicated).
         //
         // [localhost]:21000 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAgQDd \
@@ -168,33 +181,38 @@ public abstract class ScpServerTestSupport extends CamelTestSupport {
             LOG.debug("Using '{}' for known hosts.", knownHostsFile);
             jsch.setKnownHosts(knownHostsFile);
             Session s = jsch.getSession("admin", "localhost", getPort());
-            s.setConfig("StrictHostKeyChecking",  "ask");
+            s.setConfig("StrictHostKeyChecking", "ask");
 
             // TODO: by the current jsch (0.1.51) setting "HashKnownHosts" to "no" is a workaround
             // to make the tests run green, see also http://sourceforge.net/p/jsch/bugs/63/
-            s.setConfig("HashKnownHosts",  "no");
+            s.setConfig("HashKnownHosts", "no");
             s.setUserInfo(new UserInfo() {
                 @Override
                 public String getPassphrase() {
                     return null;
                 }
+
                 @Override
                 public String getPassword() {
                     return "admin";
                 }
+
                 @Override
                 public boolean promptPassword(String message) {
                     return true;
                 }
+
                 @Override
                 public boolean promptPassphrase(String message) {
                     return false;
                 }
+
                 @Override
                 public boolean promptYesNo(String message) {
                     // accept host authenticity
                     return true;
                 }
+
                 @Override
                 public void showMessage(String message) {
                 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,26 +18,21 @@ package org.apache.camel.component.leveldb;
 
 import java.util.concurrent.TimeUnit;
 
-import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.processor.aggregate.AggregationStrategy;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.params.Test;
+import org.awaitility.Awaitility;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
-public class LevelDBAggregateDiscardOnTimeoutTest extends CamelTestSupport {
-   
-    private LevelDBAggregationRepository repo;
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
+
+@DisabledOnOs({ OS.AIX, OS.OTHER })
+public class LevelDBAggregateDiscardOnTimeoutTest extends LevelDBTestSupport {
 
     @Override
-    public void setUp() throws Exception {
+    public void doPreSetup() {
         deleteDirectory("target/data");
-        repo = new LevelDBAggregationRepository("repo1", "target/data/leveldb.dat");
-        // enable recovery
-        repo.setUseRecovery(true);
-        // check faster
-        repo.setRecoveryInterval(500, TimeUnit.MILLISECONDS);
-        super.setUp();
     }
 
     @Test
@@ -48,8 +43,8 @@ public class LevelDBAggregateDiscardOnTimeoutTest extends CamelTestSupport {
         template.sendBodyAndHeader("direct:start", "A", "id", 123);
         template.sendBodyAndHeader("direct:start", "B", "id", 123);
 
-        // wait 3 seconds
-        Thread.sleep(3000);
+        // wait at most 3 seconds
+        Awaitility.await().atMost(3, TimeUnit.SECONDS).untilAsserted(() -> mock.assertIsSatisfied());
 
         mock.assertIsSatisfied();
 
@@ -66,13 +61,14 @@ public class LevelDBAggregateDiscardOnTimeoutTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
+
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .aggregate(header("id"), new MyAggregationStrategy())
-                        .completionSize(3).aggregationRepository(repo)
+                        .aggregate(header("id"), new StringAggregationStrategy())
+                        .completionSize(3).aggregationRepository(getRepo())
                         // use a 3 second timeout
                         .completionTimeout(2000)
                         // and if timeout occurred then just discard the aggregated message
@@ -82,17 +78,15 @@ public class LevelDBAggregateDiscardOnTimeoutTest extends CamelTestSupport {
         };
     }
 
-    public static class MyAggregationStrategy implements AggregationStrategy {
+    @Override
+    LevelDBAggregationRepository getRepo() {
+        LevelDBAggregationRepository repo = super.getRepo();
+        repo = new LevelDBAggregationRepository("repo1", "target/data/leveldb.dat");
+        // enable recovery
+        repo.setUseRecovery(true);
+        // check faster
+        repo.setRecoveryInterval(500, TimeUnit.MILLISECONDS);
 
-        public Exchange aggregate(Exchange oldExchange, Exchange newExchange) {
-            if (oldExchange == null) {
-                return newExchange;
-            }
-            String body1 = oldExchange.getIn().getBody(String.class);
-            String body2 = newExchange.getIn().getBody(String.class);
-
-            oldExchange.getIn().setBody(body1 + body2);
-            return oldExchange;
-        }
+        return repo;
     }
 }

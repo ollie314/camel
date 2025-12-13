@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,28 +16,96 @@
  */
 package org.apache.camel.component.telegram;
 
+import java.net.InetSocketAddress;
+import java.net.ProxySelector;
+import java.net.http.HttpClient;
+import java.util.Collections;
+import java.util.List;
+
+import org.apache.camel.Category;
 import org.apache.camel.Component;
 import org.apache.camel.Consumer;
-import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
-import org.apache.camel.component.telegram.model.Update;
-import org.apache.camel.impl.ScheduledPollEndpoint;
+import org.apache.camel.RuntimeCamelException;
+import org.apache.camel.component.telegram.service.TelegramServiceRestBotAPIAdapter;
+import org.apache.camel.component.webhook.WebhookCapableEndpoint;
+import org.apache.camel.component.webhook.WebhookConfiguration;
+import org.apache.camel.spi.EndpointServiceLocation;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
+import org.apache.camel.support.ScheduledPollEndpoint;
+import org.apache.camel.util.ObjectHelper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * The telegram component provides access to the <a href="https://core.telegram.org/bots/api">Telegram Bot API</a>.
+ * Send and receive messages using the <a href="https://core.telegram.org/bots/api">Telegram Bot API</a>.
  */
-@UriEndpoint(scheme = "telegram", title = "Telegram", syntax = "telegram:type/authorizationToken", consumerClass = TelegramConsumer.class, label = "chat")
-public class TelegramEndpoint extends ScheduledPollEndpoint {
+@UriEndpoint(firstVersion = "2.18.0", scheme = "telegram", title = "Telegram", syntax = "telegram:type",
+             category = { Category.CLOUD, Category.API, Category.CHAT }, headersClass = TelegramConstants.class)
+public class TelegramEndpoint extends ScheduledPollEndpoint implements WebhookCapableEndpoint, EndpointServiceLocation {
+    private static final Logger LOG = LoggerFactory.getLogger(TelegramEndpoint.class);
 
     @UriParam
     private TelegramConfiguration configuration;
+    @UriParam(label = "advanced")
+    private HttpClient client;
+    @UriParam(label = "advanced", defaultValue = "" + (1024 * 1024))
+    private int bufferSize = 1024 * 1024;
 
-    public TelegramEndpoint(String endpointUri, Component component, TelegramConfiguration configuration) {
+    private WebhookConfiguration webhookConfiguration;
+
+    private TelegramService telegramService;
+
+    public TelegramEndpoint(
+                            String endpointUri,
+                            Component component,
+                            TelegramConfiguration configuration,
+                            HttpClient client) {
         super(endpointUri, component);
         this.configuration = configuration;
+        this.client = client;
+    }
+
+    @Override
+    public String getServiceUrl() {
+        if (configuration.getBaseUri() != null) {
+            return configuration.getBaseUri();
+        }
+        return "https://api.telegram.org";
+    }
+
+    @Override
+    public String getServiceProtocol() {
+        return "rest";
+    }
+
+    @Override
+    protected void doStart() throws Exception {
+        super.doStart();
+        if (client == null) {
+            HttpClient.Builder builder = HttpClient.newBuilder();
+
+            if (configuration != null && ObjectHelper.isNotEmpty(configuration.getProxyHost())
+                    && ObjectHelper.isNotEmpty(configuration.getProxyPort())) {
+                LOG.debug("Setup {} proxy host:{} port:{} for TelegramService",
+                        configuration.getProxyType(),
+                        configuration.getProxyHost(),
+                        configuration.getProxyPort());
+
+                builder.proxy(
+                        ProxySelector.of(new InetSocketAddress(configuration.getProxyHost(), configuration.getProxyPort())));
+            }
+
+            client = builder.build();
+        }
+        if (telegramService == null) {
+            telegramService = new TelegramServiceRestBotAPIAdapter(
+                    client,
+                    configuration.getBaseUri(),
+                    configuration.getAuthorizationToken(), bufferSize);
+        }
     }
 
     @Override
@@ -52,23 +120,37 @@ public class TelegramEndpoint extends ScheduledPollEndpoint {
         return consumer;
     }
 
-    public Exchange createExchange(Update update) {
-        Exchange exchange = super.createExchange();
-
-        if (update.getMessage() != null) {
-            exchange.getIn().setBody(update.getMessage());
-
-            if (update.getMessage().getChat() != null) {
-                exchange.getIn().setHeader(TelegramConstants.TELEGRAM_CHAT_ID, update.getMessage().getChat().getId());
-            }
-        }
-
-        return exchange;
+    @Override
+    public Processor createWebhookHandler(Processor next) {
+        return new TelegramWebhookProcessor(next);
     }
 
     @Override
-    public boolean isSingleton() {
-        return true;
+    public void registerWebhook() throws Exception {
+        if (!telegramService.setWebhook(webhookConfiguration.computeFullExternalUrl())) {
+            throw new RuntimeCamelException("The Telegram API refused to register a webhook");
+        }
+    }
+
+    @Override
+    public void unregisterWebhook() throws Exception {
+        if (!telegramService.removeWebhook()) {
+            throw new RuntimeCamelException("The Telegram API refused to unregister the webhook");
+        }
+    }
+
+    public WebhookConfiguration getWebhookConfiguration() {
+        return webhookConfiguration;
+    }
+
+    @Override
+    public void setWebhookConfiguration(WebhookConfiguration webhookConfiguration) {
+        this.webhookConfiguration = webhookConfiguration;
+    }
+
+    @Override
+    public List<String> getWebhookMethods() {
+        return Collections.singletonList("POST");
     }
 
     public TelegramConfiguration getConfiguration() {
@@ -79,4 +161,29 @@ public class TelegramEndpoint extends ScheduledPollEndpoint {
         this.configuration = configuration;
     }
 
+    public TelegramService getTelegramService() {
+        return telegramService;
+    }
+
+    public HttpClient getClient() {
+        return client;
+    }
+
+    /**
+     * To use a custom {@link HttpClient}
+     */
+    public void setClient(HttpClient client) {
+        this.client = client;
+    }
+
+    public int getBufferSize() {
+        return bufferSize;
+    }
+
+    /**
+     * The initial in-memory buffer size used when transferring data between Camel and AHC Client.
+     */
+    public void setBufferSize(int bufferSize) {
+        this.bufferSize = bufferSize;
+    }
 }

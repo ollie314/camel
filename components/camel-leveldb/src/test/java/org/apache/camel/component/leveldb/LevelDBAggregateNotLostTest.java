@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,26 +16,29 @@
  */
 package org.apache.camel.component.leveldb;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.processor.aggregate.AggregationStrategy;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.fusesource.hawtbuf.Buffer;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.junit5.params.Test;
+import org.awaitility.Awaitility;
+import org.hamcrest.Matchers;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
 import static org.apache.camel.component.leveldb.LevelDBAggregationRepository.keyBuilder;
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-public class LevelDBAggregateNotLostTest extends CamelTestSupport {
-
-    private LevelDBAggregationRepository repo;
+@DisabledOnOs({ OS.AIX, OS.OTHER })
+public class LevelDBAggregateNotLostTest extends LevelDBTestSupport {
 
     @Override
-    public void setUp() throws Exception {
+    public void doPreSetup() {
         deleteDirectory("target/data");
-        repo = new LevelDBAggregationRepository("repo1", "target/data/leveldb.dat");
-        super.setUp();
     }
 
     @Test
@@ -49,20 +52,21 @@ public class LevelDBAggregateNotLostTest extends CamelTestSupport {
         template.sendBodyAndHeader("direct:start", "D", "id", 123);
         template.sendBodyAndHeader("direct:start", "E", "id", 123);
 
-        assertMockEndpointsSatisfied(30, TimeUnit.SECONDS);
+        MockEndpoint.assertIsSatisfied(context, 30, TimeUnit.SECONDS);
 
-        Thread.sleep(1000);
+        final List<Exchange> receivedExchanges = Awaitility.await().atMost(1, TimeUnit.SECONDS)
+                .until(() -> getMockEndpoint("mock:aggregated").getReceivedExchanges(), Matchers.notNullValue());
 
-        String exchangeId = getMockEndpoint("mock:aggregated").getReceivedExchanges().get(0).getExchangeId();
+        String exchangeId = receivedExchanges.get(0).getExchangeId();
 
         // the exchange should be in the completed repo where we should be able to find it
-        final LevelDBFile levelDBFile = repo.getLevelDBFile();
-        final LevelDBCamelCodec codec = new LevelDBCamelCodec();
+        final LevelDBFile levelDBFile = getRepo().getLevelDBFile();
+        final LevelDBCamelCodec codec = new LevelDBCamelCodec(getRepo().getSerializer());
         byte[] bf = levelDBFile.getDb().get(keyBuilder("repo1-completed", exchangeId));
 
         // assert the exchange was not lost and we got all the information still
         assertNotNull(bf);
-        Exchange completed = codec.unmarshallExchange(context, new Buffer(bf));
+        Exchange completed = codec.unmarshallExchange(context, bf);
         assertNotNull(completed);
         // should retain the exchange id
         assertEquals(exchangeId, completed.getExchangeId());
@@ -75,34 +79,20 @@ public class LevelDBAggregateNotLostTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .aggregate(header("id"), new MyAggregationStrategy())
-                        .completionSize(5).aggregationRepository(repo)
-                        .log("aggregated exchange id ${exchangeId} with ${body}")
-                        .to("mock:aggregated")
-                        // throw an exception to fail, which we then will loose this message
-                        .throwException(new IllegalArgumentException("Damn"))
-                        .to("mock:result")
-                    .end();
+                        .aggregate(header("id"), new StringAggregationStrategy())
+                            .completionSize(5).aggregationRepository(getRepo())
+                            .log("aggregated exchange id ${exchangeId} with ${body}")
+                            .to("mock:aggregated")
+                            // throw an exception to fail, which we then will loose this message
+                            .throwException(new IllegalArgumentException("Damn"))
+                            .to("mock:result")
+                        .end();
             }
         };
-    }
-
-    public static class MyAggregationStrategy implements AggregationStrategy {
-
-        public Exchange aggregate(Exchange oldExchange, Exchange newExchange) {
-            if (oldExchange == null) {
-                return newExchange;
-            }
-            String body1 = oldExchange.getIn().getBody(String.class);
-            String body2 = newExchange.getIn().getBody(String.class);
-
-            oldExchange.getIn().setBody(body1 + body2);
-            return oldExchange;
-        }
     }
 }

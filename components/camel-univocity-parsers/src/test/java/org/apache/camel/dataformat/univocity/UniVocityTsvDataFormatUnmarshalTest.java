@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,17 +27,22 @@ import org.apache.camel.EndpointInject;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.spi.DataFormat;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
 import static org.apache.camel.dataformat.univocity.UniVocityTestHelper.asMap;
 import static org.apache.camel.dataformat.univocity.UniVocityTestHelper.join;
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * This class tests the unmarshalling of {@link org.apache.camel.dataformat.univocity.UniVocityTsvDataFormat}.
  */
 public final class UniVocityTsvDataFormatUnmarshalTest extends CamelTestSupport {
-    @EndpointInject(uri = "mock:result")
+    @EndpointInject("mock:result")
     MockEndpoint result;
 
     /**
@@ -146,41 +151,38 @@ public final class UniVocityTsvDataFormatUnmarshalTest extends CamelTestSupport 
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
-        final Map<String, DataFormat> tests = new HashMap<String, DataFormat>();
+    protected RouteBuilder createRouteBuilder() {
+        final Map<String, DataFormat> tests = new HashMap<>();
 
         // Default reading of TSV
         tests.put("default", new UniVocityTsvDataFormat());
 
-        // Reading TSV as Map
-        tests.put("map", new UniVocityTsvDataFormat()
-                        .setAsMap(true)
-                        .setHeaderExtractionEnabled(true)
-        );
+        var df = new UniVocityTsvDataFormat();
+        df.setAsMap(true);
+        df.setHeaderExtractionEnabled(true);
+        tests.put("map", df);
 
-        // Reading TSV as Map with specific headers
-        tests.put("mapWithHeaders", new UniVocityTsvDataFormat()
-                        .setAsMap(true)
-                        .setHeaders(new String[]{"A", "B", "C"})
-        );
+        df = new UniVocityTsvDataFormat();
+        df.setAsMap(true);
+        df.setHeaders("A,B,C");
+        tests.put("mapWithHeaders", df);
 
-        // Reading TSV using an iterator
-        tests.put("lazy", new UniVocityTsvDataFormat()
-                        .setLazyLoad(true)
-        );
+        df = new UniVocityTsvDataFormat();
+        df.setLazyLoad(true);
+        tests.put("lazy", df);
 
         // Reading TSV using advanced configuration
-        tests.put("advanced", new UniVocityTsvDataFormat()
-                        .setNullValue("N/A")
-                        .setIgnoreLeadingWhitespaces(true)
-                        .setIgnoreTrailingWhitespaces(false)
-                        .setComment('!')
-                        .setSkipEmptyLines(true)
-        );
+        df = new UniVocityTsvDataFormat();
+        df.setNullValue("N/A");
+        df.setIgnoreLeadingWhitespaces(true);
+        df.setIgnoreTrailingWhitespaces(false);
+        df.setComment('!');
+        df.setSkipEmptyLines(true);
+        tests.put("advanced", df);
 
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 for (Map.Entry<String, DataFormat> test : tests.entrySet()) {
                     from("direct:" + test.getKey()).unmarshal(test.getValue()).to("mock:result");
                 }

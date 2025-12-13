@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,15 +23,23 @@ import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.converter.jaxb.address.Address;
 import org.apache.camel.converter.jaxb.person.Person;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.apache.camel.util.StopWatch;
+import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConcurrentJaxbDataFormatSchemaValidationTest extends CamelTestSupport {
 
-    @EndpointInject(uri = "mock:marshall")
+    private static final Logger LOG = LoggerFactory.getLogger(ConcurrentJaxbDataFormatSchemaValidationTest.class);
+
+    @EndpointInject("mock:marshall")
     private MockEndpoint mockMarshall;
 
-    @EndpointInject(uri = "mock:unmarshall")
+    @EndpointInject("mock:unmarshall")
     private MockEndpoint mockUnmarshall;
 
     private int testCount = 1000;
@@ -49,19 +57,20 @@ public class ConcurrentJaxbDataFormatSchemaValidationTest extends CamelTestSuppo
         person.setAge(Integer.valueOf(36));
         person.setAddress(address);
 
-        long start = System.currentTimeMillis();
+        StopWatch watch = new StopWatch();
         for (int i = 0; i < testCount; i++) {
             template.sendBody("seda:marshall", person);
         }
 
-        assertMockEndpointsSatisfied();
-        log.info("Validation of {} messages took {} ms", testCount, System.currentTimeMillis() - start);
+        MockEndpoint.assertIsSatisfied(context);
+        LOG.info("Validation of {} messages took {} ms", testCount, watch.taken());
 
         String payload = mockMarshall.getExchanges().get(0).getIn().getBody(String.class);
-        log.info(payload);
+        LOG.info(payload);
 
         assertTrue(payload.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"));
-        assertTrue(payload.contains("<person xmlns=\"person.jaxb.converter.camel.apache.org\" xmlns:ns2=\"address.jaxb.converter.camel.apache.org\">"));
+        assertTrue(payload.contains(
+                "<person xmlns=\"person.jaxb.converter.camel.apache.org\" xmlns:ns2=\"address.jaxb.converter.camel.apache.org\">"));
         assertTrue(payload.contains("<firstName>Christian</firstName>"));
         assertTrue(payload.contains("<lastName>Mueller</lastName>"));
         assertTrue(payload.contains("<age>36</age>"));
@@ -76,23 +85,23 @@ public class ConcurrentJaxbDataFormatSchemaValidationTest extends CamelTestSuppo
         mockUnmarshall.expectedMessageCount(testCount);
 
         String xml = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>")
-            .append("<person xmlns=\"person.jaxb.converter.camel.apache.org\" xmlns:ns2=\"address.jaxb.converter.camel.apache.org\">")
-            .append("<firstName>Christian</firstName>")
-            .append("<lastName>Mueller</lastName>")
-            .append("<age>36</age>")
-            .append("<address>")
-            .append("<ns2:addressLine1>Hauptstr. 1; 01129 Entenhausen</ns2:addressLine1>")
-            .append("</address>")
-            .append("</person>")
-            .toString();
+                .append("<person xmlns=\"person.jaxb.converter.camel.apache.org\" xmlns:ns2=\"address.jaxb.converter.camel.apache.org\">")
+                .append("<firstName>Christian</firstName>")
+                .append("<lastName>Mueller</lastName>")
+                .append("<age>36</age>")
+                .append("<address>")
+                .append("<ns2:addressLine1>Hauptstr. 1; 01129 Entenhausen</ns2:addressLine1>")
+                .append("</address>")
+                .append("</person>")
+                .toString();
 
-        long start = System.currentTimeMillis();
+        StopWatch watch = new StopWatch();
         for (int i = 0; i < testCount; i++) {
             template.sendBody("seda:unmarshall", xml);
         }
 
-        assertMockEndpointsSatisfied(20, TimeUnit.SECONDS);
-        log.info("Validation of {} messages took {} ms", testCount, System.currentTimeMillis() - start);
+        MockEndpoint.assertIsSatisfied(context, 20, TimeUnit.SECONDS);
+        LOG.info("Validation of {} messages took {} ms", testCount, watch.taken());
 
         Person person = mockUnmarshall.getExchanges().get(0).getIn().getBody(Person.class);
 
@@ -102,20 +111,21 @@ public class ConcurrentJaxbDataFormatSchemaValidationTest extends CamelTestSuppo
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 JaxbDataFormat jaxbDataFormat = new JaxbDataFormat();
                 jaxbDataFormat.setContextPath(Person.class.getPackage().getName());
                 jaxbDataFormat.setSchema("classpath:person.xsd,classpath:address.xsd");
+                jaxbDataFormat.setAccessExternalSchemaProtocols("file");
 
                 from("seda:marshall?concurrentConsumers=" + concurrencyLevel)
-                    .marshal(jaxbDataFormat)
-                    .to("mock:marshall");
+                        .marshal(jaxbDataFormat)
+                        .to("mock:marshall");
 
                 from("seda:unmarshall?concurrentConsumers=" + concurrencyLevel)
-                    .unmarshal(jaxbDataFormat)
-                    .to("mock:unmarshall");
+                        .unmarshal(jaxbDataFormat)
+                        .to("mock:unmarshall");
             }
         };
     }

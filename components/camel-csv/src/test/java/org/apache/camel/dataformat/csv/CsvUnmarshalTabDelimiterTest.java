@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,22 +21,24 @@ import java.util.List;
 import org.apache.camel.EndpointInject;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class CsvUnmarshalTabDelimiterTest extends CamelTestSupport {
 
-    @EndpointInject(uri = "mock:result")
+    @EndpointInject("mock:result")
     private MockEndpoint result;
 
     @SuppressWarnings("unchecked")
     @Test
-    public void testCsvUnMarshal() throws Exception {
+    void testCsvUnMarshal() throws Exception {
         result.expectedMessageCount(1);
 
         template.sendBody("direct:start", "123\tCamel in Action\t1\n124\tActiveMQ in Action\t2");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         List<List<String>> body = result.getReceivedExchanges().get(0).getIn().getBody(List.class);
         assertEquals(2, body.size());
@@ -50,12 +52,12 @@ public class CsvUnmarshalTabDelimiterTest extends CamelTestSupport {
 
     @SuppressWarnings("unchecked")
     @Test
-    public void testCsvUnMarshalSingleLine() throws Exception {
+    void testCsvUnMarshalSingleLine() throws Exception {
         result.expectedMessageCount(1);
 
         template.sendBody("direct:start", "123\tCamel in Action\t1");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         List<List<String>> body = result.getReceivedExchanges().get(0).getIn().getBody(List.class);
         assertEquals(1, body.size());
@@ -65,10 +67,10 @@ public class CsvUnmarshalTabDelimiterTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 CsvDataFormat csv = new CsvDataFormat()
                         .setDelimiter('\t');
 

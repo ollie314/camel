@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,37 +22,37 @@ import javax.sql.DataSource;
 
 import org.apache.camel.EndpointInject;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.spring.CamelSpringTestSupport;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.spring.junit5.CamelSpringTestSupport;
+import org.junit.jupiter.api.Test;
 import org.springframework.context.support.AbstractApplicationContext;
 import org.springframework.context.support.ClassPathXmlApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 public class CustomizedJdbcMessageIdRepositoryTest extends CamelSpringTestSupport {
 
-    protected static final String SELECT_ALL_STRING = "SELECT messageId FROM CUSTOMIZED_MESSAGE_REPOSITORY WHERE processorName = ?";
+    protected static final String SELECT_ALL_STRING
+            = "SELECT messageId FROM CUSTOMIZED_MESSAGE_REPOSITORY WHERE processorName = ?";
     protected static final String PROCESSOR_NAME = "myProcessorName";
 
     protected JdbcTemplate jdbcTemplate;
     protected DataSource dataSource;
-    
-    @EndpointInject(uri = "mock:result")
+
+    @EndpointInject("mock:result")
     protected MockEndpoint resultEndpoint;
 
-    @EndpointInject(uri = "mock:error")
+    @EndpointInject("mock:error")
     protected MockEndpoint errorEndpoint;
-    
+
     @Override
-    @Before
-    public void setUp() throws Exception {
-        super.setUp();
-        
+    public void doPostSetup() {
         dataSource = context.getRegistry().lookupByNameAndType("dataSource", DataSource.class);
         jdbcTemplate = new JdbcTemplate(dataSource);
         jdbcTemplate.afterPropertiesSet();
     }
-    
+
     @Test
     public void testDuplicateMessagesAreFilteredOut() throws Exception {
         resultEndpoint.expectedBodiesReceived("one", "two", "three");
@@ -65,7 +65,7 @@ public class CustomizedJdbcMessageIdRepositoryTest extends CamelSpringTestSuppor
         template.sendBodyAndHeader("direct:start", "one", "messageId", "1");
         template.sendBodyAndHeader("direct:start", "three", "messageId", "3");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // all 3 messages should be in jdbc repo
         List<String> receivedMessageIds = jdbcTemplate.queryForList(SELECT_ALL_STRING, String.class, PROCESSOR_NAME);
@@ -75,7 +75,7 @@ public class CustomizedJdbcMessageIdRepositoryTest extends CamelSpringTestSuppor
         assertTrue(receivedMessageIds.contains("2"));
         assertTrue(receivedMessageIds.contains("3"));
     }
-    
+
     @Override
     protected AbstractApplicationContext createApplicationContext() {
         return new ClassPathXmlApplicationContext("org/apache/camel/processor/idempotent/jdbc/customized-spring.xml");

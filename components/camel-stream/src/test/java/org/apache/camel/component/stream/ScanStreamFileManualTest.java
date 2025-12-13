@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,29 +19,28 @@ package org.apache.camel.component.stream;
 import java.io.File;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Before;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+
+import static org.apache.camel.test.junit5.TestSupport.createDirectory;
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
 
 /**
  * Unit test for scan stream file
  */
-@Ignore("For manual testing")
+@Disabled("For manual testing")
 public class ScanStreamFileManualTest extends CamelTestSupport {
 
     private File file;
 
     @Override
-    @Before
-    public void setUp() throws Exception {
+    public void doPreSetup() throws Exception {
         deleteDirectory("target/stream");
         createDirectory("target/stream");
 
         file = new File("target/stream/scanstreamfile.txt");
         file.createNewFile();
-
-        super.setUp();
     }
 
     @Test
@@ -49,6 +48,7 @@ public class ScanStreamFileManualTest extends CamelTestSupport {
         Thread.sleep(60000);
     }
 
+    @Override
     protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {

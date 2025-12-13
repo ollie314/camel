@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,12 +21,11 @@ import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.util.Arrays;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.fail;
-
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class JsonStreamTest {
 
@@ -36,13 +35,10 @@ public class JsonStreamTest {
     }
 
     @Test
-    public void iSO88591() throws Exception {
-        try {
-            test("json_stream/jsonISO8859-1.txt", "ISO-8859-1");
-            fail("Error exepcted");
-        } catch (AssertionError e) {
-            assertEquals("expected:<ISO-8859-1> but was:<UTF-8>", e.getMessage());
-        }
+    public void iSO88591() {
+        AssertionError error = assertThrows(AssertionError.class, () -> test("json_stream/jsonISO8859-1.txt", "ISO-8859-1"),
+                "Error expected");
+        assertEquals("expected: <ISO-8859-1> but was: <UTF-8>", error.getMessage());
     }
 
     @Test
@@ -92,12 +88,12 @@ public class JsonStreamTest {
 
     @Test
     public void oneChar() throws Exception {
-        test("json_stream/oneChar", "UTF-8", "1");
+        test("json_stream/oneChar.txt", "UTF-8", "1");
     }
 
     @Test
     public void fourChar() throws Exception {
-        test("json_stream/fourChar", "UTF-8", "1234");
+        test("json_stream/fourChar.txt", "UTF-8", "1234");
     }
 
     private void test(String file, String encoding) throws Exception {
@@ -108,7 +104,7 @@ public class JsonStreamTest {
 
     private void test(String file, String encoding, String expectedString) throws Exception {
         InputStream is = JsonStreamTest.class.getClassLoader().getResourceAsStream(file);
-        assertNotNull("File " + file + " not found", is);
+        assertNotNull(is, "File " + file + " not found");
         JsonStream js = new JsonStream(is);
         Charset actual = js.getEncoding();
         Charset expected = Charset.forName(encoding);
@@ -124,7 +120,6 @@ public class JsonStreamTest {
         byte[] buffer = new byte[2048];
         int len = js.read(buffer);
         js.close();
-        byte[] result = Arrays.copyOf(buffer, len);
-        return result;
+        return Arrays.copyOf(buffer, len);
     }
 }

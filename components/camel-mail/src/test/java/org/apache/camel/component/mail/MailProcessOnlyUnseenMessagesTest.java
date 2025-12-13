@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,27 +16,28 @@
  */
 package org.apache.camel.component.mail;
 
-import javax.mail.Flags;
-import javax.mail.Folder;
-import javax.mail.Message;
-import javax.mail.Store;
-import javax.mail.internet.MimeMessage;
+import jakarta.mail.Flags;
+import jakarta.mail.Folder;
+import jakarta.mail.Message;
+import jakarta.mail.Store;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mail.Mailbox.MailboxUser;
+import org.apache.camel.component.mail.Mailbox.Protocol;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import org.jvnet.mock_javamail.Mailbox;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
 /**
  * Unit test for unseen option.
  */
 public class MailProcessOnlyUnseenMessagesTest extends CamelTestSupport {
+    private static final MailboxUser claus = Mailbox.getOrCreateUser("claus", "secret");
 
     @Override
-    public void setUp() throws Exception {
+    public void doPreSetup() throws Exception {
         prepareMailbox();
-        super.setUp();
     }
 
     @Test
@@ -63,7 +64,7 @@ public class MailProcessOnlyUnseenMessagesTest extends CamelTestSupport {
         Mailbox.clearAll();
         JavaMailSender sender = new DefaultJavaMailSender();
         Store store = sender.getSession().getStore("imap");
-        store.connect("localhost", 25, "claus", "secret");
+        store.connect("localhost", Mailbox.getPort(Protocol.imap), claus.getLogin(), claus.getPassword());
         Folder folder = store.getFolder("INBOX");
         folder.open(Folder.READ_WRITE);
         folder.expunge();
@@ -82,12 +83,14 @@ public class MailProcessOnlyUnseenMessagesTest extends CamelTestSupport {
         folder.close(true);
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("direct:a").to("smtp://claus@localhost");
+            public void configure() {
+                from("direct:a").to(claus.uriPrefix(Protocol.smtp));
 
-                from("imap://localhost?username=claus&password=secret&unseen=true&consumer.delay=1000").to("mock:result");
+                from(claus.uriPrefix(Protocol.imap) + "&unseen=true&initialDelay=100&delay=100")
+                        .to("mock:result");
             }
         };
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,11 +17,9 @@
 package org.apache.camel.component.netty;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
 public class NettyTextlineInOnlyTest extends BaseNettyTest {
 
     @Test
@@ -30,7 +28,7 @@ public class NettyTextlineInOnlyTest extends BaseNettyTest {
 
         template.sendBody("netty:tcp://localhost:{{port}}?textline=true&sync=false", "Hello World\nhow are you?\n");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -39,7 +37,7 @@ public class NettyTextlineInOnlyTest extends BaseNettyTest {
 
         template.sendBody("netty:tcp://localhost:{{port}}?textline=true&sync=false", "Hello World");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -48,18 +46,18 @@ public class NettyTextlineInOnlyTest extends BaseNettyTest {
 
         template.sendBody("netty:tcp://localhost:{{port}}?textline=true&sync=false", "Hello World\n");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("netty:tcp://localhost:{{port}}?textline=true&sync=false")
-                    // body should be a String when using textline codec
-                    .validate(body().isInstanceOf(String.class))
-                    .to("mock:result");
+                        // body should be a String when using textline codec
+                        .validate(body().isInstanceOf(String.class))
+                        .to("mock:result");
             }
         };
     }

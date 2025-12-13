@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,19 +18,18 @@ package org.apache.camel.component.stream;
 
 import java.util.List;
 
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.impl.JndiRegistry;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class StreamGroupLinesStrategyTest extends StreamGroupLinesTest {
-    
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry jndi = super.createRegistry();
-        jndi.bind("myGroupStrategy", new MyGroupStrategy());
-        return jndi;
-    }
-    
+
+    @BindToRegistry("myGroupStrategy")
+    private MyGroupStrategy strat = new MyGroupStrategy();
+
     class MyGroupStrategy implements GroupStrategy {
 
         @Override
@@ -38,12 +37,13 @@ public class StreamGroupLinesStrategyTest extends StreamGroupLinesTest {
             StringBuilder buffer = new StringBuilder();
             for (String line : lines) {
                 buffer.append(line);
-                buffer.append(System.lineSeparator());
+                buffer.append(LS);
             }
             return buffer.toString();
         }
     }
-    
+
+    @Override
     @Test
     public void testGroupLines() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:result");
@@ -54,21 +54,22 @@ public class StreamGroupLinesStrategyTest extends StreamGroupLinesTest {
         mock.message(1).header(StreamConstants.STREAM_INDEX).isEqualTo(1);
         mock.message(1).header(StreamConstants.STREAM_COMPLETE).isEqualTo(true);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         Object result = mock.getExchanges().get(0).getIn().getBody();
-        assertEquals("Get a wrong result.", "A\nB\nC\n", result);
+        assertEquals("A" + LS + "B" + LS + "C" + LS, result, "Get a wrong result.");
 
         Object result2 = mock.getExchanges().get(1).getIn().getBody();
-        assertEquals("Get a wrong result.", "D\nE\nF\n", result2);
+        assertEquals("D" + LS + "E" + LS + "F" + LS, result2, "Get a wrong result.");
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("stream:file?fileName=target/stream/streamfile.txt&groupLines=3&groupStrategy=#myGroupStrategy").to("mock:result");
+            public void configure() {
+                from("stream:file?fileName=target/stream/streamfile.txt&groupLines=3&groupStrategy=#myGroupStrategy")
+                        .to("mock:result");
             }
         };
     }

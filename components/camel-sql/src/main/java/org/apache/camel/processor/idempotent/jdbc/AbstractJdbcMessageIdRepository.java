@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,7 +21,8 @@ import javax.sql.DataSource;
 import org.apache.camel.api.management.ManagedOperation;
 import org.apache.camel.api.management.ManagedResource;
 import org.apache.camel.spi.IdempotentRepository;
-import org.apache.camel.support.ServiceSupport;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.support.service.ServiceSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -36,21 +37,31 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p/>
  * Subclasses need only implement theses methods:
  * <ul>
- *   <li>{@link #queryForInt(T key)}</li>
- *   <li>{@link #insert(T key)}</li>
- *   <li>{@link #delete(T key)}</li>
+ * <li>{@link #queryForInt(String key) queryForInt(String key)}</li>
+ * <li>{@link #insert(String key) insert(String key)}</li>
+ * <li>{@link #delete(String key) delete(String key)}</li>
  * </ul>
  * <p/>
  * These methods should perform the named database operation.
+ * <p/>
+ * <b>Important:</b> Implementations of this should use <tt>String</tt> as the generic type as that is what is required
+ * by Camel to allow using the idempotent repository with the Idempotent Consumer EIP and also as file consumer
+ * read-lock. It was a mistake to make {@link IdempotentRepository} parameterized, as it should have been a
+ * pre-configured to use a <tt>String</tt> type.
  */
 @ManagedResource(description = "JDBC IdempotentRepository")
-public abstract class AbstractJdbcMessageIdRepository<T> extends ServiceSupport implements IdempotentRepository<T> {
+public abstract class AbstractJdbcMessageIdRepository extends ServiceSupport implements IdempotentRepository {
 
-    protected JdbcTemplate jdbcTemplate;
-    protected String processorName;
-    protected TransactionTemplate transactionTemplate;
-    protected DataSource dataSource;
     protected Logger log = LoggerFactory.getLogger(getClass());
+
+    @Metadata(description = "The name of the processor that are used for this repository. Use unique names to separate processors in the same database.",
+              required = true)
+    protected String processorName;
+    @Metadata(description = "The Spring JdbcTemplate to use for connecting to the database", required = true)
+    protected JdbcTemplate jdbcTemplate;
+    @Metadata(description = "The Spring TransactionTemplate to use for connecting to the database", required = true)
+    protected TransactionTemplate transactionTemplate;
+    protected DataSource dataSource; // not in use
 
     public AbstractJdbcMessageIdRepository() {
     }
@@ -60,7 +71,8 @@ public abstract class AbstractJdbcMessageIdRepository<T> extends ServiceSupport 
         this.transactionTemplate = transactionTemplate;
     }
 
-    public AbstractJdbcMessageIdRepository(DataSource dataSource, TransactionTemplate transactionTemplate, String processorName) {
+    public AbstractJdbcMessageIdRepository(DataSource dataSource, TransactionTemplate transactionTemplate,
+                                           String processorName) {
         this.jdbcTemplate = new JdbcTemplate(dataSource);
         this.jdbcTemplate.afterPropertiesSet();
         this.processorName = processorName;
@@ -74,31 +86,30 @@ public abstract class AbstractJdbcMessageIdRepository<T> extends ServiceSupport 
     /**
      * Operation that returns the number of rows, if any, for the specified key
      *
-     * @param key  the key
-     * @return int number of rows
+     * @param  key the key
+     * @return     int number of rows
      */
-    protected abstract int queryForInt(final T key);
+    protected abstract int queryForInt(String key);
 
     /**
      * Operation that inserts the key if it does not already exist
      *
-     * @param key  the key
-     * @return int number of rows inserted
+     * @param  key the key
+     * @return     int number of rows inserted
      */
-    protected abstract int insert(final T key);
+    protected abstract int insert(String key);
 
     /**
      * Operations that deletes the key if it exists
      *
-     * @param key  the key
-     * @return int number of rows deleted
+     * @param  key the key
+     * @return     int number of rows deleted
      */
-    protected abstract int delete(final T key);
-    
+    protected abstract int delete(String key);
+
     /**
      * Operations that deletes all the rows
      *
-     * @param key  the key
      * @return int number of rows deleted
      */
     protected abstract int delete();
@@ -123,7 +134,7 @@ public abstract class AbstractJdbcMessageIdRepository<T> extends ServiceSupport 
 
     @ManagedOperation(description = "Adds the key to the store")
     @Override
-    public boolean add(final T key) {
+    public boolean add(final String key) {
         // Run this in single transaction.
         Boolean rc = transactionTemplate.execute(new TransactionCallback<Boolean>() {
             public Boolean doInTransaction(TransactionStatus status) {
@@ -141,7 +152,7 @@ public abstract class AbstractJdbcMessageIdRepository<T> extends ServiceSupport 
 
     @ManagedOperation(description = "Does the store contain the given key")
     @Override
-    public boolean contains(final T key) {
+    public boolean contains(final String key) {
         // Run this in single transaction.
         Boolean rc = transactionTemplate.execute(new TransactionCallback<Boolean>() {
             public Boolean doInTransaction(TransactionStatus status) {
@@ -159,7 +170,7 @@ public abstract class AbstractJdbcMessageIdRepository<T> extends ServiceSupport 
 
     @ManagedOperation(description = "Remove the key from the store")
     @Override
-    public boolean remove(final T key) {
+    public boolean remove(final String key) {
         Boolean rc = transactionTemplate.execute(new TransactionCallback<Boolean>() {
             public Boolean doInTransaction(TransactionStatus status) {
                 int updateCount = delete(key);
@@ -172,7 +183,7 @@ public abstract class AbstractJdbcMessageIdRepository<T> extends ServiceSupport 
         });
         return rc.booleanValue();
     }
-    
+
     @ManagedOperation(description = "Clear the store")
     @Override
     public void clear() {
@@ -185,7 +196,7 @@ public abstract class AbstractJdbcMessageIdRepository<T> extends ServiceSupport 
     }
 
     @Override
-    public boolean confirm(final T key) {
+    public boolean confirm(final String key) {
         return true;
     }
 

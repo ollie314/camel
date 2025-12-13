@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,14 +19,20 @@ package org.apache.camel.component.mllp;
 /**
  * Raised when a MLLP Producer receives a HL7 Commit Error Acknowledgement
  */
-public class MllpCommitErrorAcknowledgementException extends MllpAcknowledgementException {
+public class MllpCommitErrorAcknowledgementException extends MllpNegativeAcknowledgementException {
     static final String EXCEPTION_MESSAGE = "HL7 Commit Error Acknowledgment Received";
 
-    public MllpCommitErrorAcknowledgementException(byte[] hl7Message, byte[] hl7Acknowledgement) {
-        super(EXCEPTION_MESSAGE, hl7Message, hl7Acknowledgement);
+    public MllpCommitErrorAcknowledgementException(byte[] hl7Message, byte[] hl7Acknowledgement, boolean logPhi) {
+        super(EXCEPTION_MESSAGE, hl7Message, hl7Acknowledgement, logPhi);
     }
 
-    public MllpCommitErrorAcknowledgementException(byte[] hl7Message, byte[] hl7Acknowledgement, Throwable cause) {
-        super(EXCEPTION_MESSAGE, hl7Message, hl7Acknowledgement, cause);
+    public MllpCommitErrorAcknowledgementException(byte[] hl7Message, byte[] hl7Acknowledgement, Throwable cause,
+                                                   boolean logPhi) {
+        super(EXCEPTION_MESSAGE, hl7Message, hl7Acknowledgement, cause, logPhi);
+    }
+
+    @Override
+    public String getAcknowledgmentType() {
+        return "CE";
     }
 }

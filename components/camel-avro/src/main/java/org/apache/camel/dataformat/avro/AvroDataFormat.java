@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -38,9 +38,16 @@ import org.apache.camel.CamelException;
 import org.apache.camel.Exchange;
 import org.apache.camel.spi.DataFormat;
 import org.apache.camel.spi.DataFormatName;
-import org.apache.camel.support.ServiceSupport;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.spi.annotations.Dataformat;
+import org.apache.camel.support.service.ServiceSupport;
 import org.apache.camel.util.ObjectHelper;
 
+@Dataformat("avro")
+@Metadata(excludeProperties = "library,objectMapper,useDefaultObjectMapper,jsonViewTypeName,jsonView,include,allowJmsType," +
+                              "collectionTypeName,collectionType,useList,moduleClassNames,moduleRefs,enableFeatures," +
+                              "disableFeatures,allowUnmarshallType,timezone,autoDiscoverObjectMapper," +
+                              "contentTypeHeader,schemaResolver,autoDiscoverSchemaResolver,unmarshalType,unmarshalTypeName")
 public class AvroDataFormat extends ServiceSupport implements DataFormat, DataFormatName, CamelContextAware {
 
     private static final String GENERIC_CONTAINER_CLASSNAME = GenericContainer.class.getName();
@@ -61,16 +68,20 @@ public class AvroDataFormat extends ServiceSupport implements DataFormat, DataFo
         return "avro";
     }
 
+    @Override
     public CamelContext getCamelContext() {
         return camelContext;
     }
 
+    @Override
     public void setCamelContext(CamelContext camelContext) {
         this.camelContext = camelContext;
     }
 
     @Override
-    protected void doStart() throws Exception {
+    protected void doInit() throws Exception {
+        super.doInit();
+
         if (schema != null) {
             if (schema instanceof Schema) {
                 actualSchema = (Schema) schema;
@@ -101,7 +112,7 @@ public class AvroDataFormat extends ServiceSupport implements DataFormat, DataFo
         return instanceClassName;
     }
 
-    public void setInstanceClassName(String className) throws Exception {
+    public void setInstanceClassName(String className) {
         instanceClassName = className;
     }
 
@@ -122,31 +133,39 @@ public class AvroDataFormat extends ServiceSupport implements DataFormat, DataFo
         }
     }
 
+    @Override
     public void marshal(Exchange exchange, Object graph, OutputStream outputStream) throws Exception {
         // the schema should be from the graph class name
         Schema useSchema = actualSchema != null ? actualSchema : loadSchema(graph.getClass().getName());
 
-        DatumWriter<Object> datum = new SpecificDatumWriter<Object>(useSchema);
+        SpecificData specificData = getSpecificData(useSchema);
+
+        DatumWriter<Object> datum = new SpecificDatumWriter<>(useSchema, specificData);
         Encoder encoder = EncoderFactory.get().binaryEncoder(outputStream, null);
         datum.write(graph, encoder);
         encoder.flush();
     }
 
+    @Override
     public Object unmarshal(Exchange exchange, InputStream inputStream) throws Exception {
         ObjectHelper.notNull(actualSchema, "schema", this);
 
-        ClassLoader classLoader = null;
-        Class<?> clazz = camelContext.getClassResolver().resolveClass(actualSchema.getFullName());
+        SpecificData specificData = getSpecificData(actualSchema);
+        DatumReader<GenericRecord> reader = new SpecificDatumReader<>(null, null, specificData);
+        reader.setSchema(actualSchema);
+        Decoder decoder = DecoderFactory.get().binaryDecoder(inputStream, null);
+        return reader.read(null, decoder);
+    }
 
+    private SpecificData getSpecificData(Schema schema) {
+        // Use SpecificDataNoCache to support logical type conversions (date, timestamp, UUID, decimal, etc.)
+        ClassLoader classLoader = null;
+        Class<?> clazz = camelContext.getClassResolver().resolveClass(schema.getFullName());
         if (clazz != null) {
             classLoader = clazz.getClassLoader();
         }
         SpecificData specificData = new SpecificDataNoCache(classLoader);
-        DatumReader<GenericRecord> reader = new SpecificDatumReader<GenericRecord>(null, null, specificData);
-        reader.setSchema(actualSchema);
-        Decoder decoder = DecoderFactory.get().binaryDecoder(inputStream, null);
-        Object result = reader.read(null, decoder);
-        return result;
+        return specificData;
     }
 
 }

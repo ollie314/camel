@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,40 +16,46 @@
  */
 package org.apache.camel.component.mybatis;
 
+import java.util.concurrent.TimeUnit;
+
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
- * Test to verify that the polling consumer delivers an empty Exchange when the
- * sendEmptyMessageWhenIdle property is set and a polling event yields no results.
+ * Test to verify that the polling consumer delivers an empty Exchange when the sendEmptyMessageWhenIdle property is set
+ * and a polling event yields no results.
  */
 public class MyBatisConsumerIdleMessageTest extends MyBatisTestSupport {
-    
+
     @Override
     protected boolean createTestData() {
         return false;
     }
-     
+
     @Test
     public void testConsumeIdleMessages() throws Exception {
-        Thread.sleep(110);
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMinimumMessageCount(2);
-        assertMockEndpointsSatisfied();
-        assertTrue(mock.getExchanges().get(0).getIn().getBody() == null);
-        assertTrue(mock.getExchanges().get(1).getIn().getBody() == null);
+
+        await()
+                .atLeast(110, TimeUnit.MILLISECONDS)
+                .untilAsserted(() -> MockEndpoint.assertIsSatisfied(context));
+        assertNull(mock.getExchanges().get(0).getIn().getBody());
+        assertNull(mock.getExchanges().get(1).getIn().getBody());
     }
-    
-    
+
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("mybatis:selectAllAccounts?statementType=SelectList"
-                        + "&sendEmptyMessageWhenIdle=true")
-                    .to("mock:result");
+                     + "&sendEmptyMessageWhenIdle=true")
+                        .to("mock:result");
             }
         };
     }

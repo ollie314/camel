@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,18 +16,27 @@
  */
 package org.apache.camel.component.flink;
 
-import static java.lang.String.format;
-
 import org.apache.camel.CamelContext;
 import org.apache.flink.api.java.DataSet;
 
+import static java.lang.String.format;
+
+/**
+ * DataSet callback with automatic type conversion for payloads.
+ *
+ * @param      <T> results type
+ * @deprecated     The DataSet API is deprecated since Flink 1.12. Use the DataStream API with bounded streams instead.
+ *                 See the Flink migration guide for details on migrating from DataSet to DataStream API. This class
+ *                 will be maintained for backward compatibility but may be removed in future versions.
+ */
+@Deprecated(since = "4.16.0")
 public abstract class ConvertingDataSetCallback<T> implements DataSetCallback<T> {
 
     private final CamelContext camelContext;
 
-    private final Class[] payloadTypes;
+    private final Class<?>[] payloadTypes;
 
-    public ConvertingDataSetCallback(CamelContext camelContext, Class... payloadTypes) {
+    protected ConvertingDataSetCallback(CamelContext camelContext, Class<?>... payloadTypes) {
         this.camelContext = camelContext;
         this.payloadTypes = payloadTypes;
     }

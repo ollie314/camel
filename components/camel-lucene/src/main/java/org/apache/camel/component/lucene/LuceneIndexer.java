@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,13 +16,16 @@
  */
 package org.apache.camel.component.lucene;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Map;
 import java.util.Map.Entry;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.converter.IOConverter;
+import org.apache.camel.util.IOHelper;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -45,19 +48,22 @@ public class LuceneIndexer {
     private IndexWriter indexWriter;
     private boolean sourceDirectoryIndexed;
 
-    public LuceneIndexer(File sourceDirectory, File indexDirectory, Analyzer analyzer)  throws Exception {
+    public LuceneIndexer(File sourceDirectory, File indexDirectory, Analyzer analyzer) throws Exception {
         if (indexDirectory != null) {
             if (!indexDirectory.exists()) {
-                indexDirectory.mkdir();
-            }   
+                boolean result = indexDirectory.mkdir();
+                if (!result) {
+                    LOG.error("mkdir failed for {}. Maybe this folder was created externally", indexDirectory);
+                }
+            }
             this.setNiofsDirectory(new NIOFSDirectory(indexDirectory.toPath()));
         } else {
             this.setNiofsDirectory(new NIOFSDirectory(new File("./indexDirectory").toPath()));
         }
 
         this.setAnalyzer(analyzer);
-        
-        if ((sourceDirectory != null) && (!sourceDirectoryIndexed)) {
+
+        if (sourceDirectory != null && !sourceDirectoryIndexed) {
             this.setSourceDirectory(sourceDirectory);
             add(getSourceDirectory());
             sourceDirectoryIndexed = true;
@@ -121,22 +127,29 @@ public class LuceneIndexer {
 
                 if (files != null) {
                     for (String child : files) {
-                        add(new File(file.getAbsolutePath() + "/" + child));
+                        add(new File(file.getAbsolutePath(), child));
                     }
                 }
             } else {
                 LOG.trace("Adding {}", file);
 
+                String contents;
+                try (InputStream is = new FileInputStream(file)) {
+                    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                    IOHelper.copy(IOHelper.buffered(is), bos);
+                    contents = bos.toString();
+                }
                 openIndexWriter();
                 add("path", file.getPath(), false);
-                add("contents", new String(IOConverter.toByteArray(file)), true);
+                add("contents", contents, true);
                 closeIndexWriter();
 
                 LOG.trace("Added {} successfully", file);
             }
         } else {
-            LOG.warn("Directory/File " + file.getAbsolutePath() + " could not be read."
-                + " This directory will not be indexed. Please check permissions and rebuild indexes.");
+            LOG.warn("Directory/File {} could not be read."
+                     + " This directory will not be indexed. Please check permissions and rebuild indexes.",
+                    file.getAbsolutePath());
         }
     }
 
@@ -154,7 +167,6 @@ public class LuceneIndexer {
 
     private static FieldType createFieldType(boolean tokenized) {
         FieldType answer = new FieldType();
-        //answer.setIndexed(true);
         answer.setStored(true);
         answer.setTokenized(tokenized);
 

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,9 +17,10 @@
 package org.apache.camel.jaxb;
 
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.foo.bar.PersonType;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
 /**
  * PersonType has a ObjectFactory so JAXB can convert to it, but we should still route it as is
@@ -33,17 +34,17 @@ public class DirectBeanToBeanPersonTypeTest extends CamelTestSupport {
 
         template.sendBody("direct:start", null);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .bean(MyPersonService.class, "createPerson")
-                    .bean(MyPersonService.class, "sendPerson");
+                        .bean(MyPersonService.class, "createPerson")
+                        .bean(MyPersonService.class, "sendPerson");
             }
         };
     }

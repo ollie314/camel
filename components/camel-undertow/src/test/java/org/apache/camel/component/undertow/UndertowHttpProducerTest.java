@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,10 @@ package org.apache.camel.component.undertow;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class UndertowHttpProducerTest extends BaseUndertowTest {
 
@@ -29,17 +32,18 @@ public class UndertowHttpProducerTest extends BaseUndertowTest {
         String out = template.requestBody("http://localhost:{{port}}/foo", null, String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
     public void testHttpSimpleHeader() throws Exception {
         getMockEndpoint("mock:input").expectedHeaderReceived(Exchange.HTTP_METHOD, "POST");
 
-        String out = template.requestBodyAndHeader("http://localhost:{{port}}/foo", null, Exchange.HTTP_METHOD, "POST", String.class);
+        String out = template.requestBodyAndHeader("http://localhost:{{port}}/foo", null, Exchange.HTTP_METHOD, "POST",
+                String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Test
@@ -48,20 +52,21 @@ public class UndertowHttpProducerTest extends BaseUndertowTest {
         getMockEndpoint("mock:input").expectedBodiesReceived("Hello World");
         getMockEndpoint("mock:input").expectedHeaderReceived(Exchange.HTTP_METHOD, "POST");
 
-        String out = template.requestBodyAndHeader("http://localhost:{{port}}/foo", "Hello World", Exchange.HTTP_METHOD, "POST", String.class);
+        String out = template.requestBodyAndHeader("http://localhost:{{port}}/foo", "Hello World", Exchange.HTTP_METHOD, "POST",
+                String.class);
         assertEquals("Bye World", out);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("undertow:http://localhost:{{port}}/foo")
-                    .to("mock:input")
-                    .transform().constant("Bye World");
+                        .to("mock:input")
+                        .transform().constant("Bye World");
             }
         };
     }

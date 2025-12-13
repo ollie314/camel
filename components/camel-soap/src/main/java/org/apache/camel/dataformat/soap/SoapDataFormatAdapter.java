@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -28,9 +28,9 @@ import org.apache.camel.Exchange;
 public interface SoapDataFormatAdapter {
 
     /**
-     * Gets the {@link SoapJaxbDataFormat} SOAP data format.
+     * Gets the {@link SoapDataFormat} SOAP data format.
      */
-    SoapJaxbDataFormat getDataFormat();
+    SoapDataFormat getDataFormat();
 
     /**
      * Gets the JAXB package names where the JAXB generated sources is for either SOAP 1.1 or 1.2 implementations.

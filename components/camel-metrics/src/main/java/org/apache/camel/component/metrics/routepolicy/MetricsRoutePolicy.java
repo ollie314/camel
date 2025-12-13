@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,6 +17,7 @@
 package org.apache.camel.component.metrics.routepolicy;
 
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
 
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
@@ -24,16 +25,21 @@ import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
 import org.apache.camel.NonManagedService;
 import org.apache.camel.Route;
+import org.apache.camel.RuntimeCamelException;
+import org.apache.camel.spi.ManagementStrategy;
 import org.apache.camel.support.RoutePolicySupport;
-import org.apache.camel.util.ObjectHelper;
-import org.apache.camel.util.ServiceHelper;
 
 /**
- * A {@link org.apache.camel.spi.RoutePolicy} which gathers statistics and reports them using {@link com.codahale.metrics.MetricRegistry}.
+ * A {@link org.apache.camel.spi.RoutePolicy} which gathers statistics and reports them using
+ * {@link com.codahale.metrics.MetricRegistry}.
  * <p/>
  * The metrics is reported in JMX by default, but this can be configured.
  */
 public class MetricsRoutePolicy extends RoutePolicySupport implements NonManagedService {
+
+    public static final String NAME_TOKEN = "##name##";
+    public static final String ROUTE_ID_TOKEN = "##routeId##";
+    public static final String TYPE_TOKEN = "##type##";
 
     private MetricRegistry metricsRegistry;
     private MetricsRegistryService registryService;
@@ -44,7 +50,9 @@ public class MetricsRoutePolicy extends RoutePolicySupport implements NonManaged
     private TimeUnit durationUnit = TimeUnit.MILLISECONDS;
     private MetricsStatistics statistics;
     private Route route;
-    private String namePattern = "##name##.##routeId##.##type##";
+    private String namePattern = String.format("%s.%s.%s", NAME_TOKEN, ROUTE_ID_TOKEN, TYPE_TOKEN);
+    boolean registerKamelets;
+    boolean registerTemplates = true;
 
     private static final class MetricsStatistics {
         private final String routeId;
@@ -123,8 +131,8 @@ public class MetricsRoutePolicy extends RoutePolicySupport implements NonManaged
     /**
      * The name pattern to use.
      * <p/>
-     * Uses dot as separators, but you can change that.
-     * The values <tt>##name##</tt>, <tt>##routeId##</tt>, and <tt>##type##</tt> will be replaced with actual value.
+     * Uses dot as separators, but you can change that. The values <tt>##name##</tt>, <tt>##routeId##</tt>, and
+     * <tt>##type##</tt> will be replaced with actual value.
      */
     public void setNamePattern(String namePattern) {
         this.namePattern = namePattern;
@@ -134,9 +142,15 @@ public class MetricsRoutePolicy extends RoutePolicySupport implements NonManaged
     public void onInit(Route route) {
         super.onInit(route);
 
+        ManagementStrategy ms = route.getCamelContext().getManagementStrategy();
+        if (ms != null && ms.getManagementAgent() != null) {
+            registerKamelets = ms.getManagementAgent().getRegisterRoutesCreateByKamelet();
+            registerTemplates = ms.getManagementAgent().getRegisterRoutesCreateByTemplate();
+        }
+
         this.route = route;
         try {
-            registryService = route.getRouteContext().getCamelContext().hasService(MetricsRegistryService.class);
+            registryService = route.getCamelContext().hasService(MetricsRegistryService.class);
             if (registryService == null) {
                 registryService = new MetricsRegistryService();
                 registryService.setMetricsRegistry(getMetricsRegistry());
@@ -145,34 +159,32 @@ public class MetricsRoutePolicy extends RoutePolicySupport implements NonManaged
                 registryService.setPrettyPrint(isPrettyPrint());
                 registryService.setRateUnit(getRateUnit());
                 registryService.setDurationUnit(getDurationUnit());
-                route.getRouteContext().getCamelContext().addService(registryService);
+                route.getCamelContext().addService(registryService);
             }
         } catch (Exception e) {
-            throw ObjectHelper.wrapRuntimeCamelException(e);
+            throw RuntimeCamelException.wrapRuntimeCamelException(e);
         }
 
-        // ensure registry service is started
-        try {
-            ServiceHelper.startService(registryService);
-        } catch (Exception e) {
-            throw ObjectHelper.wrapRuntimeCamelException(e);
+        // skip routes that should not be included
+        boolean skip = (route.isCreatedByKamelet() && !registerKamelets)
+                || (route.isCreatedByRouteTemplate() && !registerTemplates);
+        if (!skip) {
+            // create statistics holder
+            // for know we record only all the timings of a complete exchange (responses)
+            // we have in-flight / total statistics already from camel-core
+            Timer responses = registryService.getMetricsRegistry().timer(createName("responses"));
+            statistics = new MetricsStatistics(route, responses);
         }
-
-        // create statistics holder
-        // for know we record only all the timings of a complete exchange (responses)
-        // we have in-flight / total statistics already from camel-core
-        Timer responses = registryService.getMetricsRegistry().timer(createName("responses"));
-        statistics = new MetricsStatistics(route, responses);
     }
 
     private String createName(String type) {
-        CamelContext context = route.getRouteContext().getCamelContext();
+        CamelContext context = route.getCamelContext();
         String name = context.getManagementName() != null ? context.getManagementName() : context.getName();
 
         String answer = namePattern;
-        answer = answer.replaceFirst("##name##", name);
-        answer = answer.replaceFirst("##routeId##", route.getId());
-        answer = answer.replaceFirst("##type##", type);
+        answer = answer.replaceFirst(NAME_TOKEN, name);
+        answer = answer.replaceFirst(ROUTE_ID_TOKEN, Matcher.quoteReplacement(route.getId()));
+        answer = answer.replaceFirst(TYPE_TOKEN, type);
         return answer;
     }
 

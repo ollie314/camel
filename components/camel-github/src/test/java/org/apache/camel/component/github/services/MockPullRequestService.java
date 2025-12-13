@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,7 +16,6 @@
  */
 package org.apache.camel.component.github.services;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -35,15 +34,16 @@ import org.slf4j.LoggerFactory;
 public class MockPullRequestService extends PullRequestService {
     protected static final Logger LOG = LoggerFactory.getLogger(MockPullRequestService.class);
 
-    private Map<Long, PullRequest> pullRequests = new HashMap<Long, PullRequest>();
-    private List<CommitComment> emptyComments = new ArrayList<CommitComment>();
+    private Map<Long, PullRequest> pullRequests = new HashMap<>();
+    private List<CommitComment> emptyComments = new ArrayList<>();
     private AtomicInteger pullRequestNumber = new AtomicInteger(101);
     private AtomicInteger commentId = new AtomicInteger(500);
-    private Map<Long, List<CommitComment>> allComments = new HashMap<Long, List<CommitComment>>();
-    private Map<Integer, List<CommitFile>> files = new HashMap<Integer, List<CommitFile>>();
+    private Map<Long, List<CommitComment>> allComments = new HashMap<>();
+    private Map<Integer, List<CommitFile>> files = new HashMap<>();
 
+    @Override
     public List<CommitComment> getComments(IRepositoryIdProvider repository, int pullRequestId) {
-        Long id = new Long(pullRequestId);
+        Long id = Long.valueOf(pullRequestId);
         if (allComments.containsKey(id)) {
             List<CommitComment> comments = allComments.get(id);
             return comments;
@@ -66,7 +66,7 @@ public class MockPullRequestService extends PullRequestService {
 
         User author = createAuthor();
         commitComment.setUser(author);
-        commitComment.setCommitId("" + pullRequestId);
+        commitComment.setCommitId(Long.toString(pullRequestId));
         commitComment.setId(commentId.getAndIncrement());
         commitComment.setBody(bodyText);
         commitComment.setBodyText(bodyText);
@@ -75,7 +75,7 @@ public class MockPullRequestService extends PullRequestService {
         if (allComments.containsKey(pullRequestId)) {
             comments = allComments.get(pullRequestId);
         } else {
-            comments = new ArrayList<CommitComment>();
+            comments = new ArrayList<>();
         }
         comments.add(commitComment);
         allComments.put(pullRequestId, comments);
@@ -100,29 +100,28 @@ public class MockPullRequestService extends PullRequestService {
     }
 
     @Override
-    public PullRequest getPullRequest(IRepositoryIdProvider repository, int id) throws IOException {
+    public PullRequest getPullRequest(IRepositoryIdProvider repository, int id) {
         PullRequest pullRequest = pullRequests.get((long) id);
         return pullRequest;
     }
 
     @Override
-    public PullRequest editPullRequest(IRepositoryIdProvider repository, PullRequest request) throws IOException {
+    public PullRequest editPullRequest(IRepositoryIdProvider repository, PullRequest request) {
         pullRequests.put(request.getId(), request);
         return request;
     }
 
     @Override
     public synchronized List<PullRequest> getPullRequests(IRepositoryIdProvider repository, String state) {
-        List<PullRequest> result = new ArrayList<PullRequest>();
+        List<PullRequest> result = new ArrayList<>();
 
-        for (Long id : pullRequests.keySet()) {
-            PullRequest pr = pullRequests.get(id);
+        for (PullRequest pr : pullRequests.values()) {
             if (pr.getState().equals(state)) {
                 result.add(pr);
             }
         }
 
-        LOG.debug("Returning list of " + result.size() + " pull requests with state " + state);
+        LOG.debug("Returning list of {} pull requests with state {}", result.size(), state);
         return result;
     }
 
@@ -131,7 +130,7 @@ public class MockPullRequestService extends PullRequestService {
     }
 
     @Override
-    public List<CommitFile> getFiles(IRepositoryIdProvider repository, int id) throws IOException {
+    public List<CommitFile> getFiles(IRepositoryIdProvider repository, int id) {
         return files.get(id);
     }
 }

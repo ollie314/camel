@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,44 +16,37 @@
  */
 package org.apache.camel.component.mina;
 
-import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
-import org.apache.camel.RuntimeCamelException;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * To test timeout.
- *
- * @version 
  */
 public class MinaExchangeDefaultTimeOutTest extends BaseMinaTest {
 
     @Test
     public void testDefaultTimeOut() {
-        try {
-            String result = (String)template.requestBody("mina:tcp://localhost:{{port}}?textline=true&sync=true", "Hello World");
-            assertEquals("Okay I will be faster in the future", result);
-        } catch (RuntimeCamelException e) {
-            fail("Should not get a RuntimeCamelException");
-        }
+        String result = (String) assertDoesNotThrow(() -> template
+                .requestBody(String.format("mina:tcp://localhost:%1$s?textline=true&sync=true", getPort()), "Hello World"),
+                "Should not get a RuntimeCamelException");
+        assertEquals("Okay I will be faster in the future", result);
     }
 
+    @Override
     protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() {
-                from("mina:tcp://localhost:{{port}}?textline=true&sync=true").process(new Processor() {
-                    public void process(Exchange e) throws Exception {
-                        assertEquals("Hello World", e.getIn().getBody(String.class));
-                        // MinaProducer has a default timeout of 30 seconds so we just wait 5 seconds
-                        // (template.requestBody is a MinaProducer behind the doors)
-                        Thread.sleep(5000);
 
-                        e.getOut().setBody("Okay I will be faster in the future");
-                    }
+            public void configure() {
+                fromF("mina:tcp://localhost:%1$s?textline=true&sync=true", getPort()).process(e -> {
+                    assertEquals("Hello World", e.getIn().getBody(String.class));
+                    // just be a little bit slow
+                    Thread.sleep(250);
+                    e.getMessage().setBody("Okay I will be faster in the future");
                 });
             }
         };
     }
-
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,6 +16,8 @@
  */
 package org.apache.camel.component.schematron.processor;
 
+import java.nio.charset.Charset;
+
 import javax.xml.transform.Source;
 import javax.xml.transform.Templates;
 import javax.xml.transform.TransformerException;
@@ -27,11 +29,11 @@ import net.sf.saxon.TransformerFactoryImpl;
 import org.apache.camel.component.schematron.constant.Constants;
 import org.apache.camel.component.schematron.util.Utils;
 import org.apache.commons.io.IOUtils;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * SchematronEngine Unit Test.
@@ -43,7 +45,8 @@ public class SchematronProcessorTest {
     @Test
     public void testValidXML() throws Exception {
 
-        String payload = IOUtils.toString(ClassLoader.getSystemResourceAsStream("xml/article-1.xml"));
+        String payload = IOUtils.toString(ClassLoader.getSystemResourceAsStream("xml/article-1.xml"),
+                Charset.defaultCharset());
         logger.info("Validating payload: {}", payload);
 
         // validate
@@ -56,7 +59,8 @@ public class SchematronProcessorTest {
 
     @Test
     public void testInvalidXMLWithClientResolver() throws Exception {
-        String payload = IOUtils.toString(ClassLoader.getSystemResourceAsStream("xml/article-3.xml"));
+        String payload = IOUtils.toString(ClassLoader.getSystemResourceAsStream("xml/article-3.xml"),
+                Charset.defaultCharset());
         logger.info("Validating payload: {}", payload);
 
         // validate
@@ -69,35 +73,39 @@ public class SchematronProcessorTest {
     @Test
     public void testInValidXML() throws Exception {
 
-        String payload = IOUtils.toString(ClassLoader.getSystemResourceAsStream("xml/article-2.xml"));
+        String payload = IOUtils.toString(ClassLoader.getSystemResourceAsStream("xml/article-2.xml"),
+                Charset.defaultCharset());
         logger.info("Validating payload: {}", payload);
         // validate
         String result = getProcessor("sch/schematron-2.sch", null).validate(payload);
         logger.info("Schematron Report: {}", result);
         // should throw two assertions because of the missing chapters in the XML.
         assertEquals("A chapter should have a title", Utils.evaluate("//svrl:failed-assert/svrl:text", result));
-        assertEquals("'chapter' element has more than one title present", Utils.evaluate("//svrl:successful-report/svrl:text", result).trim());
+        assertEquals("'chapter' element has more than one title present",
+                Utils.evaluate("//svrl:successful-report/svrl:text", result).trim());
 
     }
 
     /**
      * Returns schematron processor
      *
-     * @param schematron
-     * @param clientResolver
+     * @param  schematron
+     * @param  clientResolver
      * @return
      */
     private SchematronProcessor getProcessor(final String schematron, final URIResolver clientResolver) {
         TransformerFactory factory = new TransformerFactoryImpl();
         factory.setURIResolver(new ClassPathURIResolver(Constants.SCHEMATRON_TEMPLATES_ROOT_DIR, clientResolver));
-        Templates rules = TemplatesFactory.newInstance().getTemplates(ClassLoader.getSystemResourceAsStream(schematron), factory);
-        return SchematronProcessorFactory.newScehamtronEngine(rules);
+        Templates rules
+                = TemplatesFactory.newInstance().getTemplates(ClassLoader.getSystemResourceAsStream(schematron), factory);
+        return SchematronProcessorFactory.newSchematronEngine(rules);
     }
 
     class ClientUriResolver implements URIResolver {
         @Override
         public Source resolve(String href, String base) throws TransformerException {
-            return new StreamSource(ClientUriResolver.class.getClassLoader().getResourceAsStream("custom-resolver/".concat(href)));
+            return new StreamSource(
+                    org.apache.camel.util.ObjectHelper.loadResourceAsStream("custom-resolver/".concat(href)));
         }
     }
 }

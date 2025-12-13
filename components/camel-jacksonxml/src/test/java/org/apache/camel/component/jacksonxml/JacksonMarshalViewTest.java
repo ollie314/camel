@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,8 +18,10 @@ package org.apache.camel.component.jacksonxml;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class JacksonMarshalViewTest extends CamelTestSupport {
 
@@ -62,19 +64,19 @@ public class JacksonMarshalViewTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
 
             @Override
-            public void configure() throws Exception {
+            public void configure() {
 
                 // START SNIPPET: format
-                from("direct:inPojoAgeView").marshal().jacksonxml(TestPojoView.class, Views.Age.class);
+                from("direct:inPojoAgeView").marshal().jacksonXml(TestPojoView.class, Views.Age.class);
                 // END SNIPPET: format
-                from("direct:backPojoAgeView").unmarshal().jacksonxml(TestPojoView.class).to("mock:reversePojoAgeView");
+                from("direct:backPojoAgeView").unmarshal().jacksonXml(TestPojoView.class).to("mock:reversePojoAgeView");
 
-                from("direct:inPojoWeightView").marshal().jacksonxml(TestPojoView.class, Views.Weight.class);
-                from("direct:backPojoWeightView").unmarshal().jacksonxml(TestPojoView.class).to("mock:reversePojoWeightView");
+                from("direct:inPojoWeightView").marshal().jacksonXml(TestPojoView.class, Views.Weight.class);
+                from("direct:backPojoWeightView").unmarshal().jacksonXml(TestPojoView.class).to("mock:reversePojoWeightView");
             }
         };
     }

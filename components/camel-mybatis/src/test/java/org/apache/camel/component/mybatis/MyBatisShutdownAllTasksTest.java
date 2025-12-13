@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,19 +16,20 @@
  */
 package org.apache.camel.component.mybatis;
 
+import java.util.concurrent.TimeUnit;
+
 import org.apache.camel.ShutdownRunningTask;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class MyBatisShutdownAllTasksTest extends MyBatisTestSupport {
 
     @Override
-    @Before
-    public void setUp() throws Exception {
-        super.setUp();
-
+    public void doPostSetup() {
         // super will insert 2 accounts already
 
         Account account = new Account();
@@ -82,33 +83,32 @@ public class MyBatisShutdownAllTasksTest extends MyBatisTestSupport {
 
     @Test
     public void testShutdownAllTasks() throws Exception {
-        context.startRoute("route1");
+        context.getRouteController().startRoute("route1");
 
         MockEndpoint bar = getMockEndpoint("mock:bar");
         bar.expectedMinimumMessageCount(1);
         bar.setResultWaitTime(3000);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // shutdown during processing
         context.stop();
 
-        // sleep a little
-        Thread.sleep(1000);
-
         // should route all 8
-        assertEquals("Should complete all messages", 8, bar.getReceivedCounter());
+        await()
+                .atMost(1, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertEquals(8, bar.getReceivedCounter(), "Should complete all messages"));
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("mybatis:selectAllAccounts").noAutoStartup().routeId("route1")
-                     // let it complete all tasks
-                     .shutdownRunningTask(ShutdownRunningTask.CompleteAllTasks)
-                     .delay(1000).to("seda:foo");
+                        // let it complete all tasks
+                        .shutdownRunningTask(ShutdownRunningTask.CompleteAllTasks)
+                        .delay(1000).to("seda:foo");
 
                 from("seda:foo").routeId("route2").to("mock:bar");
             }

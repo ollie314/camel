@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,7 +16,6 @@
  */
 package org.apache.camel.component.github.services;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,7 +26,7 @@ import org.eclipse.egit.github.core.service.IssueService;
 
 public class MockIssueService extends IssueService {
 
-    private List<Comment> comments = new ArrayList<Comment>();
+    private List<Comment> comments = new ArrayList<>();
     private MockPullRequestService mockPullRequestService;
 
     public MockIssueService(MockPullRequestService mockPullRequestService) {
@@ -41,11 +40,11 @@ public class MockIssueService extends IssueService {
     }
 
     @Override
-    public Comment createComment(IRepositoryIdProvider repository, int issueNumber, String commentText) throws IOException {
+    public Comment createComment(IRepositoryIdProvider repository, int issueNumber, String commentText) {
         Comment addedComment = mockPullRequestService.addComment((long) issueNumber, commentText);
         return addedComment;
     }
-    
+
     @Override
     public Issue createIssue(IRepositoryIdProvider repository, Issue issue) {
         Issue finalIssue = new Issue();
@@ -54,7 +53,7 @@ public class MockIssueService extends IssueService {
         issue.setId(1L);
         return finalIssue;
     }
-    
+
     @Override
     public Issue getIssue(IRepositoryIdProvider repository, String issueNumber) {
         Issue issue = new Issue();

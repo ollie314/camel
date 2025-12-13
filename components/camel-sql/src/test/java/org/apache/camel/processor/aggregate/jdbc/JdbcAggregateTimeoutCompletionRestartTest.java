@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,7 +18,9 @@ package org.apache.camel.processor.aggregate.jdbc;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class JdbcAggregateTimeoutCompletionRestartTest extends AbstractJdbcAggregationTestSupport {
 
@@ -41,19 +43,21 @@ public class JdbcAggregateTimeoutCompletionRestartTest extends AbstractJdbcAggre
         mock = getMockEndpoint("mock:aggregated");
         mock.expectedBodiesReceived("ABC");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
         assertEquals(1, mock.getReceivedCounter());
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
+                configureJdbcAggregationRepository();
+
                 // here is the Camel route where we aggregate
                 from("direct:start")
                         .aggregate(header("id"), new MyAggregationStrategy())
-                                // use our created jdbc repo as aggregation repository
+                        // use our created jdbc repo as aggregation repository
                         .completionTimeout(3000).aggregationRepository(repo)
                         .to("mock:aggregated");
             }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,40 +16,36 @@
  */
 package org.apache.camel.builder.saxon;
 
-import javax.naming.Context;
-
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.xquery.XQuery;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.apache.camel.util.jndi.JndiContext;
-import org.junit.Test;
+import org.apache.camel.spi.Registry;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * @version 
- */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 public class BeanWithXQueryInjectionTest extends CamelTestSupport {
     private static final Logger LOG = LoggerFactory.getLogger(BeanWithXQueryInjectionTest.class);
     protected MyBean myBean = new MyBean();
 
     @Test
-    public void testSendMessage() throws Exception {
+    public void testSendMessage() {
         String expectedBody = "<foo id='bar'>hellow</foo>";
 
         template.sendBodyAndHeader("direct:in", expectedBody, "foo", "bar");
 
-        assertEquals("bean body: " + myBean, expectedBody, myBean.body);
-        assertEquals("bean foo: " + myBean, "bar", myBean.foo);
+        assertEquals(expectedBody, myBean.body, "bean body: " + myBean);
+        assertEquals("bar", myBean.foo, "bean foo: " + myBean);
     }
 
     @Override
-    protected Context createJndiContext() throws Exception {
-        JndiContext answer = new JndiContext();
-        answer.bind("myBean", myBean);
-        return answer;
+    protected void bindToRegistry(Registry registry) {
+        registry.bind("myBean", myBean);
     }
 
+    @Override
     protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
@@ -70,7 +66,7 @@ public class BeanWithXQueryInjectionTest extends CamelTestSupport {
         public void read(String body, @XQuery("/foo/@id") String foo) {
             this.foo = foo;
             this.body = body;
-            LOG.info("read() method called on " + this);
+            LOG.info("read() method called on {}", this);
         }
     }
 }

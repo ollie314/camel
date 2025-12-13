@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,9 +23,11 @@ import java.util.Date;
 import org.apache.camel.Exchange;
 import org.apache.camel.spi.DataFormat;
 import org.apache.camel.spi.DataFormatName;
-import org.apache.camel.support.ServiceSupport;
-import org.apache.camel.util.ExchangeHelper;
+import org.apache.camel.spi.annotations.Dataformat;
+import org.apache.camel.support.ExchangeHelper;
+import org.apache.camel.support.service.ServiceSupport;
 
+@Dataformat("syslog")
 public class SyslogDataFormat extends ServiceSupport implements DataFormat, DataFormatName {
 
     @Override
@@ -44,13 +46,13 @@ public class SyslogDataFormat extends ServiceSupport implements DataFormat, Data
         String body = ExchangeHelper.convertToMandatoryType(exchange, String.class, inputStream);
         SyslogMessage message = SyslogConverter.parseMessage(body.getBytes());
 
-        exchange.getOut().setHeader(SyslogConstants.SYSLOG_FACILITY, message.getFacility());
-        exchange.getOut().setHeader(SyslogConstants.SYSLOG_SEVERITY, message.getSeverity());
-        exchange.getOut().setHeader(SyslogConstants.SYSLOG_HOSTNAME, message.getHostname());
+        exchange.getMessage().setHeader(SyslogConstants.SYSLOG_FACILITY, message.getFacility());
+        exchange.getMessage().setHeader(SyslogConstants.SYSLOG_SEVERITY, message.getSeverity());
+        exchange.getMessage().setHeader(SyslogConstants.SYSLOG_HOSTNAME, message.getHostname());
         // use java.util.Date as timestamp
         Date time = message.getTimestamp() != null ? message.getTimestamp().getTime() : null;
         if (time != null) {
-            exchange.getOut().setHeader(SyslogConstants.SYSLOG_TIMESTAMP, time);
+            exchange.getMessage().setHeader(SyslogConstants.SYSLOG_TIMESTAMP, time);
         }
 
         // Since we are behind the fact of being in an Endpoint...
@@ -58,22 +60,22 @@ public class SyslogDataFormat extends ServiceSupport implements DataFormat, Data
 
         if (exchange.getIn().getHeader("CamelMinaLocalAddress") != null) {
             message.setLocalAddress(exchange.getIn().getHeader("CamelMinaLocalAddress", String.class));
-            exchange.getOut().setHeader(SyslogConstants.SYSLOG_LOCAL_ADDRESS, message.getLocalAddress());
+            exchange.getMessage().setHeader(SyslogConstants.SYSLOG_LOCAL_ADDRESS, message.getLocalAddress());
         }
 
         if (exchange.getIn().getHeader("CamelMinaRemoteAddress") != null) {
             message.setRemoteAddress(exchange.getIn().getHeader("CamelMinaRemoteAddress", String.class));
-            exchange.getOut().setHeader(SyslogConstants.SYSLOG_REMOTE_ADDRESS, message.getRemoteAddress());
+            exchange.getMessage().setHeader(SyslogConstants.SYSLOG_REMOTE_ADDRESS, message.getRemoteAddress());
         }
 
         if (exchange.getIn().getHeader("CamelNettyLocalAddress") != null) {
             message.setLocalAddress(exchange.getIn().getHeader("CamelNettyLocalAddress", String.class));
-            exchange.getOut().setHeader(SyslogConstants.SYSLOG_LOCAL_ADDRESS, message.getLocalAddress());
+            exchange.getMessage().setHeader(SyslogConstants.SYSLOG_LOCAL_ADDRESS, message.getLocalAddress());
         }
 
         if (exchange.getIn().getHeader("CamelNettyRemoteAddress") != null) {
             message.setRemoteAddress(exchange.getIn().getHeader("CamelNettyRemoteAddress", String.class));
-            exchange.getOut().setHeader(SyslogConstants.SYSLOG_REMOTE_ADDRESS, message.getRemoteAddress());
+            exchange.getMessage().setHeader(SyslogConstants.SYSLOG_REMOTE_ADDRESS, message.getRemoteAddress());
         }
 
         return message;

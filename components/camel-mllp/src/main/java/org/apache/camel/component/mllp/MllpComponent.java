@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,48 +20,120 @@ import java.util.Map;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
-import org.apache.camel.impl.UriEndpointComponent;
+import org.apache.camel.SSLContextParametersAware;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.spi.annotations.Component;
+import org.apache.camel.support.CamelContextHelper;
+import org.apache.camel.support.DefaultComponent;
 
-/**
- * Represents the component that manages {@link MllpEndpoint}.
- */
-public class MllpComponent extends UriEndpointComponent {
-    public static final String MLLP_LOG_PHI_PROPERTY = "org.apache.camel.component.mllp.logPHI";
+@Component("mllp")
+public class MllpComponent extends DefaultComponent implements SSLContextParametersAware {
+
+    @Metadata(label = "advanced", defaultValue = "true")
+    private boolean logPhi = true;
+    @Metadata(label = "advanced", defaultValue = "5120")
+    private int logPhiMaxBytes = 5120;
+    @Metadata(label = "advanced", defaultValue = "ISO-8859-1")
+    private String defaultCharset = "ISO_8859_1";
+    @Metadata
+    private MllpConfiguration configuration;
+    @Metadata(label = "security", defaultValue = "false")
+    private boolean useGlobalSslContextParameters;
 
     public MllpComponent() {
-        super(MllpEndpoint.class);
+        // bridge error handler by default
+        setBridgeErrorHandler(true);
     }
 
     public MllpComponent(CamelContext context) {
-        super(context, MllpEndpoint.class);
+        super(context);
+        // bridge error handler by default
+        setBridgeErrorHandler(true);
     }
 
-    protected Endpoint createEndpoint(String uri, String remaining, Map<String, Object> parameters) throws Exception {
-        MllpEndpoint endpoint = new MllpEndpoint(uri, this);
-        setProperties(endpoint, parameters);
+    @Override
+    protected Endpoint createEndpoint(String uriString, String remaining, Map<String, Object> parameters) throws Exception {
+        MllpEndpoint endpoint
+                = new MllpEndpoint(uriString, this, hasConfiguration() ? configuration.copy() : new MllpConfiguration());
 
-        // mllp://hostname:port
-        String hostPort;
-        // look for options
-        int optionsStartIndex = uri.indexOf('?');
-        if (-1 == optionsStartIndex) {
-            // No options - just get the host/port stuff
-            hostPort = uri.substring(7);
-        } else {
-            hostPort = uri.substring(7, optionsStartIndex);
+        if (endpoint.getConfiguration().getSslContextParameters() == null) {
+            endpoint.getConfiguration().setSslContextParameters(retrieveGlobalSslContextParameters());
         }
+
+        endpoint.setCharsetName(getDefaultCharset());
 
         // Make sure it has a host - may just be a port
-        int colonIndex = hostPort.indexOf(':');
-        if (-1 != colonIndex) {
-            endpoint.setHostname(hostPort.substring(0, colonIndex));
-            endpoint.setPort(Integer.parseInt(hostPort.substring(colonIndex + 1)));
+        int colonIndex = remaining.indexOf(':');
+        if (colonIndex != -1) {
+            endpoint.setHostname(remaining.substring(0, colonIndex));
+            endpoint.setPort(CamelContextHelper.parseInt(getCamelContext(), remaining.substring(colonIndex + 1)));
         } else {
             // No host specified - leave the default host and set the port
-            endpoint.setPort(Integer.parseInt(hostPort.substring(colonIndex + 1)));
+            endpoint.setPort(CamelContextHelper.parseInt(getCamelContext(), remaining));
         }
 
+        setProperties(endpoint, parameters);
         return endpoint;
     }
 
+    public Boolean getLogPhi() {
+        return logPhi;
+    }
+
+    /**
+     * Whether to log PHI
+     */
+    public void setLogPhi(Boolean logPhi) {
+        this.logPhi = logPhi;
+    }
+
+    public int getLogPhiMaxBytes() {
+        return logPhiMaxBytes;
+    }
+
+    /**
+     * Set the maximum number of bytes of PHI that will be logged in a log entry.
+     */
+    public void setLogPhiMaxBytes(Integer logPhiMaxBytes) {
+        this.logPhiMaxBytes = logPhiMaxBytes;
+    }
+
+    public String getDefaultCharset() {
+        return defaultCharset;
+    }
+
+    /**
+     * Set the default character set to use for byte[] to/from String conversions.
+     */
+    public void setDefaultCharset(String name) {
+        this.defaultCharset = name;
+    }
+
+    public boolean hasConfiguration() {
+        return configuration != null;
+    }
+
+    public MllpConfiguration getConfiguration() {
+        return configuration;
+    }
+
+    /**
+     * Sets the default configuration to use when creating MLLP endpoints.
+     */
+    public void setConfiguration(MllpConfiguration configuration) {
+        this.configuration = configuration;
+    }
+
+    @Override
+    public boolean isUseGlobalSslContextParameters() {
+        return this.useGlobalSslContextParameters;
+    }
+
+    /**
+     * Enable usage of global SSL context parameters.
+     */
+    @Override
+    public void setUseGlobalSslContextParameters(boolean useGlobalSslContextParameters) {
+        this.useGlobalSslContextParameters = useGlobalSslContextParameters;
+    }
 }

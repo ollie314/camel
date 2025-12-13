@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,26 +16,28 @@
  */
 package org.apache.camel.component.ssh;
 
+import java.util.Map;
+
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
-import org.apache.camel.impl.ScheduledPollEndpoint;
+import org.apache.camel.spi.EndpointServiceLocation;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
-import org.apache.sshd.common.KeyPairProvider;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.camel.support.ScheduledPollEndpoint;
+import org.apache.sshd.common.keyprovider.KeyPairProvider;
 
 /**
- * The ssh component enables access to SSH servers such that you can send an SSH command, and process the response.
+ * Execute commands on remote hosts using SSH.
  */
-@UriEndpoint(scheme = "ssh", title = "SSH", syntax = "ssh:host:port", alternativeSyntax = "ssh:username:password@host:port",
-        consumerClass = SshConsumer.class, label = "file")
-public class SshEndpoint extends ScheduledPollEndpoint {
-    protected final Logger log = LoggerFactory.getLogger(getClass());
+@UriEndpoint(firstVersion = "2.10.0", scheme = "ssh", title = "SSH", syntax = "ssh:host:port",
+             alternativeSyntax = "ssh:username:password@host:port", category = { Category.FILE },
+             headersClass = SshConstants.class)
+public class SshEndpoint extends ScheduledPollEndpoint implements EndpointServiceLocation {
 
     @UriParam
-    private SshConfiguration sshConfiguration;
+    private SshConfiguration configuration;
 
     public SshEndpoint() {
     }
@@ -46,7 +48,7 @@ public class SshEndpoint extends ScheduledPollEndpoint {
 
     public SshEndpoint(String uri, SshComponent component, SshConfiguration configuration) {
         super(uri, component);
-        this.sshConfiguration = configuration;
+        this.configuration = configuration;
     }
 
     @Override
@@ -62,17 +64,36 @@ public class SshEndpoint extends ScheduledPollEndpoint {
     }
 
     @Override
-    public boolean isSingleton() {
-        // SshClient is not thread-safe to be shared
-        return true;
+    public boolean isSingletonProducer() {
+        // this producer is stateful because the ssh client is not
+        // thread safe
+        return false;
+    }
+
+    @Override
+    public String getServiceUrl() {
+        return configuration.getHost() + ":" + configuration.getPort();
+    }
+
+    @Override
+    public String getServiceProtocol() {
+        return "ssh";
+    }
+
+    @Override
+    public Map<String, String> getServiceMetadata() {
+        if (configuration.getUsername() != null) {
+            return Map.of("username", configuration.getUsername());
+        }
+        return null;
     }
 
     public SshConfiguration getConfiguration() {
-        return sshConfiguration;
+        return configuration;
     }
 
     public void setConfiguration(SshConfiguration configuration) {
-        this.sshConfiguration = configuration;
+        this.configuration = configuration;
     }
 
     public String getHost() {
@@ -139,22 +160,6 @@ public class SshEndpoint extends ScheduledPollEndpoint {
         getConfiguration().setTimeout(timeout);
     }
 
-    /**
-     * @deprecated As of version 2.11, replaced by {@link #getCertResource()}
-     */
-    @Deprecated
-    public String getCertFilename() {
-        return getConfiguration().getCertFilename();
-    }
-
-    /**
-     * @deprecated As of version 2.11, replaced by {@link #setCertResource(String)}
-     */
-    @Deprecated
-    public void setCertFilename(String certFilename) {
-        getConfiguration().setCertFilename(certFilename);
-    }
-
     public String getCertResource() {
         return getConfiguration().getCertResource();
     }
@@ -162,4 +167,53 @@ public class SshEndpoint extends ScheduledPollEndpoint {
     public void setCertResource(String certResource) {
         getConfiguration().setCertResource(certResource);
     }
+
+    public String getCertResourcePassword() {
+        return getConfiguration().getCertResourcePassword();
+    }
+
+    public void setCertResourcePassword(String certResourcePassword) {
+        getConfiguration().setCertResourcePassword(certResourcePassword);
+    }
+
+    public String getKnownHostsResource() {
+        return getConfiguration().getKnownHostsResource();
+    }
+
+    public void setKnownHostsResource(String knownHostsResource) {
+        getConfiguration().setKnownHostsResource(knownHostsResource);
+    }
+
+    public boolean isFailOnUnknownHost() {
+        return getConfiguration().isFailOnUnknownHost();
+    }
+
+    public void setFailOnUnknownHost(boolean failOnUnknownHost) {
+        getConfiguration().setFailOnUnknownHost(failOnUnknownHost);
+    }
+
+    public String getChannelType() {
+        return getConfiguration().getChannelType();
+    }
+
+    public void setChannelType(String channelType) {
+        getConfiguration().setChannelType(channelType);
+    }
+
+    public String getShellPrompt() {
+        return getConfiguration().getShellPrompt();
+    }
+
+    public void setShellPrompt(String shellPrompt) {
+        getConfiguration().setShellPrompt(shellPrompt);
+    }
+
+    public long getSleepForShellPrompt() {
+        return getConfiguration().getSleepForShellPrompt();
+    }
+
+    public void setSleepForShellPrompt(long sleepForShellPrompt) {
+        getConfiguration().setSleepForShellPrompt(sleepForShellPrompt);
+    }
+
 }

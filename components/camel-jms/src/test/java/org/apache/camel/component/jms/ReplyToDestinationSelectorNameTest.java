@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,20 +16,31 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
-
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  *
  */
-public class ReplyToDestinationSelectorNameTest extends CamelTestSupport {
+public class ReplyToDestinationSelectorNameTest extends AbstractJMSTest {
+
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
     public void testReplyToDestinationSelectorName() throws Exception {
@@ -39,34 +50,42 @@ public class ReplyToDestinationSelectorNameTest extends CamelTestSupport {
         Object body1 = template.requestBody("direct:start", "World");
         Object body2 = template.requestBody("direct:start", "Camel");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         assertEquals("Bye World", body1);
         assertEquals("Bye Camel", body2);
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        JmsComponent component = jmsComponentAutoAcknowledge(connectionFactory);
-        camelContext.addComponent("activemq", component);
-        return camelContext;
+    @Override
+    protected String getComponentName() {
+        return "activemq";
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .to("activemq:queue:foo?replyTo=queue:bar&replyToDestinationSelectorName=replyId")
-                    .to("mock:result");
+                        .to("activemq:queue:ReplyToDestinationSelectorNameTest.foo?replyTo=queue:ReplyToDestinationSelectorNameTest.bar&replyToDestinationSelectorName=replyId")
+                        .to("mock:result");
 
-                from("activemq:queue:foo")
-                    .log("Using header named replyId with value as correlation - ${header.replyId}")
-                    .transform(body().prepend("Bye "));
+                from("activemq:queue:ReplyToDestinationSelectorNameTest.foo")
+                        .log("Using header named replyId with value as correlation - ${header.replyId}")
+                        .transform(body().prepend("Bye "));
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
     }
 }

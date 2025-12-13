@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -36,18 +36,18 @@ public class MockAS400ConnectionPool extends AS400ConnectionPool {
 
     @Deprecated
     @Override
-    public AS400 getConnection(String systemName, String userID) throws ConnectionPoolException {
+    public AS400 getConnection(String systemName, String userID) {
         throw new UnsupportedOperationException();
     }
 
     @Deprecated
     @Override
-    public AS400 getConnection(String systemName, String userID, int service) throws ConnectionPoolException {
+    public AS400 getConnection(String systemName, String userID, int service) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public AS400 getConnection(String systemName, String userID, String password) throws ConnectionPoolException {
+    public AS400 getConnection(String systemName, String userID, String password) {
         return new AS400(systemName, userID, password);
     }
 
@@ -57,12 +57,14 @@ public class MockAS400ConnectionPool extends AS400ConnectionPool {
     }
 
     @Override
-    public AS400 getConnection(String systemName, String userID, String password, int service, Locale locale) throws ConnectionPoolException {
+    public AS400 getConnection(String systemName, String userID, String password, int service, Locale locale)
+            throws ConnectionPoolException {
         return getConnection(systemName, userID, password, locale);
     }
 
     @Override
-    public AS400 getConnection(String systemName, String userID, String password, Locale locale) throws ConnectionPoolException {
+    public AS400 getConnection(String systemName, String userID, String password, Locale locale)
+            throws ConnectionPoolException {
         AS400 connection = getConnection(systemName, userID, password);
         connection.setLocale(locale);
         return connection;

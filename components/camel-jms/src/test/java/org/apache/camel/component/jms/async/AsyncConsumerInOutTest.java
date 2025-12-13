@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,20 +16,39 @@
  */
 package org.apache.camel.component.jms.async;
 
-import javax.jms.ConnectionFactory;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ExchangePattern;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.jms.CamelJmsTestHelper;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.jms.AbstractJMSTest;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.apache.camel.test.infra.core.annotations.ContextFixture;
+import org.awaitility.Awaitility;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+@Timeout(30)
+public class AsyncConsumerInOutTest extends AbstractJMSTest {
 
-/**
- *
- */
-public class AsyncConsumerInOutTest extends CamelTestSupport {
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
+
+    void waitForConnections() {
+        Awaitility.await().until(() -> context.getRoute("route-1").getUptimeMillis() > 200);
+        Awaitility.await().until(() -> context.getRoute("route-2").getUptimeMillis() > 200);
+    }
 
     @Test
     public void testAsyncJmsConsumer() throws Exception {
@@ -39,43 +58,58 @@ public class AsyncConsumerInOutTest extends CamelTestSupport {
         // process the 2nd message on the queue
         getMockEndpoint("mock:result").expectedBodiesReceived("Hello World", "Bye Camel");
 
-        template.sendBody("activemq:queue:start", "Hello Camel");
-        template.sendBody("activemq:queue:start", "Hello World");
+        template.sendBody("activemq:queue:AsyncConsumerInOutTest.start", "Hello Camel");
+        template.sendBody("activemq:queue:AsyncConsumerInOutTest.start", "Hello World");
 
-        assertMockEndpointsSatisfied();
-    }
-
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
-        camelContext.addComponent("async", new MyAsyncComponent());
-
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-
-        return camelContext;
+        MockEndpoint.assertIsSatisfied(context, 20, TimeUnit.SECONDS);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected String getComponentName() {
+        return "activemq";
+    }
+
+    @ContextFixture
+    public void configureComponent(CamelContext context) {
+        context.addComponent("async", new MyAsyncComponent());
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // enable async in only mode on the consumer
-                from("activemq:queue:start?asyncConsumer=true")
+                from("activemq:queue:AsyncConsumerInOutTest.start?asyncConsumer=true")
+                        .routeId("route-1")
                         .choice()
-                            .when(body().contains("Camel"))
-                            .to("async:camel?delay=2000")
-                            .inOut("activemq:queue:camel")
-                            .to("mock:result")
+                        .when(body().contains("Camel"))
+                        .to("async:camel?delay=2000")
+                        .to(ExchangePattern.InOut, "activemq:queue:AsyncConsumerInOutTest.camel")
+                        .to("mock:result")
                         .otherwise()
-                            .to("log:other")
-                            .to("mock:result");
+                        .to("log:other")
+                        .to("mock:result");
 
-                from("activemq:queue:camel")
-                    .to("log:camel")
-                    .transform(constant("Bye Camel"));
+                from("activemq:queue:AsyncConsumerInOutTest.camel")
+                        .routeId("route-2")
+                        .to("log:camel")
+                        .transform(constant("Bye Camel"));
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
+
+        waitForConnections();
     }
 }

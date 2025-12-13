@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,50 +16,49 @@
  */
 package org.apache.camel.component.bonita.api;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
-import javax.ws.rs.client.ClientRequestContext;
-import javax.ws.rs.core.Cookie;
+import jakarta.ws.rs.client.ClientRequestContext;
+import jakarta.ws.rs.core.Cookie;
 
 import org.apache.camel.component.bonita.api.filter.BonitaAuthFilter;
 import org.apache.camel.component.bonita.api.util.BonitaAPIConfig;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.powermock.modules.junit4.PowerMockRunner;
+import org.mockito.MockitoAnnotations;
 
-@RunWith(PowerMockRunner.class)
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 public class BonitaAuthFilterTest {
 
     @Mock
     private ClientRequestContext requestContext;
 
-    @Before
+    @BeforeEach
     public void setup() {
+        MockitoAnnotations.initMocks(this);
         Map<String, Cookie> resultCookies = new HashMap<>();
         Mockito.when(requestContext.getCookies()).thenReturn(resultCookies);
 
     }
 
-    @Test(
-            expected = IllegalArgumentException.class)
-    public void testBonitaAuthFilterUsernameEmpty() throws IOException {
+    @Test
+    public void testBonitaAuthFilterUsernameEmpty() {
         BonitaAPIConfig bonitaApiConfig = new BonitaAPIConfig("localhost", "port", "", "password");
         BonitaAuthFilter bonitaAuthFilter = new BonitaAuthFilter(bonitaApiConfig);
-        bonitaAuthFilter.filter(requestContext);
-
+        assertThrows(IllegalArgumentException.class,
+                () -> bonitaAuthFilter.filter(requestContext));
     }
 
-    @Test(
-            expected = IllegalArgumentException.class)
-    public void testBonitaAuthFilterPasswordEmpty() throws IOException {
+    @Test
+    public void testBonitaAuthFilterPasswordEmpty() {
         BonitaAPIConfig bonitaApiConfig = new BonitaAPIConfig("localhost", "port", "username", "");
         BonitaAuthFilter bonitaAuthFilter = new BonitaAuthFilter(bonitaApiConfig);
-        bonitaAuthFilter.filter(requestContext);
+        assertThrows(IllegalArgumentException.class,
+                () -> bonitaAuthFilter.filter(requestContext));
     }
 
 }

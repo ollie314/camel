@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,9 +19,16 @@ package org.apache.camel.component.flink;
 import java.util.List;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.impl.DefaultProducer;
+import org.apache.camel.support.DefaultProducer;
 import org.apache.flink.api.java.DataSet;
 
+/**
+ * Producer for executing Flink DataSet operations.
+ *
+ * @deprecated The DataSet API is deprecated since Flink 1.12. Use the DataStream API with bounded streams instead. See
+ *             the Flink migration guide for details on migrating from DataSet to DataStream API.
+ */
+@Deprecated(since = "4.16.0")
 public class DataSetFlinkProducer extends DefaultProducer {
 
     public DataSetFlinkProducer(FlinkEndpoint endpoint) {
@@ -35,13 +42,21 @@ public class DataSetFlinkProducer extends DefaultProducer {
         Object body = exchange.getIn().getBody();
 
         Object result;
-        if (body instanceof List) {
-            List list = (List) body;
-            Object[] array = list.toArray(new Object[list.size()]);
-            result = dataSetCallback.onDataSet(ds, array);
-        } else {
-            result = dataSetCallback.onDataSet(ds, body);
+
+        ClassLoader tccl = Thread.currentThread().getContextClassLoader();
+        try {
+            Thread.currentThread().setContextClassLoader(DataSet.class.getClassLoader());
+            if (body instanceof List) {
+                List list = (List) body;
+                Object[] array = list.toArray(new Object[0]);
+                result = dataSetCallback.onDataSet(ds, array);
+            } else {
+                result = dataSetCallback.onDataSet(ds, body);
+            }
+        } finally {
+            Thread.currentThread().setContextClassLoader(tccl);
         }
+
         collectResults(exchange, result);
     }
 

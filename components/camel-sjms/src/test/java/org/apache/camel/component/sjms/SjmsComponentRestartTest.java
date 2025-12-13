@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,40 +16,51 @@
  */
 package org.apache.camel.component.sjms;
 
-import javax.jms.ConnectionFactory;
-
-import org.apache.activemq.ActiveMQConnectionFactory;
+import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
+import org.apache.camel.BindToRegistry;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.impl.JndiRegistry;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.infra.artemis.services.ArtemisService;
+import org.apache.camel.test.infra.artemis.services.ArtemisServiceFactory;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Test;
 
 public class SjmsComponentRestartTest extends CamelTestSupport {
+
+    /*
+     * This one needs a custom lifecycle due to binding to registry via @BindToRegistry.
+     * The broker needs to be started earlier than usual.
+     */
+    public static ArtemisService service;
+
+    @BindToRegistry("activemqCF")
+    private ActiveMQConnectionFactory connectionFactory
+            = new ActiveMQConnectionFactory(service.serviceAddress());
+
+    static {
+        service = ArtemisServiceFactory.createVMService();
+        service.initialize();
+    }
+
+    @AfterAll
+    public static void shutdownBroker() {
+        if (service != null) {
+            service.shutdown();
+        }
+    }
 
     @Override
     public boolean isUseRouteBuilder() {
         return false;
     }
 
-    @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory("vm://broker?broker.persistent=false&broker.useJmx=false");
-
-        JndiRegistry jndi = super.createRegistry();
-        jndi.bind("activemqCF", connectionFactory);
-        return jndi;
-    }
-
     @Test
     public void testRestartWithStopStart() throws Exception {
-        SjmsComponent sjmsComponent = new SjmsComponent();
-        sjmsComponent.setConnectionFactory((ConnectionFactory) context.getRegistry().lookupByName("activemqCF"));
-        context.addComponent("sjms", sjmsComponent);
-
         RouteBuilder routeBuilder = new RouteBuilder(context) {
             @Override
-            public void configure() throws Exception {
-                from("sjms:queue:test").to("mock:test");
+            public void configure() {
+                from("sjms:queue:test.SjmsComponentRestartTest").to("mock:test");
             }
         };
         context.addRoutes(routeBuilder);
@@ -57,14 +68,16 @@ public class SjmsComponentRestartTest extends CamelTestSupport {
         context.start();
 
         getMockEndpoint("mock:test").expectedMessageCount(1);
-        template.sendBody("sjms:queue:test", "Hello World");
-        assertMockEndpointsSatisfied();
+        template.sendBody("sjms:queue:test.SjmsComponentRestartTest", "Hello World");
+        MockEndpoint.assertIsSatisfied(context);
 
         // restart
         context.stop();
 
-        // must add our custom component back again
-        context.addComponent("sjms", sjmsComponent);
+        MockEndpoint.resetMocks(context);
+
+        // rebind as the registry is cleared on stop
+        context.getRegistry().bind("activemqCF", connectionFactory);
 
         context.start();
 
@@ -72,22 +85,18 @@ public class SjmsComponentRestartTest extends CamelTestSupport {
 
         // and re-create template
         template = context.createProducerTemplate();
-        template.sendBody("sjms:queue:test", "Hello World");
-        assertMockEndpointsSatisfied();
+        template.sendBody("sjms:queue:test.SjmsComponentRestartTest", "Hello World");
+        MockEndpoint.assertIsSatisfied(context);
 
         context.stop();
     }
 
     @Test
     public void testRestartWithSuspendResume() throws Exception {
-        SjmsComponent sjmsComponent = new SjmsComponent();
-        sjmsComponent.setConnectionFactory((ConnectionFactory) context.getRegistry().lookupByName("activemqCF"));
-        context.addComponent("sjms", sjmsComponent);
-
         RouteBuilder routeBuilder = new RouteBuilder(context) {
             @Override
-            public void configure() throws Exception {
-                from("sjms:queue:test").to("mock:test");
+            public void configure() {
+                from("sjms:queue:test.SjmsComponentRestartTest").to("mock:test");
             }
         };
         context.addRoutes(routeBuilder);
@@ -95,17 +104,19 @@ public class SjmsComponentRestartTest extends CamelTestSupport {
         context.start();
 
         getMockEndpoint("mock:test").expectedMessageCount(1);
-        template.sendBody("sjms:queue:test", "Hello World");
-        assertMockEndpointsSatisfied();
+        template.sendBody("sjms:queue:test.SjmsComponentRestartTest", "Hello World");
+        MockEndpoint.assertIsSatisfied(context);
 
         // restart
         context.suspend();
         context.resume();
 
+        MockEndpoint.resetMocks(context);
+
         getMockEndpoint("mock:test").expectedMessageCount(1);
 
-        template.sendBody("sjms:queue:test", "Hello World");
-        assertMockEndpointsSatisfied();
+        template.sendBody("sjms:queue:test.SjmsComponentRestartTest", "Hello World");
+        MockEndpoint.assertIsSatisfied(context);
 
         context.stop();
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,60 +16,81 @@
  */
 package org.apache.camel.component.jms.issues;
 
-import javax.jms.ConnectionFactory;
-
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
 import org.apache.camel.ExchangePattern;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.jms.CamelJmsTestHelper;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.jms.AbstractJMSTest;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.TransientCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.RepeatedTest;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+public class JmsInOutRoutingSlipTest extends AbstractJMSTest {
 
-/**
- * @version 
- */
-public class JmsInOutRoutingSlipTest extends CamelTestSupport {
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new TransientCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
-    @Test
-    public void testJmsInOutRoutingSlip() throws Exception {
-        getMockEndpoint("mock:foo").expectedBodiesReceived("World");
-        getMockEndpoint("mock:result").expectedBodiesReceived("Bye World");
+    @BeforeEach
+    void setupMocks() {
+        getMockEndpoint("mock:JmsInOutRoutingSlipTest.foo").expectedBodiesReceived("World");
+        getMockEndpoint("mock:JmsInOutRoutingSlipTest.result").expectedBodiesReceived("Bye World");
         getMockEndpoint("mock:end").expectedBodiesReceived("Bye World");
-
-        template.sendBodyAndHeader("activemq:queue:start", "World", "slip", "activemq:queue:foo,activemq:queue:result");
-
-        assertMockEndpointsSatisfied();
     }
 
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-        return camelContext;
+    @RepeatedTest(5)
+    public void testJmsInOutRoutingSlip() throws Exception {
+        template.sendBodyAndHeader("activemq:queue:JmsInOutRoutingSlipTest.start", "World", "slip",
+                "activemq:queue:JmsInOutRoutingSlipTest.foo,activemq:queue:JmsInOutRoutingSlipTest.result");
+
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected String getComponentName() {
+        return "activemq";
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("activemq:queue:start")
-                    .setExchangePattern(ExchangePattern.InOut)
-                    .routingSlip(header("slip"))
-                    .to("log:end")
-                    .to("mock:end");
+            public void configure() {
+                from("activemq:queue:JmsInOutRoutingSlipTest.start")
+                        .setExchangePattern(ExchangePattern.InOut)
+                        .routingSlip(header("slip"))
+                        .to("log:end")
+                        .to("mock:end");
 
-                from("activemq:queue:foo")
-                    .to("mock:foo")
-                    .to("log:foo")
-                    .transform(body().prepend("Bye "));
+                from("activemq:queue:JmsInOutRoutingSlipTest.foo")
+                        .to("mock:JmsInOutRoutingSlipTest.foo")
+                        .to("log:JmsInOutRoutingSlipTest.foo")
+                        .transform(body().prepend("Bye "));
 
-                from("activemq:queue:result")
-                    .to("log:result")
-                    .to("mock:result");
+                from("activemq:queue:JmsInOutRoutingSlipTest.result")
+                        .to("log:JmsInOutRoutingSlipTest.result")
+                        .to("mock:JmsInOutRoutingSlipTest.result");
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
     }
 }

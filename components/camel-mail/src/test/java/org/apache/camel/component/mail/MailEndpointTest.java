@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,16 +16,17 @@
  */
 package org.apache.camel.component.mail;
 
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+
 public class MailEndpointTest extends CamelTestSupport {
 
     @Test
-    public void testMailEndpointCtr() throws Exception {
+    public void testMailEndpointCtr() {
         MailEndpoint endpoint = new MailEndpoint();
         assertNull(endpoint.getConfiguration());
         assertNull(endpoint.getContentTypeResolver());
@@ -34,7 +35,7 @@ public class MailEndpointTest extends CamelTestSupport {
 
         MailConfiguration cfg = new MailConfiguration();
         cfg.setPort(21);
-        cfg.setProtocol("smtp");
+        cfg.configureProtocol("smtp");
         cfg.setHost("myhost");
         cfg.setUsername("james");
         cfg.setPassword("secret");
@@ -44,7 +45,7 @@ public class MailEndpointTest extends CamelTestSupport {
     }
 
     @Test
-    public void testMailEndpointCtrEndpoint() throws Exception {
+    public void testMailEndpointCtrEndpoint() {
         MailEndpoint endpoint = new MailEndpoint("smtp://myhost");
         assertNull(endpoint.getContentTypeResolver());
         assertNotNull(endpoint.getConfiguration());
@@ -53,7 +54,7 @@ public class MailEndpointTest extends CamelTestSupport {
 
         MailConfiguration cfg = new MailConfiguration();
         cfg.setPort(21);
-        cfg.setProtocol("smtp");
+        cfg.configureProtocol("smtp");
         cfg.setHost("myhost");
         cfg.setUsername("james");
         cfg.setPassword("secret");
@@ -63,10 +64,10 @@ public class MailEndpointTest extends CamelTestSupport {
     }
 
     @Test
-    public void testMailEndpointCtrEndpointConfig() throws Exception {
+    public void testMailEndpointCtrEndpointConfig() {
         MailConfiguration cfg = new MailConfiguration();
         cfg.setPort(21);
-        cfg.setProtocol("smtp");
+        cfg.configureProtocol("smtp");
         cfg.setHost("myhost");
         cfg.setUsername("james");
         cfg.setPassword("secret");
@@ -77,7 +78,7 @@ public class MailEndpointTest extends CamelTestSupport {
         assertNull(endpoint.getContentTypeResolver());
         assertNotNull(endpoint.getBinding());
         assertNotNull(endpoint.getHeaderFilterStrategy());
-        
+
         MyMailBinding myBnd = new MyMailBinding();
         endpoint.setBinding(myBnd);
         assertSame(myBnd, endpoint.getBinding());

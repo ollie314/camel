@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,144 +16,195 @@
  */
 package org.apache.camel.component.influxdb;
 
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
-import org.apache.camel.impl.DefaultEndpoint;
 import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriPath;
+import org.apache.camel.support.DefaultEndpoint;
 import org.influxdb.InfluxDB;
+import org.influxdb.dto.Query;
+import org.influxdb.dto.QueryResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The influxdb component allows you to interact with <a href="https://influxdata.com/time-series-platform/influxdb/">InfluxDB</a>, a time series database.
+ * Interact with <a href="https://influxdata.com/time-series-platform/influxdb/">InfluxDB</a> v1, a time series
+ * database.
  */
-@UriEndpoint(scheme = "influxdb", title = "InfluxDB", syntax = "influxdb:connectionBean", label = "database,ticks", producerOnly = true)
+@UriEndpoint(firstVersion = "2.18.0", scheme = "influxdb", title = "InfluxDB", syntax = "influxdb:connectionBean",
+             category = { Category.DATABASE }, producerOnly = true, headersClass = InfluxDbConstants.class)
 public class InfluxDbEndpoint extends DefaultEndpoint {
 
     private static final Logger LOG = LoggerFactory.getLogger(InfluxDbEndpoint.class);
+    private static final String CREATE_DATABASE = "CREATE DATABASE ";
+    private static final String SHOW_DATABASES = "SHOW DATABASES";
 
     private InfluxDB influxDB;
 
     @UriPath
-    @Metadata(required = "true", description = "Connection to the influx database, of class InfluxDB.class")
+    @Metadata(required = true)
     private String connectionBean;
-
-    @UriParam(description = "the name of the series where the points will be created, name can be modified dynamically by headers")
+    @UriParam
     private String databaseName;
-
-    @UriParam(defaultValue = "default", description = "defines the retention policy for the points created in influxdb")
+    @UriParam(defaultValue = "default")
     private String retentionPolicy = "default";
+    @UriParam(defaultValue = "false")
+    private boolean batch;
+    @UriParam(defaultValue = InfluxDbOperations.INSERT)
+    private String operation = InfluxDbOperations.INSERT;
+    @UriParam
+    private String query;
+    @UriParam(defaultValue = "false")
+    private boolean checkDatabaseExistence;
+    @UriParam(defaultValue = "false")
+    private boolean autoCreateDatabase;
 
-    /**
-     * @param uri
-     * @param influxDbComponent
-     */
-    public InfluxDbEndpoint(String uri, InfluxDbComponent influxDbComponent, InfluxDB dbConn) {
-        super(uri, influxDbComponent);
-
-        if (dbConn == null) {
-            throw new IllegalArgumentException("dbConn is null");
-        }
-
-        this.influxDB = dbConn;
-
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Prepairing influxdb enpoint with uri {}", uri);
-        }
-
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Creating influx db producer connectionBean:{}, databaseName:{}, retentionPolicy:{}", connectionBean, databaseName, retentionPolicy);
-        }
-
+    public InfluxDbEndpoint(String uri, InfluxDbComponent component) {
+        super(uri, component);
     }
 
     @Override
     public Producer createProducer() throws Exception {
-
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Creating influx db producer");
-        }
         return new InfluxDbProducer(this);
     }
 
     @Override
     public Consumer createConsumer(Processor processor) throws Exception {
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Creating influx db consumer");
-        }
         throw new UnsupportedOperationException("You cannot receive messages from this endpoint");
     }
 
     @Override
-    public boolean isSingleton() {
-        return false;
+    protected void doInit() throws Exception {
+        super.doInit();
+
+        if (checkDatabaseExistence) {
+            ensureDatabaseExists();
+        }
+
     }
-
-
 
     public InfluxDB getInfluxDB() {
         return influxDB;
     }
 
+    /**
+     * The Influx DB to use
+     */
     public void setInfluxDB(InfluxDB influxDB) {
         this.influxDB = influxDB;
     }
 
-    /**
-     * Getter for databaseName
-     * 
-     * @return the name of the database where the time series will be stored
-     */
     public String getDatabaseName() {
         return databaseName;
     }
 
     /**
-     * Setter for databaseName
-     * 
-     * @param databaseName
+     * The name of the database where the time series will be stored
      */
     public void setDatabaseName(String databaseName) {
         this.databaseName = databaseName;
     }
 
-    /**
-     * Getter for retentionPolicy
-     * 
-     * @return the string that defines the retention policy to the data created
-     *         by the endpoint
-     */
     public String getRetentionPolicy() {
         return retentionPolicy;
     }
 
     /**
-     * Setter for retentionPolicy
-     * 
-     * @param retentionPolicy
+     * The string that defines the retention policy to the data created by the endpoint
      */
     public void setRetentionPolicy(String retentionPolicy) {
         this.retentionPolicy = retentionPolicy;
     }
 
-    /**
-     * Getter for connectionBean
-     * 
-     * @return the name of the bean for the {@link org.influxdb.InfluxDB}
-     *         connection
-     */
     public String getConnectionBean() {
         return connectionBean;
     }
 
     /**
-     * Name of {@link org.influxdb.InfluxDB} to use.
+     * Connection to the influx database, of class InfluxDB.class
      */
     public void setConnectionBean(String connectionBean) {
         this.connectionBean = connectionBean;
+    }
+
+    public boolean isBatch() {
+        return batch;
+    }
+
+    /**
+     * Define if this operation is a batch operation or not
+     */
+    public void setBatch(boolean batch) {
+        this.batch = batch;
+    }
+
+    public String getOperation() {
+        return operation;
+    }
+
+    /**
+     * Define if this operation is an insert or a query
+     */
+    public void setOperation(String operation) {
+        this.operation = operation;
+    }
+
+    public String getQuery() {
+        return query;
+    }
+
+    /**
+     * Define the query in case of operation query
+     */
+    public void setQuery(String query) {
+        this.query = query;
+    }
+
+    public boolean isCheckDatabaseExistence() {
+        return checkDatabaseExistence;
+    }
+
+    /**
+     * Define if we want to check the database existence while starting the endpoint
+     */
+    public void setCheckDatabaseExistence(boolean checkDatabaseExistence) {
+        this.checkDatabaseExistence = checkDatabaseExistence;
+    }
+
+    public boolean isAutoCreateDatabase() {
+        return autoCreateDatabase;
+    }
+
+    /**
+     * Define if we want to auto create the database if it's not present
+     */
+    public void setAutoCreateDatabase(boolean autoCreateDatabase) {
+        this.autoCreateDatabase = autoCreateDatabase;
+    }
+
+    private void ensureDatabaseExists() {
+        QueryResult result = getInfluxDB().query(new Query(SHOW_DATABASES));
+
+        //values are located in the first item in series, where list of values is the first item in the Serie's values,
+        //if any object on the 'path' is null, database does not exist
+        boolean exists;
+        try {
+            //NPE could be thrown from objects deep in the structure.
+            //try catch block with NullPointerException is used on purpose
+            exists = result.getResults().get(0).getSeries().get(0).getValues().get(0).contains(databaseName);
+        } catch (NullPointerException e) {
+            exists = false;
+        }
+
+        if (!exists) {
+            if (autoCreateDatabase) {
+                LOG.debug("Database {} doesn't exist. Creating it...", databaseName);
+                getInfluxDB().query(new Query(CREATE_DATABASE + databaseName, ""));
+            }
+        }
     }
 }

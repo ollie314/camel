@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,19 +16,14 @@
  */
 package org.apache.camel.component.sjms.consumer;
 
-
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.component.sjms.support.JmsTestSupport;
+import org.junit.jupiter.api.Test;
 
-import org.junit.Test;
-
-/**
- * @version 
- */
 public class InOnlyConsumerTempQueueTest extends JmsTestSupport {
 
-    private static final String SJMS_QUEUE_NAME = "sjms:queue:in.only.consumer.";
+    private static final String SJMS_QUEUE_NAME = "sjms:queue:in.only.consumer.InOnlyConsumerTempQueueTest";
     private static final String MOCK_RESULT = "mock:result";
 
     @Test
@@ -39,15 +34,16 @@ public class InOnlyConsumerTempQueueTest extends JmsTestSupport {
         mock.expectedBodiesReceived(expectedBody);
 
         template.sendBody(SJMS_QUEUE_NAME, expectedBody);
-        
+
         mock.assertIsSatisfied();
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 from(SJMS_QUEUE_NAME)
-                    .to(MOCK_RESULT);
+                        .to(MOCK_RESULT);
             }
         };
     }

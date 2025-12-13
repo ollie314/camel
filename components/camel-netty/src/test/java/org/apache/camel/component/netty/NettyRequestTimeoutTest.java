@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,28 +16,34 @@
  */
 package org.apache.camel.component.netty;
 
+import io.netty.handler.timeout.ReadTimeoutException;
 import org.apache.camel.CamelExecutionException;
+import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.jboss.netty.handler.timeout.ReadTimeoutException;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.fail;
+
 public class NettyRequestTimeoutTest extends BaseNettyTest {
 
     @Test
-    public void testRequestTimeoutOK() throws Exception {
-        String out = template.requestBody("netty:tcp://localhost:{{port}}?textline=true&sync=true&requestTimeout=5000", "Hello Camel", String.class);
+    public void testRequestTimeoutOK() {
+        String out = template.requestBody("netty:tcp://localhost:{{port}}?textline=true&sync=true&requestTimeout=500",
+                "Hello Camel", String.class);
         assertEquals("Bye World", out);
     }
 
     @Test
-    public void testRequestTimeout() throws Exception {
+    public void testRequestTimeout() {
         try {
-            template.requestBody("netty:tcp://localhost:{{port}}?textline=true&sync=true&requestTimeout=1000", "Hello Camel", String.class);
+            template.requestBody("netty:tcp://localhost:{{port}}?textline=true&sync=true&requestTimeout=100", "Hello Camel",
+                    String.class);
             fail("Should have thrown exception");
         } catch (CamelExecutionException e) {
             ReadTimeoutException cause = assertIsInstanceOf(ReadTimeoutException.class, e.getCause());
@@ -46,20 +52,36 @@ public class NettyRequestTimeoutTest extends BaseNettyTest {
     }
 
     @Test
-    public void testRequestTimeoutViaHeader() throws Exception {
+    public void testKeepingTimeoutHeader() {
+        Endpoint endpoint
+                = this.resolveMandatoryEndpoint("netty:tcp://localhost:{{port}}?textline=true&sync=true&requestTimeout=100");
+
+        String out = template.requestBody(endpoint, "Hello", String.class);
+        assertEquals("Bye World", out);
+        CamelExecutionException e = assertThrows(CamelExecutionException.class,
+                () -> template.requestBody(endpoint, "Hello Camel", String.class));
+
+        ReadTimeoutException cause = assertIsInstanceOf(ReadTimeoutException.class, e.getCause());
+        assertNotNull(cause);
+    }
+
+    @Test
+    public void testRequestTimeoutViaHeader() {
         try {
-            template.requestBodyAndHeader("netty:tcp://localhost:{{port}}?textline=true&sync=true", "Hello Camel", NettyConstants.NETTY_REQUEST_TIMEOUT, 1000, String.class);
+            template.requestBodyAndHeader("netty:tcp://localhost:{{port}}?textline=true&sync=true", "Hello Camel",
+                    NettyConstants.NETTY_REQUEST_TIMEOUT, 100, String.class);
             fail("Should have thrown exception");
         } catch (CamelExecutionException e) {
             ReadTimeoutException cause = assertIsInstanceOf(ReadTimeoutException.class, e.getCause());
             assertNotNull(cause);
         }
     }
-    
+
     @Test
-    public void testRequestTimeoutAndOk() throws Exception {
+    public void testRequestTimeoutAndOk() {
         try {
-            template.requestBody("netty:tcp://localhost:{{port}}?textline=true&sync=true&requestTimeout=1000", "Hello Camel", String.class);
+            template.requestBody("netty:tcp://localhost:{{port}}?textline=true&sync=true&requestTimeout=100", "Hello Camel",
+                    String.class);
             fail("Should have thrown exception");
         } catch (CamelExecutionException e) {
             ReadTimeoutException cause = assertIsInstanceOf(ReadTimeoutException.class, e.getCause());
@@ -67,27 +89,28 @@ public class NettyRequestTimeoutTest extends BaseNettyTest {
         }
 
         // now we try again but this time the is no delay on server and thus faster
-        String out = template.requestBody("netty:tcp://localhost:{{port}}?textline=true&sync=true&requestTimeout=1000", "Hello World", String.class);
+        String out = template.requestBody("netty:tcp://localhost:{{port}}?textline=true&sync=true&requestTimeout=100",
+                "Hello World", String.class);
         assertEquals("Bye World", out);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("netty:tcp://localhost:{{port}}?textline=true&sync=true")
-                    .process(new Processor() {
-                        @Override
-                        public void process(Exchange exchange) throws Exception {
-                            String body = exchange.getIn().getBody(String.class);
+                        .process(new Processor() {
+                            @Override
+                            public void process(Exchange exchange) throws Exception {
+                                String body = exchange.getIn().getBody(String.class);
 
-                            if (body.contains("Camel")) {
-                                Thread.sleep(3000);
+                                if (body.contains("Camel")) {
+                                    Thread.sleep(200);
+                                }
                             }
-                        }
-                    })
-                    .transform().constant("Bye World");
+                        })
+                        .transform().constant("Bye World");
 
             }
         };

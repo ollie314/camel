@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,99 +17,138 @@
 package org.apache.camel.component.hazelcast;
 
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
+import com.hazelcast.collection.ISet;
+import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.core.ISet;
-
+import org.apache.camel.CamelContext;
 import org.apache.camel.CamelExecutionException;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.After;
-import org.junit.Test;
-import org.mockito.Mock;
+import org.apache.camel.test.infra.common.TestEntityNameGenerator;
+import org.apache.camel.test.infra.hazelcast.services.HazelcastService;
+import org.apache.camel.test.infra.hazelcast.services.HazelcastServiceFactory;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class HazelcastSetProducerTest extends HazelcastCamelTestSupport {
+public class HazelcastSetProducerTest extends CamelTestSupport {
 
-    @Mock
-    private ISet<String> set;
+    @RegisterExtension
+    public static HazelcastService hazelcastService = HazelcastServiceFactory.createService();
 
-    @Override
-    protected void trainHazelcastInstance(HazelcastInstance hazelcastInstance) {
-        when(hazelcastInstance.<String>getSet("bar")).thenReturn(set);
+    @RegisterExtension
+    public static TestEntityNameGenerator nameGenerator = new TestEntityNameGenerator();
+
+    private static ISet<String> set;
+    private static HazelcastInstance hazelcastInstance;
+
+    @BeforeAll
+    public static void beforeAll() {
+        hazelcastInstance = Hazelcast.newHazelcastInstance(hazelcastService.createConfiguration(null, 0, null, "set"));
+        set = hazelcastInstance.getSet("bar");
+    }
+
+    @AfterAll
+    public static void afterEach() {
+        if (hazelcastInstance != null) {
+            hazelcastInstance.shutdown();
+        }
+    }
+
+    @BeforeEach
+    public void beforeEach() {
+        set.clear();
     }
 
     @Override
-    protected void verifyHazelcastInstance(HazelcastInstance hazelcastInstance) {
-        verify(hazelcastInstance, atLeastOnce()).getSet("bar");
+    protected CamelContext createCamelContext() throws Exception {
+        CamelContext context = super.createCamelContext();
+        HazelcastCamelTestHelper.registerHazelcastComponents(context, hazelcastInstance);
+        return context;
     }
 
-    @After
-    public final void verifySetMock() {
-        verifyNoMoreInteractions(set);
-    }
-
-    @Test(expected = CamelExecutionException.class)
+    @Test
     public void testWithInvalidOperation() {
-        template.sendBody("direct:addInvalid", "bar");
+        assertThrows(CamelExecutionException.class,
+                () -> template.sendBody("direct:addInvalid", "bar"));
     }
 
     @Test
     public void addValue() throws InterruptedException {
-        template.sendBody("direct:add", "bar");
-        verify(set).add("bar");
+        template.sendBody("direct:add", "one");
+        assertTrue(set.contains("one"));
     }
 
     @Test
     public void addValueWithOperationNumber() throws InterruptedException {
-        template.sendBody("direct:addWithOperationNumber", "bar");
-        verify(set).add("bar");
+        template.sendBody("direct:addWithOperationNumber", "two");
+        assertTrue(set.contains("two"));
     }
 
     @Test
     public void addValueWithOperationName() throws InterruptedException {
-        template.sendBody("direct:addWithOperationName", "bar");
-        verify(set).add("bar");
+        template.sendBody("direct:addWithOperationName", "three");
+        assertTrue(set.contains("three"));
     }
 
     @Test
     public void removeValue() throws InterruptedException {
-        template.sendBody("direct:removevalue", "foo2");
-        verify(set).remove("foo2");
+        set.add("foo2");
+        template.sendBody("direct:removeValue", "foo2");
+        assertFalse(set.contains("foo2"));
     }
-    
+
     @Test
     public void clearList() {
         template.sendBody("direct:clear", "");
-        verify(set).clear();
+        assertTrue(set.isEmpty());
     }
-    
+
     @Test
     public void addAll() throws InterruptedException {
-        Collection t = new ArrayList();
-        t.add("test1");
+        List<String> t = new ArrayList<>();
         t.add("test2");
+        t.add("test3");
         template.sendBody("direct:addAll", t);
-        verify(set).addAll(t);
+        assertTrue(set.containsAll(t));
     }
-    
+
     @Test
     public void removeAll() throws InterruptedException {
-        Collection t = new ArrayList();
+        List<String> t = new ArrayList<>();
         t.add("test1");
         t.add("test2");
         template.sendBody("direct:removeAll", t);
-        verify(set).removeAll(t);
+        assertFalse(set.containsAll(t));
     }
-    
+
     @Test
     public void retainAll() throws InterruptedException {
-        Collection t = new ArrayList();
-        t.add("test1");
-        t.add("test2");
+        List<String> t = new ArrayList<>();
+        t.add("test3");
+        t.add("test4");
         template.sendBody("direct:retainAll", t);
-        verify(set).retainAll(t);
+        assertFalse(set.containsAll(t));
+    }
+
+    @Test
+    public void getAll() throws InterruptedException {
+        Set<String> t = new HashSet<>();
+        t.add("test1");
+        set.addAll(t);
+        template.sendBody("direct:getAll", "test");
+        assertEquals(t, consumer.receiveBody("seda:out", 5000, Set.class));
     }
 
     @Override
@@ -118,29 +157,35 @@ public class HazelcastSetProducerTest extends HazelcastCamelTestSupport {
             @Override
             public void configure() throws Exception {
 
-                from("direct:addInvalid").setHeader(HazelcastConstants.OPERATION, constant("bogus")).toF("hazelcast:%sbar", HazelcastConstants.SET_PREFIX);
+                from("direct:addInvalid").setHeader(HazelcastConstants.OPERATION, constant("bogus"))
+                        .toF("hazelcast-%sbar", HazelcastConstants.SET_PREFIX);
 
-                from("direct:add").setHeader(HazelcastConstants.OPERATION, constant(HazelcastConstants.ADD_OPERATION)).toF("hazelcast:%sbar", HazelcastConstants.SET_PREFIX);
+                from("direct:add").setHeader(HazelcastConstants.OPERATION, constant(HazelcastOperation.ADD))
+                        .toF("hazelcast-%sbar", HazelcastConstants.SET_PREFIX);
 
-                from("direct:removevalue").setHeader(HazelcastConstants.OPERATION, constant(HazelcastConstants.REMOVEVALUE_OPERATION)).to(
-                        String.format("hazelcast:%sbar", HazelcastConstants.SET_PREFIX));
-                
-                from("direct:clear").setHeader(HazelcastConstants.OPERATION, constant(HazelcastConstants.CLEAR_OPERATION)).toF("hazelcast:%sbar", HazelcastConstants.SET_PREFIX);
+                from("direct:removeValue").setHeader(HazelcastConstants.OPERATION, constant(HazelcastOperation.REMOVE_VALUE))
+                        .toF("hazelcast-%sbar", HazelcastConstants.SET_PREFIX);
 
-                from("direct:addAll").setHeader(HazelcastConstants.OPERATION, constant(HazelcastConstants.ADD_ALL_OPERATION)).to(
-                        String.format("hazelcast:%sbar", HazelcastConstants.SET_PREFIX));
-                
-                from("direct:removeAll").setHeader(HazelcastConstants.OPERATION, constant(HazelcastConstants.REMOVE_ALL_OPERATION)).to(
-                        String.format("hazelcast:%sbar", HazelcastConstants.SET_PREFIX));
-                
-                from("direct:retainAll").setHeader(HazelcastConstants.OPERATION, constant(HazelcastConstants.RETAIN_ALL_OPERATION)).to(
-                        String.format("hazelcast:%sbar", HazelcastConstants.SET_PREFIX));
-                
-                from("direct:addWithOperationNumber").toF("hazelcast:%sbar?operation=%s", HazelcastConstants.SET_PREFIX, HazelcastConstants.ADD_OPERATION);
-                from("direct:addWithOperationName").toF("hazelcast:%sbar?operation=add", HazelcastConstants.SET_PREFIX);
+                from("direct:clear").setHeader(HazelcastConstants.OPERATION, constant(HazelcastOperation.CLEAR))
+                        .toF("hazelcast-%sbar", HazelcastConstants.SET_PREFIX);
+
+                from("direct:addAll").setHeader(HazelcastConstants.OPERATION, constant(HazelcastOperation.ADD_ALL))
+                        .toF("hazelcast-%sbar", HazelcastConstants.SET_PREFIX);
+
+                from("direct:removeAll").setHeader(HazelcastConstants.OPERATION, constant(HazelcastOperation.REMOVE_ALL))
+                        .toF("hazelcast-%sbar", HazelcastConstants.SET_PREFIX);
+
+                from("direct:retainAll").setHeader(HazelcastConstants.OPERATION, constant(HazelcastOperation.RETAIN_ALL))
+                        .toF("hazelcast-%sbar", HazelcastConstants.SET_PREFIX);
+
+                from("direct:addWithOperationNumber").toF("hazelcast-%sbar?operation=%s", HazelcastConstants.SET_PREFIX,
+                        HazelcastOperation.ADD);
+                from("direct:addWithOperationName").toF("hazelcast-%sbar?operation=ADD", HazelcastConstants.SET_PREFIX);
+
+                from("direct:getAll").setHeader(HazelcastConstants.OPERATION, constant(HazelcastOperation.GET_ALL))
+                        .toF("hazelcast-%sbar", HazelcastConstants.SET_PREFIX).to("seda:out");
             }
         };
     }
 
 }
-

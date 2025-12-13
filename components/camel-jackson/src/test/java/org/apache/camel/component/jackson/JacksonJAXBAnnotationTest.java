@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,10 +16,13 @@
  */
 package org.apache.camel.component.jackson;
 
+import com.fasterxml.jackson.module.jakarta.xmlbind.JakartaXmlBindAnnotationModule;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class JacksonJAXBAnnotationTest extends CamelTestSupport {
 
@@ -43,11 +46,11 @@ public class JacksonJAXBAnnotationTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
 
             @Override
-            public void configure() throws Exception {
+            public void configure() {
 
                 JacksonDataFormat format = new JacksonDataFormat();
 
@@ -55,6 +58,7 @@ public class JacksonJAXBAnnotationTest extends CamelTestSupport {
                 from("direct:back").unmarshal(format).to("mock:reverse");
 
                 JacksonDataFormat formatPojo = new JacksonDataFormat(TestJAXBPojo.class);
+                formatPojo.setModuleClassNames(JakartaXmlBindAnnotationModule.class.getName());
 
                 from("direct:inPojo").marshal(formatPojo);
                 from("direct:backPojo").unmarshal(formatPojo).to("mock:reversePojo");

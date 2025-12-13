@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,32 +16,32 @@
  */
 package org.apache.camel.component.jasypt;
 
-import static java.lang.String.format;
-
 import org.jasypt.encryption.pbe.StandardPBEStringEncryptor;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
+import static java.lang.String.format;
 import static org.apache.camel.component.jasypt.JasyptPropertiesParser.JASYPT_PREFIX_TOKEN;
 import static org.apache.camel.component.jasypt.JasyptPropertiesParser.JASYPT_SUFFIX_TOKEN;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.Is.is;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class JasyptPropertiesParserTest {
 
     private static final String KEY = "somekey";
 
-    private static final String KNOWN_PASSWORD = "secret";
-    private static final String KNOWN_ENCRYPTED = "ENC(bsW9uV37gQ0QHFu7KO03Ww==)";
-    private static final String KNOW_DECRYPTED = "tiger";
+    protected String knownPassword = "secret";
+    protected String knownEncrypted = "ENC(bsW9uV37gQ0QHFu7KO03Ww==)";
+    protected String knowDecrypted = "tiger";
 
-    private JasyptPropertiesParser jasyptPropertiesParser = new JasyptPropertiesParser();
-    private StandardPBEStringEncryptor encryptor = new StandardPBEStringEncryptor();
+    protected JasyptPropertiesParser jasyptPropertiesParser = new JasyptPropertiesParser();
+    protected StandardPBEStringEncryptor encryptor = new StandardPBEStringEncryptor();
 
-    @Before
+    @BeforeEach
     public void before() {
-        encryptor.setPassword(KNOWN_PASSWORD);
+        encryptor.setPassword(knownPassword);
+
         jasyptPropertiesParser.setEncryptor(encryptor);
     }
 
@@ -94,21 +94,21 @@ public class JasyptPropertiesParserTest {
     }
 
     @Test
-    public void testUsesProvidedPasswordIfEncryptorIsNotSet() throws Exception {
+    public void testUsesProvidedPasswordIfEncryptorIsNotSet() {
         jasyptPropertiesParser.setEncryptor(null);
-        jasyptPropertiesParser.setPassword(KNOWN_PASSWORD);
+        jasyptPropertiesParser.setPassword(knownPassword);
 
-        assertEquals(KNOW_DECRYPTED, jasyptPropertiesParser.parseProperty(KEY, KNOWN_ENCRYPTED, null));
+        assertEquals(knowDecrypted, jasyptPropertiesParser.parseProperty(KEY, knownEncrypted, null));
     }
 
     @Test
-    public void testUsesProvidedPasswordFromSystemPropertyIfEncryptorIsNotSet() throws Exception {
-        System.setProperty("myfoo", KNOWN_PASSWORD);
+    public void testUsesProvidedPasswordFromSystemPropertyIfEncryptorIsNotSet() {
+        System.setProperty("myfoo", knownPassword);
 
         jasyptPropertiesParser.setEncryptor(null);
         jasyptPropertiesParser.setPassword("sys:myfoo");
 
-        assertEquals(KNOW_DECRYPTED, jasyptPropertiesParser.parseProperty(KEY, KNOWN_ENCRYPTED, null));
+        assertEquals(knowDecrypted, jasyptPropertiesParser.parseProperty(KEY, knownEncrypted, null));
 
         System.clearProperty("myfoo");
     }

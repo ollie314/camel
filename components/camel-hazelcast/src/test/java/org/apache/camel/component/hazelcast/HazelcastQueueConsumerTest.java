@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,21 +17,25 @@
 package org.apache.camel.component.hazelcast;
 
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
+import com.hazelcast.collection.IQueue;
+import com.hazelcast.collection.ItemEvent;
+import com.hazelcast.collection.ItemListener;
 import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.core.IQueue;
-import com.hazelcast.core.ItemEvent;
 import com.hazelcast.core.ItemEventType;
-import com.hazelcast.core.ItemListener;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
-import org.mockito.ArgumentCaptor;
+import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -40,14 +44,21 @@ public class HazelcastQueueConsumerTest extends HazelcastCamelTestSupport {
     @Mock
     private IQueue<String> queue;
 
-    private ArgumentCaptor<ItemListener> argument;
+    private volatile Consumer<ItemListener<String>> consumer;
 
     @Override
     @SuppressWarnings("unchecked")
     protected void trainHazelcastInstance(HazelcastInstance hazelcastInstance) {
-        when(hazelcastInstance.<String>getQueue("foo")).thenReturn(queue);
-        argument = ArgumentCaptor.forClass(ItemListener.class);
-        when(queue.addItemListener(argument.capture(), eq(true))).thenReturn("foo");
+        when(hazelcastInstance.<String> getQueue("foo")).thenReturn(queue);
+        when(queue.addItemListener(any(ItemListener.class), eq(true))).thenAnswer(
+                invocationOnMock -> {
+                    // Wait until the consumer is set
+                    while (consumer == null) {
+                        Thread.onSpinWait();
+                    }
+                    consumer.accept(invocationOnMock.getArgument(0, ItemListener.class));
+                    return UUID.randomUUID();
+                });
     }
 
     @Override
@@ -58,30 +69,23 @@ public class HazelcastQueueConsumerTest extends HazelcastCamelTestSupport {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     public void add() throws InterruptedException {
+        this.consumer = listener -> listener.itemAdded(new ItemEvent<>("foo", ItemEventType.ADDED, "foo", null));
         MockEndpoint out = getMockEndpoint("mock:added");
         out.expectedMessageCount(1);
 
-        final ItemEvent<String> event = new ItemEvent<String>("foo", ItemEventType.ADDED, "foo", null);
-        argument.getValue().itemAdded(event);
-
-
-        assertMockEndpointsSatisfied(2000, TimeUnit.MILLISECONDS);
-
+        MockEndpoint.assertIsSatisfied(context, 2, TimeUnit.SECONDS);
         this.checkHeaders(out.getExchanges().get(0).getIn().getHeaders(), HazelcastConstants.ADDED);
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     public void remove() throws InterruptedException {
+        this.consumer = listener -> listener.itemRemoved(new ItemEvent<>("foo", ItemEventType.REMOVED, "foo", null));
+
         MockEndpoint out = getMockEndpoint("mock:removed");
         out.expectedMessageCount(1);
 
-        final ItemEvent<String> event = new ItemEvent<String>("foo", ItemEventType.REMOVED, "foo", null);
-        argument.getValue().itemRemoved(event);
-
-        assertMockEndpointsSatisfied(2000, TimeUnit.MILLISECONDS);
+        MockEndpoint.assertIsSatisfied(context, 2, TimeUnit.SECONDS);
         this.checkHeaders(out.getExchanges().get(0).getIn().getHeaders(), HazelcastConstants.REMOVED);
     }
 
@@ -90,8 +94,11 @@ public class HazelcastQueueConsumerTest extends HazelcastCamelTestSupport {
         return new RouteBuilder() {
             @Override
             public void configure() throws Exception {
-                from(String.format("hazelcast:%sfoo", HazelcastConstants.QUEUE_PREFIX)).log("object...").choice().when(header(HazelcastConstants.LISTENER_ACTION).isEqualTo(HazelcastConstants.ADDED))
-                        .log("...added").to("mock:added").when(header(HazelcastConstants.LISTENER_ACTION).isEqualTo(HazelcastConstants.REMOVED)).log("...removed").to("mock:removed").otherwise()
+                from(String.format("hazelcast-%sfoo", HazelcastConstants.QUEUE_PREFIX)).log("object...").choice()
+                        .when(header(HazelcastConstants.LISTENER_ACTION).isEqualTo(HazelcastConstants.ADDED))
+                        .log("...added").to("mock:added")
+                        .when(header(HazelcastConstants.LISTENER_ACTION).isEqualTo(HazelcastConstants.REMOVED))
+                        .log("...removed").to("mock:removed").otherwise()
                         .log("fail!");
             }
         };
@@ -100,7 +107,7 @@ public class HazelcastQueueConsumerTest extends HazelcastCamelTestSupport {
     private void checkHeaders(Map<String, Object> headers, String action) {
         assertEquals(action, headers.get(HazelcastConstants.LISTENER_ACTION));
         assertEquals(HazelcastConstants.CACHE_LISTENER, headers.get(HazelcastConstants.LISTENER_TYPE));
-        assertEquals(null, headers.get(HazelcastConstants.OBJECT_ID));
+        assertNull(headers.get(HazelcastConstants.OBJECT_ID));
         assertNotNull(headers.get(HazelcastConstants.LISTENER_TIME));
     }
 

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,31 +21,32 @@ import java.util.Map;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class SqlProducerWhereIssueTest extends CamelTestSupport {
 
     EmbeddedDatabase db;
 
-    @Before
-    public void setUp() throws Exception {
+    @Override
+    public void doPreSetup() throws Exception {
         db = new EmbeddedDatabaseBuilder()
-                .setType(EmbeddedDatabaseType.DERBY).addScript("sql/createAndPopulateDatabase.sql").build();
-
-        super.setUp();
+                .setName(getClass().getSimpleName())
+                .setType(EmbeddedDatabaseType.H2)
+                .addScript("sql/createAndPopulateDatabase.sql").build();
     }
 
-    @After
-    public void tearDown() throws Exception {
-        super.tearDown();
+    @Override
+    public void doPostTearDown() throws Exception {
 
-        db.shutdown();
+        if (db != null) {
+            db.shutdown();
+        }
     }
 
     @Test
@@ -55,29 +56,29 @@ public class SqlProducerWhereIssueTest extends CamelTestSupport {
 
         template.requestBodyAndHeader("direct:query", "Hi there!", "lowId", "1");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         List list = mock.getReceivedExchanges().get(0).getIn().getBody(List.class);
         Map row = (Map) list.get(0);
         assertEquals("ASF", row.get("LICENSE"));
-        assertEquals(2, row.get("ROWCOUNT"));
+        assertEquals(2L, row.get("ROWCOUNT"));
         row = (Map) list.get(1);
         assertEquals("XXX", row.get("LICENSE"));
-        assertEquals(1, row.get("ROWCOUNT"));
+        assertEquals(1L, row.get("ROWCOUNT"));
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // required for the sql component
                 getContext().getComponent("sql", SqlComponent.class).setDataSource(db);
 
                 from("direct:query")
-                    .to("sql:select count(*) rowcount, license from projects where id=:#lowId or id=2 or id=3 group by license")
-                    .to("log:query")
-                    .to("mock:query");
+                        .to("sql:select count(*) rowcount, license from projects where id=:#lowId or id=2 or id=3 group by license")
+                        .to("log:query")
+                        .to("mock:query");
             }
         };
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,47 +16,52 @@
  */
 package org.apache.camel.component.jasypt;
 
-import java.util.Properties;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static java.lang.String.format;
-
 import org.apache.camel.component.properties.DefaultPropertiesParser;
+import org.apache.camel.component.properties.PropertiesLookup;
 import org.apache.camel.util.ObjectHelper;
+import org.apache.camel.util.StringHelper;
 import org.jasypt.encryption.StringEncryptor;
 import org.jasypt.encryption.pbe.StandardPBEStringEncryptor;
+import org.jasypt.iv.RandomIvGenerator;
+import org.jasypt.salt.RandomSaltGenerator;
 
 /**
  * A {@link org.apache.camel.component.properties.PropertiesParser} which is using
  * &nbsp;<a href="http://www.jasypt.org/">Jasypt</a> to decrypt encrypted values.
  * <p/>
- * The parts of the values which should be decrpted must be enclosed in the prefix and suffix token.
+ * The parts of the values which should be decrypted must be enclosed in the prefix and suffix token.
  */
 public class JasyptPropertiesParser extends DefaultPropertiesParser {
 
     public static final String JASYPT_PREFIX_TOKEN = "ENC(";
     public static final String JASYPT_SUFFIX_TOKEN = ")";
 
+    private static final String JASYPT_REGEX
+            = JASYPT_PREFIX_TOKEN.replace("(", "\\(") + "(.+?)" + JASYPT_SUFFIX_TOKEN.replace(")", "\\)");
+    private static final Pattern PATTERN = Pattern.compile(JASYPT_REGEX);
+
+    private final Lock lock = new ReentrantLock();
     private StringEncryptor encryptor;
     private String password;
     private String algorithm;
-
-    private Pattern pattern;
-
-    public JasyptPropertiesParser() {
-        String regex = JASYPT_PREFIX_TOKEN.replace("(", "\\(") + "(.+?)" + JASYPT_SUFFIX_TOKEN.replace(")", "\\)");
-        pattern = Pattern.compile(regex);
-    }
+    private String randomSaltGeneratorAlgorithm;
+    private String randomIvGeneratorAlgorithm;
 
     @Override
-    public String parseProperty(String key, String value, Properties properties) {
-        log.trace(format("Parsing property '%s=%s'", key, value));
+    public String parseProperty(String key, String value, PropertiesLookup properties) {
+        log.trace("Parsing property '{}={}'", key, value);
         if (value != null) {
             initEncryptor();
-            Matcher matcher = pattern.matcher(value);
+            Matcher matcher = PATTERN.matcher(value);
             while (matcher.find()) {
-                log.trace(format("Decrypting part '%s'", matcher.group(0)));
+                if (log.isTraceEnabled()) {
+                    log.trace("Decrypting part '{}'", matcher.group(0));
+                }
                 String decrypted = encryptor.decrypt(matcher.group(1));
                 value = value.replace(matcher.group(0), decrypted);
             }
@@ -64,18 +69,32 @@ public class JasyptPropertiesParser extends DefaultPropertiesParser {
         return value;
     }
 
-    private synchronized void initEncryptor() {
-        if (encryptor == null) {
-            ObjectHelper.notEmpty("password", password);
-            StandardPBEStringEncryptor pbeStringEncryptor = new StandardPBEStringEncryptor();
-            pbeStringEncryptor.setPassword(password);
-            if (algorithm != null) {
-                pbeStringEncryptor.setAlgorithm(algorithm);
-                log.debug(format("Initialized encryptor using %s algorithm and provided password", algorithm));
-            } else {
-                log.debug(format("Initialized encryptor using default algorithm and provided password"));
+    private void initEncryptor() {
+        lock.lock();
+        try {
+            if (encryptor == null) {
+                StringHelper.notEmpty("password", password);
+                StandardPBEStringEncryptor pbeStringEncryptor = new StandardPBEStringEncryptor();
+
+                pbeStringEncryptor.setPassword(password);
+                if (algorithm != null) {
+                    pbeStringEncryptor.setAlgorithm(algorithm);
+                    log.debug("Initialized encryptor using {} algorithm and provided password", algorithm);
+                } else {
+                    log.debug("Initialized encryptor using default algorithm and provided password");
+                }
+
+                if (randomSaltGeneratorAlgorithm != null) {
+                    pbeStringEncryptor.setSaltGenerator(new RandomSaltGenerator(randomSaltGeneratorAlgorithm));
+                }
+                if (randomIvGeneratorAlgorithm != null) {
+                    pbeStringEncryptor.setIvGenerator(new RandomIvGenerator(randomIvGeneratorAlgorithm));
+                }
+
+                encryptor = pbeStringEncryptor;
             }
-            encryptor = pbeStringEncryptor;
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -87,13 +106,21 @@ public class JasyptPropertiesParser extends DefaultPropertiesParser {
         this.algorithm = algorithm;
     }
 
+    public void setRandomSaltGeneratorAlgorithm(String randomSaltGeneratorAlgorithm) {
+        this.randomSaltGeneratorAlgorithm = randomSaltGeneratorAlgorithm;
+    }
+
+    public void setRandomIvGeneratorAlgorithm(String randomIvGeneratorAlgorithm) {
+        this.randomIvGeneratorAlgorithm = randomIvGeneratorAlgorithm;
+    }
+
     public void setPassword(String password) {
         // lookup password as either environment or JVM system property
         if (password.startsWith("sysenv:")) {
-            password = System.getenv(ObjectHelper.after(password, "sysenv:"));
+            password = System.getenv(StringHelper.after(password, "sysenv:"));
         }
-        if (password.startsWith("sys:")) {
-            password = System.getProperty(ObjectHelper.after(password, "sys:"));
+        if (ObjectHelper.isNotEmpty(password) && password.startsWith("sys:")) {
+            password = System.getProperty(StringHelper.after(password, "sys:"));
         }
         this.password = password;
     }

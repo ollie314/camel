@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -75,7 +75,8 @@ public class BeanIOIterator implements Iterator<Object>, Closeable {
     /**
      * Sets a custom object as the next, such as from a custom error handler
      */
-    public void setNext(Object next) {
+    public void setNext(Object next) { // NOSONAR
+        // NOTE: this is forcefully setting forceNext object on purpose.
         this.forceNext = next;
     }
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,12 +16,14 @@
  */
 package org.apache.camel.component.stream;
 
-import java.io.IOException;
 import java.io.OutputStream;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.apache.camel.component.stream.StreamGroupLinesTest.LS;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Unit test when using custom output stream.
@@ -36,29 +38,30 @@ public class StreamHeaderTest extends CamelTestSupport {
     public void testStringContent() {
         template.sendBody("direct:in", "Hello");
         // StreamProducer appends \n in text mode
-        assertEquals("Hello\n", sb.toString());
+        assertEquals("Hello" + LS, sb.toString());
     }
 
     @Test
     public void testBinaryContent() {
         template.sendBody("direct:in", "Hello".getBytes());
         // StreamProducer is in binary mode so no \n is appended
-        assertEquals("Hello", sb.toString());
+        assertEquals("Hello" + LS, sb.toString());
     }
 
+    @Override
     protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
-                from("direct:in").setHeader("stream", constant(mystream)).
-                    to("stream:header");
+                from("direct:in").setHeader("stream", constant(mystream)).to("stream:header");
             }
         };
     }
 
     private class MyOutputStream extends OutputStream {
 
-        public void write(int b) throws IOException {
-            sb.append((char)b);
+        @Override
+        public void write(int b) {
+            sb.append((char) b);
         }
     }
     // END SNIPPET: e1

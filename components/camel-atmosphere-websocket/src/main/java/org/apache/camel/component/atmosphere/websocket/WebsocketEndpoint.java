@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,6 +19,7 @@ package org.apache.camel.component.atmosphere.websocket;
 import java.net.URI;
 import java.net.URISyntaxException;
 
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
@@ -27,36 +28,49 @@ import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriPath;
+import org.apache.camel.util.StringHelper;
 
 /**
- * To exchange data with external Websocket clients using Atmosphere.
+ * Expose WebSocket endpoints using the Atmosphere framework.
  */
-@UriEndpoint(scheme = "atmosphere-websocket", extendsScheme = "servlet", title = "Atmosphere Websocket",
-        syntax = "atmosphere-websocket:servicePath", consumerClass = WebsocketConsumer.class, label = "websocket",
-        excludeProperties = "httpUri,contextPath")
+@UriEndpoint(firstVersion = "2.14.0", scheme = "atmosphere-websocket", extendsScheme = "servlet",
+             title = "Atmosphere Websocket", syntax = "atmosphere-websocket:servicePath", category = {
+                     Category.HTTP, Category.NETWORKING },
+             headersClass = WebsocketConstants.class)
+@Metadata(excludeProperties = "httpUri,contextPath,cookieHandler,connectionClose,authMethod,authUsername,authPassword,authDomain,authHost,authBearerToken,"
+                              + "copyHeaders,httpMethod,ignoreResponseBody,preserveHostHeader,throwExceptionOnFailure,okStatusCodeRange,"
+                              + "proxyAuthScheme,proxyAuthMethod,proxyAuthUsername,proxyAuthPassword,proxyAuthHost,proxyAuthPort,proxyAuthDomain,"
+                              + "proxyAuthNtHost,proxyAuthScheme,proxyHost,proxyPort,nonProxyHosts,"
+                              + "oauth2ClientId,oauth2ClientSecret,oauth2TokenEndpoint,oauth2Scope,oauth2CacheTokens,oauth2CachedTokensDefaultExpirySeconds,"
+                              + "oauth2CachedTokensExpirationMarginSeconds,oauth2ResourceIndicator,oauth2BodyAuthentication",
+          annotations = {
+                  "protocol=http",
+          })
 public class WebsocketEndpoint extends ServletEndpoint {
 
     private WebSocketStore store;
     private WebsocketConsumer websocketConsumer;
 
-    @UriPath(description = "Name of websocket endpoint") @Metadata(required = "true")
+    @UriPath(description = "Name of websocket endpoint")
+    @Metadata(required = true)
     private String servicePath;
     @UriParam
     private boolean sendToAll;
     @UriParam
     private boolean useStreaming;
-    
+
     public WebsocketEndpoint(String endPointURI, WebsocketComponent component, URI httpUri) throws URISyntaxException {
         super(endPointURI, component, httpUri);
 
-        //TODO find a better way of assigning the store
-        int idx = endPointURI.indexOf('?');
-        String name = idx > -1 ? endPointURI.substring(0, idx) : endPointURI;
-
-        this.servicePath = name;
+        this.servicePath = StringHelper.before(endPointURI, "?", endPointURI);
         this.store = component.getWebSocketStore(servicePath);
     }
-    
+
+    @Override
+    public String getServiceProtocol() {
+        return "ws";
+    }
+
     @Override
     public Producer createProducer() throws Exception {
         return new WebsocketProducer(this);
@@ -66,11 +80,6 @@ public class WebsocketEndpoint extends ServletEndpoint {
     public Consumer createConsumer(Processor processor) throws Exception {
         websocketConsumer = new WebsocketConsumer(this, processor);
         return websocketConsumer;
-    }
-
-    @Override
-    public boolean isSingleton() {
-        return true;
     }
 
     public boolean isSendToAll() {
@@ -83,7 +92,7 @@ public class WebsocketEndpoint extends ServletEndpoint {
     public void setSendToAll(boolean sendToAll) {
         this.sendToAll = sendToAll;
     }
-    
+
     public boolean isUseStreaming() {
         return useStreaming;
     }

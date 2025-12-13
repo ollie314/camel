@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,19 +16,26 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
-
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.DefaultCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+public class JmsInOnlyWithReplyToAsHeaderTest extends AbstractJMSTest {
 
-/**
- * @version 
- */
-public class JmsInOnlyWithReplyToAsHeaderTest extends CamelTestSupport {
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new DefaultCamelContextExtension();
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
 
     @Test
     public void testSendInOnlyWithReplyTo() throws Exception {
@@ -36,37 +43,47 @@ public class JmsInOnlyWithReplyToAsHeaderTest extends CamelTestSupport {
         getMockEndpoint("mock:bar").expectedBodiesReceived("Bye World");
         getMockEndpoint("mock:done").expectedBodiesReceived("World");
 
-        template.sendBodyAndHeader("direct:start", "World", "JMSReplyTo", "queue:bar");
+        template.sendBodyAndHeader("direct:start", "World", "JMSReplyTo", "queue:barJmsInOnlyWithReplyToAsHeaderTest");
 
-        assertMockEndpointsSatisfied();
-    }
-
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent("activemq", jmsComponentAutoAcknowledge(connectionFactory));
-        return camelContext;
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected String getComponentName() {
+        return "activemq";
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    // must enable preserveMessageQos to force Camel to use the JMSReplyTo header
-                    .to("activemq:queue:foo?preserveMessageQos=true")
-                    .to("mock:done");
+                        // must enable preserveMessageQos to force Camel to use the JMSReplyTo header
+                        .to("activemq:queue:fooJmsInOnlyWithReplyToAsHeaderTest?preserveMessageQos=true")
+                        .to("mock:done");
 
-                from("activemq:queue:foo")
-                    .to("log:foo?showAll=true", "mock:foo")
-                    .transform(body().prepend("Bye "));
+                from("activemq:queue:fooJmsInOnlyWithReplyToAsHeaderTest")
+                        .to("log:foo?showAll=true", "mock:foo")
+                        .transform(body().prepend("Bye "));
 
-                // we should disable reply to to avoid sending the message back to our self
+                // we should disable reply to avoid sending the message back to our self
                 // after we have consumed it
-                from("activemq:queue:bar?disableReplyTo=true")
-                    .to("log:bar?showAll=true", "mock:bar");
+                from("activemq:queue:barJmsInOnlyWithReplyToAsHeaderTest?disableReplyTo=true")
+                        .to("log:bar?showAll=true", "mock:bar");
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
     }
 }

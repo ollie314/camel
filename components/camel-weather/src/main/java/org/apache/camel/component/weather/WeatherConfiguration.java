@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,19 +16,17 @@
  */
 package org.apache.camel.component.weather;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Scanner;
 
 import org.apache.camel.component.weather.geolocation.FreeGeoIpGeoLocationProvider;
+import org.apache.camel.component.weather.geolocation.GeoLocationProvider;
 import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriParams;
 import org.apache.camel.spi.UriPath;
-import org.apache.camel.util.ObjectHelper;
-import org.apache.commons.httpclient.HttpConnectionManager;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
 
 import static org.apache.camel.component.weather.WeatherLanguage.en;
 import static org.apache.camel.component.weather.WeatherMode.JSON;
@@ -37,12 +35,11 @@ import static org.apache.camel.util.ObjectHelper.notNull;
 @UriParams
 public class WeatherConfiguration {
 
-    private final WeatherComponent component;
-    private final WeatherQuery weatherQuery;
-
-    @UriPath(description = "The name value is not used.") @Metadata(required = "true")
+    @UriPath(description = "The name value is not used.")
+    @Metadata(required = true)
     private String name;
-    @UriParam @Metadata(required = "true")
+    @UriParam
+    @Metadata(required = true)
     private String appid;
     @UriParam
     private WeatherApi weatherApi;
@@ -71,33 +68,22 @@ public class WeatherConfiguration {
     @UriParam(label = "filter")
     private String zip;
     @UriParam(label = "filter", javaType = "java.lang.String")
-    private List<String> ids;
+    private String ids;
     @UriParam(label = "filter")
     private Integer cnt;
-
-    @UriParam(label = "proxy")
-    private String proxyHost;
-    @UriParam(label = "proxy")
-    private Integer proxyPort;
-    @UriParam(label = "proxy")
-    private String proxyAuthMethod;
-    @UriParam(label = "proxy")
-    private String proxyAuthUsername;
-    @UriParam(label = "proxy")
-    private String proxyAuthPassword;
-    @UriParam(label = "proxy")
-    private String proxyAuthDomain;
-    @UriParam(label = "proxy")
-    private String proxyAuthHost;
+    @UriParam(label = "security")
+    @Metadata(required = true)
+    private String geolocationAccessKey;
+    @UriParam(label = "security")
+    @Metadata(required = true)
+    private String geolocationRequestHostIP;
     @UriParam(label = "advanced")
-    private HttpConnectionManager httpConnectionManager;
+    private CloseableHttpClient httpClient = HttpClients.createDefault();
+    @UriParam(label = "advanced")
+    private GeoLocationProvider geoLocationProvider = new FreeGeoIpGeoLocationProvider(this);
 
+    public WeatherConfiguration() {
 
-    public WeatherConfiguration(WeatherComponent component) {
-        this.component = notNull(component, "component");
-        weatherQuery = new WeatherQuery(this);
-        FreeGeoIpGeoLocationProvider geoLocationProvider = new FreeGeoIpGeoLocationProvider(component);
-        weatherQuery.setGeoLocationProvider(geoLocationProvider);
     }
 
     public String getPeriod() {
@@ -105,19 +91,19 @@ public class WeatherConfiguration {
     }
 
     /**
-     * If null, the current weather will be returned, else use values of 5, 7, 14 days.
-     * Only the numeric value for the forecast period is actually parsed, so spelling, capitalisation of the time period is up to you (its ignored)
+     * If null, the current weather will be returned, else use values of 5, 7, 14 days. Only the numeric value for the
+     * forecast period is actually parsed, so spelling, capitalisation of the time period is up to you (its ignored)
      */
     public void setPeriod(String period) {
         notNull(period, "period");
         int result = 0;
-        try {
-            result = new Scanner(period).useDelimiter("\\D+").nextInt();
+        try (Scanner scanner = new Scanner(period)) {
+            result = scanner.useDelimiter("\\D+").nextInt();
         } catch (Exception e) {
             // ignore and fallback the period to be an empty string
         }
         if (result != 0) {
-            this.period = "" + result;
+            this.period = Integer.toString(result);
         }
     }
 
@@ -156,11 +142,11 @@ public class WeatherConfiguration {
     }
 
     /**
-     * If null Camel will try and determine your current location using the geolocation of your ip address,
-     * else specify the city,country. For well known city names, Open Weather Map will determine the best fit,
-     * but multiple results may be returned. Hence specifying and country as well will return more accurate data.
-     * If you specify "current" as the location then the component will try to get the current latitude and longitude
-     * and use that to get the weather details. You can use lat and lon options instead of location.
+     * If null Camel will try and determine your current location using the geolocation of your ip address, else specify
+     * the city,country. For well known city names, Open Weather Map will determine the best fit, but multiple results
+     * may be returned. Hence specifying and country as well will return more accurate data. If you specify "current" as
+     * the location then the component will try to get the current latitude and longitude and use that to get the
+     * weather details. You can use lat and lon options instead of location.
      */
     public void setLocation(String location) {
         this.location = location;
@@ -171,7 +157,8 @@ public class WeatherConfiguration {
     }
 
     /**
-     * To store the weather result in this header instead of the message body. This is useable if you want to keep current message body as-is.
+     * To store the weather result in this header instead of the message body. This is useable if you want to keep
+     * current message body as-is.
      */
     public void setHeaderName(String headerName) {
         this.headerName = headerName;
@@ -182,8 +169,8 @@ public class WeatherConfiguration {
     }
 
     /**
-     * Latitude of location. You can use lat and lon options instead of location.
-     * For boxed queries this is the bottom latitude.
+     * Latitude of location. You can use lat and lon options instead of location. For boxed queries this is the bottom
+     * latitude.
      */
     public void setLat(String lat) {
         this.lat = lat;
@@ -194,13 +181,13 @@ public class WeatherConfiguration {
     }
 
     /**
-     * Longitude of location. You can use lat and lon options instead of location.
-     * For boxed queries this is the left longtitude.
+     * Longitude of location. You can use lat and lon options instead of location. For boxed queries this is the left
+     * longtitude.
      */
     public void setLon(String lon) {
         this.lon = lon;
     }
-    
+
     /**
      * APPID ID used to authenticate the user connected to the API Server
      */
@@ -210,14 +197,6 @@ public class WeatherConfiguration {
 
     public String getAppid() {
         return appid;
-    }
-
-    String getQuery() throws Exception {
-        return weatherQuery.getQuery();
-    }
-
-    String getQuery(String location) throws Exception {
-        return weatherQuery.getQuery(location);
     }
 
     public WeatherLanguage getLanguage() {
@@ -236,8 +215,7 @@ public class WeatherConfiguration {
     }
 
     /**
-     * For boxed queries this is the right longtitude. Needs to be used
-     * in combination with topLat and zoom.
+     * For boxed queries this is the right longtitude. Needs to be used in combination with topLat and zoom.
      */
     public void setRightLon(String rightLon) {
         this.rightLon = rightLon;
@@ -248,8 +226,7 @@ public class WeatherConfiguration {
     }
 
     /**
-     * For boxed queries this is the top latitude. Needs to be used
-     * in combination with rightLon and zoom.
+     * For boxed queries this is the top latitude. Needs to be used in combination with rightLon and zoom.
      */
     public void setTopLat(String topLat) {
         this.topLat = topLat;
@@ -260,99 +237,10 @@ public class WeatherConfiguration {
     }
 
     /**
-     * For boxed queries this is the zoom. Needs to be used
-     * in combination with rightLon and topLat.
+     * For boxed queries this is the zoom. Needs to be used in combination with rightLon and topLat.
      */
     public void setZoom(Integer zoom) {
         this.zoom = zoom;
-    }
-
-    public HttpConnectionManager getHttpConnectionManager() {
-        return httpConnectionManager;
-    }
-
-    /**
-     * To use a custom HttpConnectionManager to manage connections
-     */
-    public void setHttpConnectionManager(HttpConnectionManager httpConnectionManager) {
-        this.httpConnectionManager = httpConnectionManager;
-    }
-
-    public String getProxyHost() {
-        return proxyHost;
-    }
-
-    /**
-     * The proxy host name
-     */
-    public void setProxyHost(String proxyHost) {
-        this.proxyHost = proxyHost;
-    }
-
-    public Integer getProxyPort() {
-        return proxyPort;
-    }
-
-    /**
-     * The proxy port number
-     */
-    public void setProxyPort(Integer proxyPort) {
-        this.proxyPort = proxyPort;
-    }
-
-    public String getProxyAuthMethod() {
-        return proxyAuthMethod;
-    }
-
-    /**
-     * Authentication method for proxy, either as Basic, Digest or NTLM.
-     */
-    public void setProxyAuthMethod(String proxyAuthMethod) {
-        this.proxyAuthMethod = proxyAuthMethod;
-    }
-
-    public String getProxyAuthUsername() {
-        return proxyAuthUsername;
-    }
-
-    /**
-     * Username for proxy authentication
-     */
-    public void setProxyAuthUsername(String proxyAuthUsername) {
-        this.proxyAuthUsername = proxyAuthUsername;
-    }
-
-    public String getProxyAuthPassword() {
-        return proxyAuthPassword;
-    }
-
-    /**
-     * Password for proxy authentication
-     */
-    public void setProxyAuthPassword(String proxyAuthPassword) {
-        this.proxyAuthPassword = proxyAuthPassword;
-    }
-
-    public String getProxyAuthDomain() {
-        return proxyAuthDomain;
-    }
-
-    /**
-     * Domain for proxy NTLM authentication
-     */
-    public void setProxyAuthDomain(String proxyAuthDomain) {
-        this.proxyAuthDomain = proxyAuthDomain;
-    }
-
-    public String getProxyAuthHost() {
-        return proxyAuthHost;
-    }
-
-    /**
-     * Optional host for proxy NTLM authentication
-     */
-    public void setProxyAuthHost(String proxyAuthHost) {
-        this.proxyAuthHost = proxyAuthHost;
     }
 
     public String getZip() {
@@ -366,25 +254,22 @@ public class WeatherConfiguration {
         this.zip = zip;
     }
 
-    public List<String> getIds() {
-        return (List<String>) ids;
+    public String getIds() {
+        return ids;
+    }
+
+    public List<String> getIdsAsList() {
+        if (ids != null) {
+            return List.of(ids.split(","));
+        } else {
+            return null;
+        }
     }
 
     /**
      * List of id's of city/stations. You can separate multiple ids by comma.
      */
-    public void setIds(String id) {
-        if (ids == null) {
-            ids = new ArrayList<>();
-        }
-        Iterator<?> it = ObjectHelper.createIterator(id);
-        while (it.hasNext()) {
-            String myId = (String) it.next();
-            ids.add(myId);
-        }
-    }
-
-    public void setIds(List<String> ids) {
+    public void setIds(String ids) {
         this.ids = ids;
     }
 
@@ -404,9 +289,55 @@ public class WeatherConfiguration {
     }
 
     /**
-     * The API to be use (current, forecast/3 hour, forecast daily, station)
+     * The API to use (current, forecast/3 hour, forecast daily, station)
      */
     public void setWeatherApi(WeatherApi weatherApi) {
         this.weatherApi = weatherApi;
+    }
+
+    public String getGeolocationAccessKey() {
+        return geolocationAccessKey;
+    }
+
+    /**
+     * The geolocation service now needs an accessKey to be used
+     */
+    public void setGeolocationAccessKey(String geolocationAccessKey) {
+        this.geolocationAccessKey = geolocationAccessKey;
+    }
+
+    public String getGeolocationRequestHostIP() {
+        return geolocationRequestHostIP;
+    }
+
+    /**
+     * The geolocation service now needs to specify the IP associated to the accessKey you're using
+     */
+    public void setGeolocationRequestHostIP(String geolocationRequestHostIP) {
+        this.geolocationRequestHostIP = geolocationRequestHostIP;
+    }
+
+    public CloseableHttpClient getHttpClient() {
+        return httpClient;
+    }
+
+    /**
+     * To use an existing configured http client (for example with http proxy)
+     */
+    public void setHttpClient(CloseableHttpClient httpClient) {
+        this.httpClient = httpClient;
+    }
+
+    public GeoLocationProvider getGeoLocationProvider() {
+        return geoLocationProvider;
+    }
+
+    /**
+     * A custum geolocation provider to determine the longitude and latitude to use when no location information is set.
+     *
+     * The default implementaion uses the ipstack API and requires geolocationAccessKey and geolocationRequestHostIP
+     */
+    public void setGeoLocationProvider(GeoLocationProvider geoLocationProvider) {
+        this.geoLocationProvider = geoLocationProvider;
     }
 }

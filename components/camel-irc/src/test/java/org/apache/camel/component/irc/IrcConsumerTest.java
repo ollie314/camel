@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,18 +19,26 @@ package org.apache.camel.component.irc;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.camel.CamelContext;
+import org.apache.camel.ExtendedCamelContext;
 import org.apache.camel.Processor;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.spi.ExchangeFactory;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.schwering.irc.lib.IRCConnection;
 import org.schwering.irc.lib.IRCEventAdapter;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class IrcConsumerTest {
 
+    private CamelContext context;
+    private ExtendedCamelContext ecc;
+
+    private ExchangeFactory exchangeFactory;
     private IRCConnection connection;
     private Processor processor;
     private IrcEndpoint endpoint;
@@ -38,20 +46,28 @@ public class IrcConsumerTest {
     private IrcConsumer consumer;
     private IRCEventAdapter listener;
 
-    @Before
+    @BeforeEach
     public void doSetup() {
         connection = mock(IRCConnection.class);
         endpoint = mock(IrcEndpoint.class);
         processor = mock(Processor.class);
         configuration = mock(IrcConfiguration.class);
         listener = mock(IRCEventAdapter.class);
+        context = mock(CamelContext.class);
+        ecc = mock(ExtendedCamelContext.class);
+        exchangeFactory = mock(ExchangeFactory.class);
 
-        List<IrcChannel> channels = new ArrayList<IrcChannel>();
+        List<IrcChannel> channels = new ArrayList<>();
         channels.add(new IrcChannel("#chan1", null));
         channels.add(new IrcChannel("#chan2", "chan2key"));
 
-        when(configuration.getChannels()).thenReturn(channels);
+        when(configuration.getChannelList()).thenReturn(channels);
         when(endpoint.getConfiguration()).thenReturn(configuration);
+
+        when(endpoint.getCamelContext()).thenReturn(context);
+        when(context.getCamelContextExtension()).thenReturn(ecc);
+        when(ecc.getExchangeFactory()).thenReturn(exchangeFactory);
+        when(exchangeFactory.newExchangeFactory(any())).thenReturn(exchangeFactory);
 
         consumer = new IrcConsumer(endpoint, processor, connection);
         consumer.setListener(listener);

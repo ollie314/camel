@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,8 +17,11 @@
 package org.apache.camel.component.jacksonxml;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.apache.camel.test.junit5.TestSupport.body;
 
 public class JacksonObjectListSplitTest extends CamelTestSupport {
     @Test
@@ -28,14 +31,14 @@ public class JacksonObjectListSplitTest extends CamelTestSupport {
 
         template.sendBody("direct:start", "<list><pojo dummy=\"value1\"/><pojo dummy=\"value2\"/></list>");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // you can specify the pojo class type for unmarshal the jason file
                 JacksonXMLDataFormat format = new JacksonXMLDataFormat(DummyObject.class);
                 format.useList();

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,16 +16,18 @@
  */
 package org.apache.camel.component.bean.validator;
 
+import java.util.HashSet;
 import java.util.Set;
-import javax.validation.ConstraintViolation;
-import javax.validation.ValidatorFactory;
+
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ValidatorFactory;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.impl.DefaultProducer;
+import org.apache.camel.support.DefaultProducer;
 
 /**
- * Bean validator that uses the JSR 303 reference implementation (Hibernate Validator).
- * Throws {@link BeanValidationException} if constrain violations are detected.
+ * Bean validator that uses the JSR 303 reference implementation (Hibernate Validator). Throws
+ * {@link BeanValidationException} if constrain violations are detected.
  */
 public class BeanValidatorProducer extends DefaultProducer {
 
@@ -36,16 +38,17 @@ public class BeanValidatorProducer extends DefaultProducer {
         super(endpoint);
     }
 
+    @Override
     public void process(Exchange exchange) throws Exception {
-        Object bean = exchange.getIn().getBody();
-        Set<ConstraintViolation<Object>> constraintViolations;
-        
-        if (this.group != null) {
-            constraintViolations = validatorFactory.getValidator().validate(bean, group);
+        Set<ConstraintViolation<Object>> constraintViolations = new HashSet<>();
+
+        if (exchange.getIn().getBody() instanceof Iterable) {
+            Iterable<?> body = exchange.getIn().getBody(Iterable.class);
+            body.forEach(b -> constraintViolations.addAll(getConstraintViolationsForSingleBean(b, this.group)));
         } else {
-            constraintViolations = validatorFactory.getValidator().validate(bean);
+            constraintViolations.addAll(getConstraintViolationsForSingleBean(exchange.getIn().getBody(), this.group));
         }
-        
+
         if (!constraintViolations.isEmpty()) {
             throw new BeanValidationException(exchange, constraintViolations, exchange.getIn().getBody());
         }
@@ -65,6 +68,18 @@ public class BeanValidatorProducer extends DefaultProducer {
 
     public void setGroup(Class<?> group) {
         this.group = group;
+    }
+
+    private Set<ConstraintViolation<Object>> getConstraintViolationsForSingleBean(Object bean, Class<?> group) {
+        Set<ConstraintViolation<Object>> constraintViolations;
+
+        if (this.group != null) {
+            constraintViolations = validatorFactory.getValidator().validate(bean, group);
+        } else {
+            constraintViolations = validatorFactory.getValidator().validate(bean);
+        }
+
+        return constraintViolations;
     }
 
 }

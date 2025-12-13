@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,37 +19,37 @@ package org.apache.camel.component.jpa;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 public class QueryBuilderTest extends CamelTestSupport {
 
     @Test
-    public void testQueryBuilder() throws Exception {
+    public void testQueryBuilder() {
         QueryBuilder q = QueryBuilder.query("select x from SendEmail x");
         assertNotNull(q);
         assertEquals("Query: select x from SendEmail x", q.toString());
     }
 
     @Test
-    public void testNamedQueryBuilder() throws Exception {
+    public void testNamedQueryBuilder() {
         QueryBuilder q = QueryBuilder.namedQuery("step1");
         assertNotNull(q);
         assertEquals("Named: step1", q.toString());
     }
 
     @Test
-    public void testNativeQueryBuilder() throws Exception {
+    public void testNativeQueryBuilder() {
         QueryBuilder q = QueryBuilder.nativeQuery("select count(*) from SendEmail");
         assertNotNull(q);
         assertEquals("NativeQuery: select count(*) from SendEmail", q.toString());
     }
 
     @Test
-    public void testQueryBuilderWithParameters() throws Exception {
+    public void testQueryBuilderWithParameters() {
         QueryBuilder q = QueryBuilder.query("select x from SendEmail x where x.id = :a");
         assertNotNull(q);
         q.parameters(1);
@@ -57,10 +57,10 @@ public class QueryBuilderTest extends CamelTestSupport {
     }
 
     @Test
-    public void testQueryBuilderWithParametersMap() throws Exception {
+    public void testQueryBuilderWithParametersMap() {
         QueryBuilder q = QueryBuilder.query("select x from SendEmail x where x.id = :a");
         assertNotNull(q);
-        Map<String, Object> map = new HashMap<String, Object>();
+        Map<String, Object> map = new HashMap<>();
         map.put("a", 1);
         q.parameters(map);
         assertEquals("Query: select x from SendEmail x where x.id = :a Parameters: {a=1}", q.toString());

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -24,21 +24,19 @@ import org.apache.camel.component.docker.DockerComponent;
 import org.apache.camel.component.docker.DockerConfiguration;
 import org.apache.camel.component.docker.util.DockerTestUtils;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.powermock.core.classloader.annotations.PowerMockIgnore;
-import org.powermock.modules.junit4.PowerMockRunner;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import static org.mockito.ArgumentMatchers.anyString;
 
 /**
  * Consumer test for events on Docker Platform
  */
-@RunWith(PowerMockRunner.class)
-@PowerMockIgnore({"javax.management.*", "javax.net.ssl.*"})
+@ExtendWith(MockitoExtension.class)
 public class DockerEventsConsumerTest extends CamelTestSupport {
     private String host = "localhost";
     private Integer port = 2375;
@@ -53,17 +51,17 @@ public class DockerEventsConsumerTest extends CamelTestSupport {
 
     public void setupMocks() {
         Mockito.when(dockerClient.eventsCmd()).thenReturn(eventsCmd);
-        Mockito.when(eventsCmd.withSince(Mockito.anyString())).thenReturn(eventsCmd);
+        Mockito.when(eventsCmd.withSince(anyString())).thenReturn(eventsCmd);
     }
 
     @Test
-    public void testEvent() throws Exception {
+    void testEvent() {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMinimumMessageCount(1);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
                 from("docker://events?host=" + host + "&port=" + port).log("${body}").to("mock:result");

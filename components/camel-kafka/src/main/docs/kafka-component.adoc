@@ -1,11 +1,21 @@
-[[Kafka-KafkaComponent]]
-Kafka Component
-~~~~~~~~~~~~~~~
+= Kafka Component
+:doctitle: Kafka
+:shortname: kafka
+:artifactid: camel-kafka
+:description: Send and receive messages to/from an Apache Kafka broker.
+:since: 2.13
+:supportlevel: Stable
+:tabs-sync-option:
+:component-header: Both producer and consumer are supported
+//Manually maintained attributes
+:camel-spring-boot-name: kafka
 
-*Available as of Camel 2.13*
+*Since Camel {since}*
 
-The *kafka:* component is used for communicating with
-http://kafka.apache.org/[Apache Kafka] message broker.
+*{component-header}*
+
+The Kafka component is used for communicating with
+http://kafka.apache.org/[Apache Kafka] message broker.
 
 Maven users will need to add the following dependency to their `pom.xml`
 for this component.
@@ -20,300 +30,980 @@ for this component.
 </dependency>
 ------------------------------------------------------------
 
-[[Kafka-Camel2.17ornewer]]
-Camel 2.17 or newer
-+++++++++++++++++++
 
-Scala is no longer used, as we use the kafka java client.
+== URI format
 
-[[Kafka-Camel2.16orolder]]
-Camel 2.16 or older
-+++++++++++++++++++
-
-And then the Scala libraries of choice. camel-kafka does not include
-that dependency, but assumes it is provided. For example to use Scala
-2.10.4 add:
-
-[source,xml]
---------------------------------------------
-    <dependency>
-      <groupId>org.scala-lang</groupId>
-      <artifactId>scala-library</artifactId>
-      <version>2.10.4</version>
-    </dependency>
---------------------------------------------
-
-[[Kafka-URIformat]]
-URI format
-^^^^^^^^^^
-
-[source,java]
 ---------------------------
-kafka:server:port[?options]
+kafka:topic[?options]
 ---------------------------
-
- 
-
-[[Kafka-Options]]
-Options (Camel 2.16 or older)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
-
 
 
 // component options: START
-The Kafka component supports 1 options which are listed below.
-
-
-
-{% raw %}
-[width="100%",cols="2,1m,7",options="header"]
-|=======================================================================
-| Name | Java Type | Description
-| workerPool | ExecutorService | To use a shared custom worker pool for continue routing Exchange after kafka server has acknowledge the message that was sent to it from KafkaProducer using asynchronous non-blocking processing. If using this option then you must handle the lifecycle of the thread pool to shut the pool down when no longer needed.
-|=======================================================================
-{% endraw %}
+include::partial$component-configure-options.adoc[]
+include::partial$component-endpoint-options.adoc[]
+include::partial$component-endpoint-headers.adoc[]
 // component options: END
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// endpoint options: START
-The Kafka component supports 77 endpoint options which are listed below:
-
-{% raw %}
-[width="100%",cols="2,1,1m,1m,5",options="header"]
-|=======================================================================
-| Name | Group | Default | Java Type | Description
-| brokers | common |  | String | *Required* This is for bootstrapping and the producer will only use it for getting metadata (topics partitions and replicas). The socket connections for sending the actual data will be established based on the broker information returned in the metadata. The format is host1:port1host2:port2 and the list can be a subset of brokers or a VIP pointing to a subset of brokers. This option is known as metadata.broker.list in the Kafka documentation.
-| clientId | common |  | String | The client id is a user-specified string sent in each request to help trace calls. It should logically identify the application making the request.
-| groupId | common |  | String | A string that uniquely identifies the group of consumer processes to which this consumer belongs. By setting the same group id multiple processes indicate that they are all part of the same consumer group.
-| partitioner | common | org.apache.kafka.clients.producer.internals.DefaultPartitioner | String | The partitioner class for partitioning messages amongst sub-topics. The default partitioner is based on the hash of the key.
-| topic | common |  | String | *Required* Name of the topic to use.
-| autoCommitEnable | consumer | true | Boolean | If true periodically commit to ZooKeeper the offset of messages already fetched by the consumer. This committed offset will be used when the process fails as the position from which the new consumer will begin.
-| autoCommitIntervalMs | consumer | 5000 | Integer | The frequency in ms that the consumer offsets are committed to zookeeper.
-| autoOffsetReset | consumer | latest | String | What to do when there is no initial offset in ZooKeeper or if an offset is out of range: smallest : automatically reset the offset to the smallest offset largest : automatically reset the offset to the largest offset fail: throw exception to the consumer
-| bridgeErrorHandler | consumer | false | boolean | Allows for bridging the consumer to the Camel routing Error Handler which mean any exceptions occurred while the consumer is trying to pickup incoming messages or the likes will now be processed as a message and handled by the routing Error Handler. By default the consumer will use the org.apache.camel.spi.ExceptionHandler to deal with exceptions that will be logged at WARN/ERROR level and ignored.
-| checkCrcs | consumer | true | Boolean | Automatically check the CRC32 of the records consumed. This ensures no on-the-wire or on-disk corruption to the messages occurred. This check adds some overhead so it may be disabled in cases seeking extreme performance.
-| consumerId | consumer |  | String | Generated automatically if not set.
-| consumerRequestTimeoutMs | consumer | 40000 | Integer | The configuration controls the maximum amount of time the client will wait for the response of a request. If the response is not received before the timeout elapses the client will resend the request if necessary or fail the request if retries are exhausted.
-| consumersCount | consumer | 1 | int | The number of consumers that connect to kafka server
-| consumerStreams | consumer | 10 | int | Number of concurrent consumers on the consumer
-| fetchMinBytes | consumer | 1024 | Integer | The minimum amount of data the server should return for a fetch request. If insufficient data is available the request will wait for that much data to accumulate before answering the request.
-| fetchWaitMaxMs | consumer | 500 | Integer | The maximum amount of time the server will block before answering the fetch request if there isn't sufficient data to immediately satisfy fetch.min.bytes
-| heartbeatIntervalMs | consumer | 3000 | Integer | The expected time between heartbeats to the consumer coordinator when using Kafka's group management facilities. Heartbeats are used to ensure that the consumer's session stays active and to facilitate rebalancing when new consumers join or leave the group. The value must be set lower than session.timeout.ms but typically should be set no higher than 1/3 of that value. It can be adjusted even lower to control the expected time for normal rebalances.
-| keyDeserializer | consumer | org.apache.kafka.common.serialization.StringDeserializer | String | Deserializer class for key that implements the Deserializer interface.
-| maxPartitionFetchBytes | consumer | 1048576 | Integer | The maximum amount of data per-partition the server will return. The maximum total memory used for a request will be partitions max.partition.fetch.bytes. This size must be at least as large as the maximum message size the server allows or else it is possible for the producer to send messages larger than the consumer can fetch. If that happens the consumer can get stuck trying to fetch a large message on a certain partition.
-| maxPollRecords | consumer | 2147483647 | Integer | A unique string that identifies the consumer group this consumer belongs to. This property is required if the consumer uses either the group management functionality by using subscribe(topic) or the Kafka-based offset management strategy.
-| partitionAssignor | consumer | org.apache.kafka.clients.consumer.RangeAssignor | String | The class name of the partition assignment strategy that the client will use to distribute partition ownership amongst consumer instances when group management is used
-| pollTimeoutMs | consumer | 5000 | Long | The timeout used when polling the KafkaConsumer.
-| seekToBeginning | consumer | false | boolean | If the option is true then KafkaConsumer will read from beginning on startup.
-| sessionTimeoutMs | consumer | 30000 | Integer | The timeout used to detect failures when using Kafka's group management facilities.
-| valueDeserializer | consumer | org.apache.kafka.common.serialization.StringDeserializer | String | Deserializer class for value that implements the Deserializer interface.
-| exceptionHandler | consumer (advanced) |  | ExceptionHandler | To let the consumer use a custom ExceptionHandler. Notice if the option bridgeErrorHandler is enabled then this options is not in use. By default the consumer will deal with exceptions that will be logged at WARN/ERROR level and ignored.
-| exchangePattern | consumer (advanced) |  | ExchangePattern | Sets the exchange pattern when the consumer creates an exchange.
-| bridgeEndpoint | producer | false | boolean | If the option is true then KafkaProducer will ignore the KafkaConstants.TOPIC header setting of the inbound message.
-| bufferMemorySize | producer | 33554432 | Integer | The total bytes of memory the producer can use to buffer records waiting to be sent to the server. If records are sent faster than they can be delivered to the server the producer will either block or throw an exception based on the preference specified by block.on.buffer.full.This setting should correspond roughly to the total memory the producer will use but is not a hard bound since not all memory the producer uses is used for buffering. Some additional memory will be used for compression (if compression is enabled) as well as for maintaining in-flight requests.
-| compressionCodec | producer | none | String | This parameter allows you to specify the compression codec for all data generated by this producer. Valid values are none gzip and snappy.
-| connectionMaxIdleMs | producer | 540000 | Integer | Close idle connections after the number of milliseconds specified by this config.
-| keySerializerClass | producer |  | String | The serializer class for keys (defaults to the same as for messages if nothing is given).
-| lingerMs | producer | 0 | Integer | The producer groups together any records that arrive in between request transmissions into a single batched request. Normally this occurs only under load when records arrive faster than they can be sent out. However in some circumstances the client may want to reduce the number of requests even under moderate load. This setting accomplishes this by adding a small amount of artificial delaythat is rather than immediately sending out a record the producer will wait for up to the given delay to allow other records to be sent so that the sends can be batched together. This can be thought of as analogous to Nagle's algorithm in TCP. This setting gives the upper bound on the delay for batching: once we get batch.size worth of records for a partition it will be sent immediately regardless of this setting however if we have fewer than this many bytes accumulated for this partition we will 'linger' for the specified time waiting for more records to show up. This setting defaults to 0 (i.e. no delay). Setting linger.ms=5 for example would have the effect of reducing the number of requests sent but would add up to 5ms of latency to records sent in the absense of load.
-| maxBlockMs | producer | 60000 | Integer | The configuration controls how long sending to kafka will block. These methods can be blocked for multiple reasons. For e.g: buffer full metadata unavailable.This configuration imposes maximum limit on the total time spent in fetching metadata serialization of key and value partitioning and allocation of buffer memory when doing a send(). In case of partitionsFor() this configuration imposes a maximum time threshold on waiting for metadata
-| maxInFlightRequest | producer | 5 | Integer | The maximum number of unacknowledged requests the client will send on a single connection before blocking. Note that if this setting is set to be greater than 1 and there are failed sends there is a risk of message re-ordering due to retries (i.e. if retries are enabled).
-| maxRequestSize | producer | 1048576 | Integer | The maximum size of a request. This is also effectively a cap on the maximum record size. Note that the server has its own cap on record size which may be different from this. This setting will limit the number of record batches the producer will send in a single request to avoid sending huge requests.
-| metadataMaxAgeMs | producer | 300000 | Integer | The period of time in milliseconds after which we force a refresh of metadata even if we haven't seen any partition leadership changes to proactively discover any new brokers or partitions.
-| metricReporters | producer |  | String | A list of classes to use as metrics reporters. Implementing the MetricReporter interface allows plugging in classes that will be notified of new metric creation. The JmxReporter is always included to register JMX statistics.
-| metricsSampleWindowMs | producer | 30000 | Integer | The number of samples maintained to compute metrics.
-| noOfMetricsSample | producer | 2 | Integer | The number of samples maintained to compute metrics.
-| producerBatchSize | producer | 16384 | Integer | The producer will attempt to batch records together into fewer requests whenever multiple records are being sent to the same partition. This helps performance on both the client and the server. This configuration controls the default batch size in bytes. No attempt will be made to batch records larger than this size.Requests sent to brokers will contain multiple batches one for each partition with data available to be sent.A small batch size will make batching less common and may reduce throughput (a batch size of zero will disable batching entirely). A very large batch size may use memory a bit more wastefully as we will always allocate a buffer of the specified batch size in anticipation of additional records.
-| queueBufferingMaxMessages | producer | 10000 | Integer | The maximum number of unsent messages that can be queued up the producer when using async mode before either the producer must be blocked or data must be dropped.
-| receiveBufferBytes | producer | 32768 | Integer | The size of the TCP receive buffer (SO_RCVBUF) to use when reading data.
-| reconnectBackoffMs | producer | 50 | Integer | The amount of time to wait before attempting to reconnect to a given host. This avoids repeatedly connecting to a host in a tight loop. This backoff applies to all requests sent by the consumer to the broker.
-| recordMetadata | producer | true | boolean | Whether the producer should store the RecordMetadata results from sending to Kafka. The results are stored in a List containing the RecordMetadata metadata's. The list is stored on a header with the key link KafkaConstantsKAFKA_RECORDMETA
-| requestRequiredAcks | producer | 1 | String | The number of acknowledgments the producer requires the leader to have received before considering a request complete. This controls the durability of records that are sent. The following settings are common: acks=0 If set to zero then the producer will not wait for any acknowledgment from the server at all. The record will be immediately added to the socket buffer and considered sent. No guarantee can be made that the server has received the record in this case and the retries configuration will not take effect (as the client won't generally know of any failures). The offset given back for each record will always be set to -1. acks=1 This will mean the leader will write the record to its local log but will respond without awaiting full acknowledgement from all followers. In this case should the leader fail immediately after acknowledging the record but before the followers have replicated it then the record will be lost. acks=all This means the leader will wait for the full set of in-sync replicas to acknowledge the record. This guarantees that the record will not be lost as long as at least one in-sync replica remains alive. This is the strongest available guarantee.
-| requestTimeoutMs | producer | 30000 | Integer | The amount of time the broker will wait trying to meet the request.required.acks requirement before sending back an error to the client.
-| retries | producer | 0 | Integer | Setting a value greater than zero will cause the client to resend any record whose send fails with a potentially transient error. Note that this retry is no different than if the client resent the record upon receiving the error. Allowing retries will potentially change the ordering of records because if two records are sent to a single partition and the first fails and is retried but the second succeeds then the second record may appear first.
-| retryBackoffMs | producer | 100 | Integer | Before each retry the producer refreshes the metadata of relevant topics to see if a new leader has been elected. Since leader election takes a bit of time this property specifies the amount of time that the producer waits before refreshing the metadata.
-| sendBufferBytes | producer | 131072 | Integer | Socket write buffer size
-| serializerClass | producer |  | String | The serializer class for messages. The default encoder takes a byte and returns the same byte. The default class is kafka.serializer.DefaultEncoder
-| workerPool | producer |  | ExecutorService | To use a custom worker pool for continue routing Exchange after kafka server has acknowledge the message that was sent to it from KafkaProducer using asynchronous non-blocking processing.
-| workerPoolCoreSize | producer | 10 | Integer | Number of core threads for the worker pool for continue routing Exchange after kafka server has acknowledge the message that was sent to it from KafkaProducer using asynchronous non-blocking processing.
-| workerPoolMaxSize | producer | 20 | Integer | Maximum number of threads for the worker pool for continue routing Exchange after kafka server has acknowledge the message that was sent to it from KafkaProducer using asynchronous non-blocking processing.
-| synchronous | advanced | false | boolean | Sets whether synchronous processing should be strictly used or Camel is allowed to use asynchronous processing (if supported).
-| kerberosBeforeReloginMinTime | security | 60000 | Integer | Login thread sleep time between refresh attempts.
-| kerberosInitCmd | security | /usr/bin/kinit | String | Kerberos kinit command path. Default is /usr/bin/kinit
-| kerberosPrincipalToLocalRules | security | DEFAULT | String | A list of rules for mapping from principal names to short names (typically operating system usernames). The rules are evaluated in order and the first rule that matches a principal name is used to map it to a short name. Any later rules in the list are ignored. By default principal names of the form username/hostnameREALM are mapped to username. For more details on the format please see security authorization and acls. Multiple values can be separated by comma
-| kerberosRenewJitter | security | 0.05 | Double | Percentage of random jitter added to the renewal time.
-| kerberosRenewWindowFactor | security | 0.8 | Double | Login thread will sleep until the specified window factor of time from last refresh to ticket's expiry has been reached at which time it will try to renew the ticket.
-| saslKerberosServiceName | security |  | String | The Kerberos principal name that Kafka runs as. This can be defined either in Kafka's JAAS config or in Kafka's config.
-| saslMechanism | security | GSSAPI | String | The Simple Authentication and Security Layer (SASL) Mechanism used. For the valid values see http://www.iana.org/assignments/sasl-mechanisms/sasl-mechanisms.xhtml
-| securityProtocol | security | PLAINTEXT | String | Protocol used to communicate with brokers. Currently only PLAINTEXT and SSL are supported.
-| sslCipherSuites | security |  | String | A list of cipher suites. This is a named combination of authentication encryption MAC and key exchange algorithm used to negotiate the security settings for a network connection using TLS or SSL network protocol.By default all the available cipher suites are supported.
-| sslEnabledProtocols | security | TLSv1.2,TLSv1.1,TLSv1 | String | The list of protocols enabled for SSL connections. TLSv1.2 TLSv1.1 and TLSv1 are enabled by default.
-| sslEndpointAlgorithm | security |  | String | The endpoint identification algorithm to validate server hostname using server certificate.
-| sslKeymanagerAlgorithm | security | SunX509 | String | The algorithm used by key manager factory for SSL connections. Default value is the key manager factory algorithm configured for the Java Virtual Machine.
-| sslKeyPassword | security |  | String | The password of the private key in the key store file. This is optional for client.
-| sslKeystoreLocation | security |  | String | The location of the key store file. This is optional for client and can be used for two-way authentication for client.
-| sslKeystorePassword | security |  | String | The store password for the key store file.This is optional for client and only needed if ssl.keystore.location is configured.
-| sslKeystoreType | security | JKS | String | The file format of the key store file. This is optional for client. Default value is JKS
-| sslProtocol | security | TLS | String | The SSL protocol used to generate the SSLContext. Default setting is TLS which is fine for most cases. Allowed values in recent JVMs are TLS TLSv1.1 and TLSv1.2. SSL SSLv2 and SSLv3 may be supported in older JVMs but their usage is discouraged due to known security vulnerabilities.
-| sslProvider | security |  | String | The name of the security provider used for SSL connections. Default value is the default security provider of the JVM.
-| sslTrustmanagerAlgorithm | security | PKIX | String | The algorithm used by trust manager factory for SSL connections. Default value is the trust manager factory algorithm configured for the Java Virtual Machine.
-| sslTruststoreLocation | security |  | String | The location of the trust store file.
-| sslTruststorePassword | security |  | String | The password for the trust store file.
-| sslTruststoreType | security | JKS | String | The file format of the trust store file. Default value is JKS.
-|=======================================================================
-{% endraw %}
-// endpoint options: END
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 For more information about Producer/Consumer configuration:
 
 http://kafka.apache.org/documentation.html#newconsumerconfigs[http://kafka.apache.org/documentation.html#newconsumerconfigs]
 http://kafka.apache.org/documentation.html#producerconfigs[http://kafka.apache.org/documentation.html#producerconfigs]
 
-[[Kafka-Samples]]
-Samples
-^^^^^^^
+If you want to send a message to a dynamic topic then use `KafkaConstants.OVERRIDE_TOPIC` as it is used as a one-time header that is not sent along the message, and actually is removed in the producer.
 
-[[Kafka-Camel2.16orolder.1]]
-Camel 2.16 or older
-+++++++++++++++++++
+== Usage
 
-Consuming messages:
+=== Consumer error handling
 
-[source,java]
-------------------------------------------------------------------------------------------------------------------
-from("kafka:localhost:9092?topic=test&zookeeperHost=localhost&zookeeperPort=2181&groupId=group1").to("log:input");
-------------------------------------------------------------------------------------------------------------------
+While kafka consumer is polling messages from the kafka broker, then errors can happen. This section describes what happens and what
+you can configure.
 
-Producing messages:
+The consumer may throw exception when invoking the Kafka `poll` API. For example, if the message cannot be deserialized due to invalid data,
+and many other kinds of errors. Those errors are in the form of `KafkaException` which are either _retriable_ or not. The exceptions
+which can be retried (`RetriableException`) will be retried again (with a poll timeout in between). All other kinds of exceptions are
+handled according to the _pollOnError_ configuration. This configuration has the following values:
 
-See unit tests of camel-kafka for more examples
+* DISCARD will discard the message and continue to poll the next message.
+* ERROR_HANDLER will use Camel's error handler to process the exception, and afterwards continue to poll the next message.
+* RECONNECT will re-connect the consumer and try to poll the message again.
+* RETRY will let the consumer retry polling the same message again
+* STOP will stop the consumer (it has to be manually started/restarted if the consumer should be able to consume messages again).
 
-[[Kafka-Camel2.17ornewer]]
-Camel 2.17 or newer
-+++++++++++++++++++
+The default is *ERROR_HANDLER*, which will let Camel's error handler (if any configured) process the caused exception.
+Afterwards continue to poll the next message. This behavior is similar to the _bridgeErrorHandler_ option that
+Camel components have.
 
-Consuming messages:
+For advanced control a custom implementation of `org.apache.camel.component.kafka.PollExceptionStrategy` can be configured
+on the component level, which allows controlling which of the strategies to use for each exception.
 
-[source,java]
--------------------------------------------------------------------------------------------------
-from("kafka:localhost:9092?topic=test&groupId=testing&autoOffsetReset=earliest&consumersCount=1")
-                        .process(new Processor() {
-                            @Override
-                            public void process(Exchange exchange)
-                                    throws Exception {
-                                String messageKey = "";
-                                if (exchange.getIn() != null) {
-                                    Message message = exchange.getIn();
-                                    Integer partitionId = (Integer) message
-                                            .getHeader(KafkaConstants.PARTITION);
-                                    String topicName = (String) message
-                                            .getHeader(KafkaConstants.TOPIC);
-                                    if (message.getHeader(KafkaConstants.KEY) != null)
-                                        messageKey = (String) message
-                                                .getHeader(KafkaConstants.KEY);
-                                    Object data = message.getBody();
+=== Consumer error handling (advanced)
 
-
-                                    System.out.println("topicName :: "
-                                            + topicName + " partitionId :: "
-                                            + partitionId + " messageKey :: "
-                                            + messageKey + " message :: "
-                                            + data + "\n");
-                                }
-                            }
-                        }).to("log:input");
--------------------------------------------------------------------------------------------------
-
- 
-
-Producing messages:
+By default, Camel will poll using the *ERROR_HANDLER* to process exceptions.
+How Camel handles a message that results in an exception can be altered using the `breakOnFirstError` attribute in the configuration.
+Instead of continuing to poll the next message, Camel will instead commit the offset so that the message that caused the exception will be retried.
+This is similar to the *RETRY* polling strategy above.
 
 [source,java]
----------------------------------------------------------------------------------------------------------------
-from("direct:start").process(new Processor() {
-                    @Override
-                    public void process(Exchange exchange) throws Exception {
-                        exchange.getIn().setBody("Test Message from Camel Kafka Component Final",String.class);
-                        exchange.getIn().setHeader(KafkaConstants.PARTITION_KEY, 0);
-                        exchange.getIn().setHeader(KafkaConstants.KEY, "1");
-                    }
-                }).to("kafka:localhost:9092?topic=test");
----------------------------------------------------------------------------------------------------------------
+----
+KafkaComponent kafka = new KafkaComponent();
+kafka.setBreakOnFirstError(true);
+...
+camelContext.addComponent("kafka", kafka);
+----
 
- 
+It is recommended that you read the section below "Using manual commit with Kafka consumer" to understand how `breakOnFirstError`
+will work based on the `CommitManager` that is configured.
 
-[[Kafka-Endpoints]]
-Endpoints
-~~~~~~~~~
+=== The Kafka idempotent repository
 
-Camel supports the link:message-endpoint.html[Message Endpoint] pattern
-using the
-http://camel.apache.org/maven/current/camel-core/apidocs/org/apache/camel/Endpoint.html[Endpoint]
-interface. Endpoints are usually created by a
-link:component.html[Component] and Endpoints are usually referred to in
-the link:dsl.html[DSL] via their link:uris.html[URIs].
+The `camel-kafka` library provides a Kafka topic-based idempotent repository. This repository stores broadcasts all changes to idempotent state (add/remove) in a Kafka topic, and populates a local in-memory cache for each repository's process instance through event sourcing.
+The topic used must be unique per idempotent repository instance. The mechanism does not have any requirements about the number of topic partitions, as the repository consumes from all partitions at the same time. It also does not have any requirements about the replication factor of the topic.
+Each repository instance that uses the topic, (e.g., typically on different machines running in parallel) controls its own consumer group, so in a cluster of 10 Camel processes using the same topic, each will control its own offset.
+On startup, the instance subscribes to the topic, rewinds the offset to the beginning and rebuilds the cache to the latest state. The cache will not be considered warmed up until one poll of `pollDurationMs` in length returns 0 records. Startup will not be completed until either the cache has warmed up, or 30 seconds go by; if the latter happens, the idempotent repository may be in an inconsistent state until its consumer catches up to the end of the topic.
+Be mindful of the format of the header used for the uniqueness check. By default, it uses Strings as the data types. When using primitive numeric formats, the header must be deserialized accordingly. Check the samples below for examples.
 
-From an Endpoint you can use the following methods
+A `KafkaIdempotentRepository` has the following properties:
+[width="100%",cols="2m,2m,5",options="header"]
+|===
+| Property | Default | Description
+| topic | | *Required* The name of the Kafka topic to use to broadcast changes. (required)
+| bootstrapServers | | *Required* The `bootstrap.servers` property on the internal Kafka producer and consumer. Use this as shorthand if not setting `consumerConfig` and `producerConfig`. If used, this component will apply sensible default configurations for the producer and consumer.
+| groupId | | The groupId to assign to the idempotent consumer.
+| startupOnly | false | Whether to sync on startup only, or to continue syncing while Camel is running.
+| maxCacheSize | 1000 | How many of the most recently used keys should be stored in memory (default 1000).
+| pollDurationMs | 100 | The poll duration of the Kafka consumer. The local caches are updated immediately. This value will affect how far behind other peers that update their caches from the topic are relative to the idempotent consumer instance that sent the cache action message. The default value of this is 100 ms.
+If setting this value explicitly, be aware that there is a tradeoff between the remote cache liveness and the volume of network traffic between this repository's consumer and the Kafka brokers. The cache warmup process also depends on there being one poll that fetches nothing - this indicates that the stream has been consumed up to the current point. If the poll duration is excessively long for the rate at which messages are sent on the topic, there exists a possibility that the cache cannot be warmed up and will operate in an inconsistent state relative to its peers until it catches up.
+| producerConfig | | Sets the properties that will be used by the Kafka producer that broadcasts changes. Overrides `bootstrapServers`, so must define the Kafka `bootstrap.servers` property itself
+| consumerConfig | | Sets the properties that will be used by the Kafka consumer that populates the cache from the topic. Overrides `bootstrapServers`, so must define the Kafka `bootstrap.servers` property itself
+|===
 
-* http://camel.apache.org/maven/current/camel-core/apidocs/org/apache/camel/Endpoint.html#createProducer()[createProducer()]
-will create a
-http://camel.apache.org/maven/current/camel-core/apidocs/org/apache/camel/Producer.html[Producer]
-for sending message exchanges to the endpoint
+The repository can be instantiated by defining the `topic` and `bootstrapServers`, or the `producerConfig` and `consumerConfig` property sets can be explicitly defined to enable features such as SSL/SASL.
+To use, this repository must be placed in the Camel registry, either manually or by registration as a bean in Spring, as it is `CamelContext` aware.
 
-* http://camel.apache.org/maven/current/camel-core/apidocs/org/apache/camel/Endpoint.html#createConsumer(org.apache.camel.Processor)[createConsumer()]
-implements the link:event-driven-consumer.html[Event Driven Consumer]
-pattern for consuming message exchanges from the endpoint via a
-http://camel.apache.org/maven/current/camel-core/apidocs/org/apache/camel/Processor.html[Processor]
-when creating a
-http://camel.apache.org/maven/current/camel-core/apidocs/org/apache/camel/Consumer.html[Consumer]
+Sample usage is as follows:
 
-* http://camel.apache.org/maven/current/camel-core/apidocs/org/apache/camel/Endpoint.html#createPollingConsumer()[createPollingConsumer()]
-implements the link:polling-consumer.html[Polling Consumer] pattern for
-consuming message exchanges from the endpoint via a
-http://camel.apache.org/maven/current/camel-core/apidocs/org/apache/camel/PollingConsumer.html[PollingConsumer]
+[source,java]
+----
+KafkaIdempotentRepository kafkaIdempotentRepository = new KafkaIdempotentRepository("idempotent-db-inserts", "localhost:9091");
 
-[[Kafka-SeeAlso]]
-See Also
-^^^^^^^^
+SimpleRegistry registry = new SimpleRegistry();
+registry.put("insertDbIdemRepo", kafkaIdempotentRepository); // must be registered in the registry, to enable access to the CamelContext
+CamelContext context = new CamelContext(registry);
 
-* link:configuring-camel.html[Configuring Camel]
-* link:message-endpoint.html[Message Endpoint] pattern
-* link:uris.html[URIs]
-* link:writing-components.html[Writing Components]
+// later in RouteBuilder...
+from("direct:performInsert")
+    .idempotentConsumer(header("id")).idempotentRepository("insertDbIdemRepo")
+        // once-only insert into the database
+    .end()
+----
 
+In XML:
+
+[source,xml]
+----
+<!-- simple -->
+<bean id="insertDbIdemRepo"
+  class="org.apache.camel.processor.idempotent.kafka.KafkaIdempotentRepository">
+  <property name="topic" value="idempotent-db-inserts"/>
+  <property name="bootstrapServers" value="localhost:9091"/>
+</bean>
+
+<!-- complex -->
+<bean id="insertDbIdemRepo"
+  class="org.apache.camel.processor.idempotent.kafka.KafkaIdempotentRepository">
+  <property name="topic" value="idempotent-db-inserts"/>
+  <property name="maxCacheSize" value="10000"/>
+  <property name="consumerConfig">
+    <props>
+      <prop key="bootstrap.servers">localhost:9091</prop>
+    </props>
+  </property>
+  <property name="producerConfig">
+    <props>
+      <prop key="bootstrap.servers">localhost:9091</prop>
+    </props>
+  </property>
+</bean>
+----
+
+There are 3 alternatives to choose from when using idempotency with numeric identifiers. The first one is to use the static method `numericHeader` method from `org.apache.camel.component.kafka.serde.KafkaSerdeHelper` to perform the conversion for you:
+
+[source,java]
+----
+from("direct:performInsert")
+    .idempotentConsumer(numericHeader("id")).idempotentRepository("insertDbIdemRepo")
+        // once-only insert into the database
+    .end()
+----
+
+Alternatively, it is possible to use a custom serializer configured via the route URL to perform the conversion:
+
+[source,java]
+----
+public class CustomHeaderDeserializer extends DefaultKafkaHeaderDeserializer {
+    private static final Logger LOG = LoggerFactory.getLogger(CustomHeaderDeserializer.class);
+
+    @Override
+    public Object deserialize(String key, byte[] value) {
+        if (key.equals("id")) {
+            BigInteger bi = new BigInteger(value);
+
+            return String.valueOf(bi.longValue());
+        } else {
+            return super.deserialize(key, value);
+        }
+    }
+}
+----
+
+Lastly, it is also possible to do so in a processor:
+
+[source,java]
+----
+from(from).routeId("foo")
+    .process(exchange -> {
+        byte[] id = exchange.getIn().getHeader("id", byte[].class);
+
+        BigInteger bi = new BigInteger(id);
+        exchange.getIn().setHeader("id", String.valueOf(bi.longValue()));
+    })
+    .idempotentConsumer(header("id"))
+    .idempotentRepository("kafkaIdempotentRepository")
+    .to(to);
+----
+
+=== Manual commits with the Kafka consumer
+
+By default, the Kafka consumer will use auto commit, where the offset will be committed automatically in the background using a given interval.
+
+In case you want to force manual commits, you can use `KafkaManualCommit` API from the Camel Exchange, stored on the message header.
+This requires turning on manual commits by either setting the option `allowManualCommit` to `true` on the `KafkaComponent`
+or on the endpoint, for example:
+
+[source,java]
+----
+KafkaComponent kafka = new KafkaComponent();
+kafka.setAutoCommitEnable(false);
+kafka.setAllowManualCommit(true);
+// ...
+camelContext.addComponent("kafka", kafka);
+----
+
+By default, it uses the `NoopCommitManager` behind the scenes. To commit an offset, you will
+require you to use the `KafkaManualCommit` from Java code such as a Camel `Processor`:
+
+[source,java]
+----
+public void process(Exchange exchange) {
+    KafkaManualCommit manual =
+        exchange.getIn().getHeader(KafkaConstants.MANUAL_COMMIT, KafkaManualCommit.class);
+    manual.commit();
+}
+----
+
+The `KafkaManualCommit` will force a synchronous commit which will block until the commit is acknowledged on Kafka, or if it fails an exception is thrown.
+You can use an asynchronous commit as well by configuring the `KafkaManualCommitFactory` with the `DefaultKafkaManualAsyncCommitFactory` implementation.
+
+Then the commit will be done in the next consumer loop using the kafka asynchronous commit api.
+
+If you want to use a custom implementation of `KafkaManualCommit` then you can configure a custom `KafkaManualCommitFactory`
+on the `KafkaComponent` that creates instances of your custom implementation.
+
+When configuring a consumer to use manual commit and a specific `CommitManager` it is important to understand how these influence the behavior
+of `breakOnFirstError`
+
+[source,java]
+----
+KafkaComponent kafka = new KafkaComponent();
+kafka.setAutoCommitEnable(false);
+kafka.setAllowManualCommit(true);
+kafka.setBreakOnFirstError(true);
+kafka.setKafkaManualCommitFactory(new DefaultKafkaManualCommitFactory());
+...
+camelContext.addComponent("kafka", kafka);
+----
+
+When the `CommitManager` is left to the default `NoopCommitManager` then `breakOnFirstError` will not automatically commit the offset so that the
+message with an error is retried. The consumer must manage that in the route using `KafkaManualCommit`.
+
+
+When the `CommitManager` is changed to either the synchronous or asynchronous manager then `breakOnFirstError` will automatically commit the offset so that the
+message with an error is retried. This message will be continually retried until it can be processed without an error.
+
+*Note 1*: records from a partition must be processed and committed by the same thread as the consumer. This means that certain EIPs, async or concurrent operations
+in the DSL may cause the commit to fail. In such circumstances, trying to commit the transaction will cause the Kafka client to throw a `java.util.ConcurrentModificationException`
+exception with the message `KafkaConsumer is not safe for multi-threaded access`. To prevent this from happening, redesign your route to avoid those operations.
+
+*Note 2: this is mostly useful with aggregation's completion timeout strategies.
+
+=== Pausable Consumers
+
+The Kafka component supports pausable consumers. This type of consumer can pause consuming data based on
+conditions external to the component itself, such as an external system being unavailable or other transient conditions.
+
+[source,java]
+----
+from("kafka:topic")
+    .pausable(new KafkaConsumerListener(), () -> canContinue()) // the pausable check gets called if the exchange fails to be processed ...
+    .routeId("pausable-route")
+    .process(this::process) // Kafka consumer will be paused if this one throws an exception ...
+    .to("some:destination"); // or this one
+----
+
+In this example, consuming messages can pause (by calling the Kafka's Consumer pause method) if the result from `canContinue` is false.
+
+IMPORTANT: The pausable EIP is meant to be used as a support mechanism when *there is an exception* somewhere in the route that prevents the exchange from being processed. More specifically,
+the check called by the `pausable` EIP should be used to test for transient conditions preventing the exchange from being processed.
+
+NOTE: most users should prefer using the xref:manual::route-policy.adoc[RoutePolicy], which offers better control of the route.
+
+=== Kafka Headers propagation
+
+When consuming messages from Kafka, headers will be propagated to camel exchange headers automatically.
+Producing flow backed by same behaviour - camel headers of particular exchange will be propagated to kafka message headers.
+
+Since kafka headers allow only `byte[]` values, in order camel exchange header to be propagated its value should be serialized to `bytes[]`,
+otherwise header will be skipped.
+The following header value types are supported: `String`, `Integer`, `Long`, `Double`, `Boolean`, `byte[]`.
+Note: all headers propagated *from* kafka *to* camel exchange will contain `byte[]` value by default.
+To override default functionality, these uri parameters can be set: `headerDeserializer` for `from` route and `headerSerializer` for `to` route. For example:
+
+[source,java]
+----
+from("kafka:my_topic?headerDeserializer=#myDeserializer")
+...
+.to("kafka:my_topic?headerSerializer=#mySerializer")
+----
+
+By default, all headers are being filtered by `KafkaHeaderFilterStrategy`.
+Strategy filters out headers which start with `Camel` or `org.apache.camel` prefixes.
+Default strategy can be overridden by using `headerFilterStrategy` uri parameter in both `to` and `from` routes:
+
+[source,java]
+----
+from("kafka:my_topic?headerFilterStrategy=#myStrategy")
+...
+.to("kafka:my_topic?headerFilterStrategy=#myStrategy")
+----
+
+`myStrategy` object should be a subclass of `HeaderFilterStrategy` and must be placed in the Camel registry, either manually or by registration as a bean in Spring, as it is `CamelContext` aware.
+
+=== Kafka Transaction
+
+You need to add `transactionalId=<tx-id>` or `transacted=true` to enable kafka transaction with the producer.
+[source,java]
+----
+from("direct:transaction")
+.to("kafka:my_topic?transacted=true");
+----
+At the end of exchange routing, the kafka producer would commit the transaction or abort it if there is an Exception throwing or the exchange is `RollbackOnly`. Since Kafka does not support transactions in multi threads, it will throw `ProducerFencedException` if there is another producer with the same `transaction.id` to make the transactional request.
+
+It would work with JTA `camel-jta` by using `transacted()` and if it involves some resources (SQL or JMS), which supports XA, then they would work in tandem, where they both will either commit or rollback at the end of the exchange routing. In some cases, if the JTA transaction manager fails to commit (during the 2PC processing), but kafka transaction has been committed before and there is no chance to roll back the changes since the kafka transaction does not support JTA/XA spec. There is still a risk with the data consistency.
+
+When you use the `transacted=true` parameter, the `transactionalId` is made from the endpoint id and route id, but if you want finer control you can just use the `transactionalId` parameter, however remeber to have a `transactionalId` for each kafka producer endpoint. Note that the old style of using `additionalProperties[transactional.id]` is still valid.
+
+If both `transacted=true` and `transactionalId` are present, the latter takes precedence.
+
+=== Setting Kerberos config file
+
+Configure the 'krb5.conf' file directly through the API:
+
+[source,java]
+----
+static {
+    KafkaComponent.setKerberosConfigLocation("path/to/config/file");
+}
+----
+
+=== Authentication to Kafka
+
+Kafka supports several ways to authenticate the clients to the server, including plain text, PKI (certificates) over TLS, you can refer to the https://kafka.apache.org/documentation/#security_sasl[Kafka documentation] for a detailed view of the supported mechanisms. The kafka authentication and authorization is based on JAAS, so you must use a JAAS Login Module implementation on the client side.
+
+This section will outline the main points for the authentication using https://github.com/strimzi/strimzi-kafka-oauth/blob/main/README.md[Strimzi JAAS Login Module] and plain text. The Strimzi OAuth contains several properties to fine tune, the authentication mechanism, so you can set them into the `OAuthBearerLoginModule` section.
+
+The most basic way to authenticate is using the plain text login module with username and password. Beware that this is unsafe and and we suggest the OAuth over TLS for a fully secure mechanism.
+
+*Username and Password over TLS*
+[source]
+----
+camel.component.kafka.security-protocol = SASL_SSL
+camel.component.kafka.sasl-mechanism=PLAIN
+camel.component.kafka.sasl-jaas-config=org.apache.kafka.common.security.plain.PlainLoginModule required \
+  username="my_username" \
+  password="my_password";
+----
+
+There is the Strimzi OAuth Login Module that supports the more secure OAuth mechanisms, where you can set a refresh token, username/password and client secret. You must understand the Kafka Broker security settings to adequately configure the client security configuration.
+
+*OAuth Bearer Token with client secret*
+[source]
+----
+camel.component.kafka.security-protocol = SASL_PLAINTEXT
+camel.component.kafka.sasl-mechanism = OAUTHBEARER
+camel.component.kafka.sasl-jaas-config = org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required \
+  oauth.client.id="kafka-producer-client" \
+  oauth.client.secret="kafka-producer-client-secret" \
+  oauth.username.claim="preferred_username" \
+  oauth.ssl.truststore.location="docker/certificates/ca-truststore.p12" \
+  oauth.ssl.truststore.type="pkcs12" \
+  oauth.ssl.truststore.password="changeit" \
+  oauth.token.endpoint.uri="https://keycloak:8443/realms/demo/protocol/openid-connect/token" ;
+camel.component.kafka.additional-properties[sasl.login.callback.handler.class]=io.strimzi.kafka.oauth.client.JaasClientOauthLoginCallbackHandler
+----
+
+*OAuth Bearer Token with refresh token*
+[source]
+----
+camel.component.kafka.security-protocol = SASL_PLAINTEXT
+camel.component.kafka.sasl-mechanism = OAUTHBEARER
+camel.component.kafka.sasl-jaas-config = org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required \
+  oauth.client.id="kafka-producer-client" \
+  oauth.refresh.token="my_refresh_token"
+  oauth.username.claim="preferred_username" \
+  oauth.ssl.truststore.location="docker/certificates/ca-truststore.p12" \
+  oauth.ssl.truststore.type="pkcs12" \
+  oauth.ssl.truststore.password="changeit" \
+  oauth.token.endpoint.uri="https://keycloak:8443/realms/demo/protocol/openid-connect/token" ;
+camel.component.kafka.additional-properties[sasl.login.callback.handler.class]=io.strimzi.kafka.oauth.client.JaasClientOauthLoginCallbackHandler
+----
+
+=== Batching Consumer
+
+To use a Kafka batching consumer with Camel, an application has to set the configuration `batching` to `true`.
+
+The received records are stored in a list in the exchange used in the pipeline. As such, it is possible to commit individually
+every record or the whole batch at once by committing the last exchange on the list.
+
+The size of the batch is controlled by the option `maxPollRecords`.
+
+Camel will wait until the number of records has been received per batch size (`maxPollRecords`).
+However, this can take a long time, if there are too few records and no new records is being received.
+
+To avoid blocking for too long, waiting for the whole set of records to fill the batch, it is possible to use the `pollTimeoutMs` option
+to set a timeout for the polling. The timeout is only triggered if there has not received any new messages for the given timeout period.
+So for example if `pollTimeoutMs=10000` then the timeout is 10 seconds, and this will only trigger if Camel did not receive any new messages
+from Kafka for 10 seconds. The timeout trigger will reset if a message has been received, so if you continuously and slowly receive new messages,
+then this timeout may not trigger for a long time. Therefore, the option `batchingIntervalMs` can therefore be used to specify an interval (in mills)
+to trigger the batch completion, to avoid waiting for more messages to be received to reach the batch size.
+For example setting `batchingIntervalMs=20000` would let Camel wait at most `pollTimeoutMs + batchingIntervalMs` before
+triggering a batch completion. In this example that would be 30 seconds.
+
+Notice the `pollTimeoutMs` should not be set to a high value, as it's used directly by Kafka while
+receiving new messages from the broker. Camel is not active during this processing, and if the option
+has been configured with a high value, then Camel cannot trigger batch timeout or interval completion ahead
+of time. Therefore, it's recommended to keep this value as default.
+
+
+==== Automatic Commits
+
+By default, Camel uses automatic commits when using batch processing. In this case, Camel automatically commits the records after they have been successfully processed by the application.
+
+In case of failures, the records will not be processed.
+
+The code below provides an example of this approach:
+[source,java]
+----
+public void configure() {
+    from("kafka:topic?groupId=myGroup&pollTimeoutMs=1000&batching=true&maxPollRecords=10&autoOffsetReset=earliest").process(e -> {
+        // The received records are stored as exchanges in a list. This gets the list of those exchanges
+        final List<?> exchanges = e.getMessage().getBody(List.class);
+
+        // Ensure we are actually receiving what we are asking for
+        if (exchanges == null || exchanges.isEmpty()) {
+            return;
+        }
+
+        // The records from the batch are stored in a list of exchanges in the original exchange. To process, we iterate over that list
+        for (Object obj : exchanges) {
+            if (obj instanceof Exchange exchange) {
+                LOG.info("Processing exchange with body {}", exchange.getMessage().getBody(String.class));
+            }
+        }
+    }).to(KafkaTestUtil.MOCK_RESULT);
+}
+----
+
+===== Handling Errors with Automatic Commits
+
+When using automatic commits, Camel will not commit records if there is a failure in processing. Because of this, there is a risk that records could be reprocessed multiple times.
+
+It is recommended to implement appropriate error handling mechanisms and patterns (i.e.; such as dead-letter queues), to prevent failed records from blocking processing progress.
+
+The code below provides an example of handling errors with automatic commits:
+
+[source,java]
+----
+public void configure() {
+    /*
+     We want to use continued here, so that Camel auto-commits the batch even though part of it has failed. In a
+     production scenario, applications should probably send these records to a separate topic or fix the condition
+     that lead to the failure
+     */
+    onException(IllegalArgumentException.class).process(exchange -> {
+        LOG.warn("Failed to process batch {}", exchange.getMessage().getBody());
+        LOG.warn("Failed to process due to {}", exchange.getProperty(Exchange.EXCEPTION_CAUGHT, Throwable.class).getMessage());
+    }).continued(true);
+
+    from("kafka:topic?groupId=myGroup&pollTimeoutMs=1000&batching=true&maxPollRecords=10&autoOffsetReset=earliest").process(e -> {
+        // The received records are stored as exchanges in a list. This gets the list of those exchanges
+        final List<?> exchanges = e.getMessage().getBody(List.class);
+
+        // Ensure we are actually receiving what we are asking for
+        if (exchanges == null || exchanges.isEmpty()) {
+            return;
+        }
+
+        // The records from the batch are stored in a list of exchanges in the original exchange.
+        int i = 0;
+        for (Object o : exchanges) {
+            if (o instanceof Exchange exchange) {
+                i++;
+                LOG.info("Processing exchange with body {}", exchange.getMessage().getBody(String.class));
+
+                if (i == 4) {
+                    throw new IllegalArgumentException("Failed to process record");
+                }
+            }
+        }
+    }).to(KafkaTestUtil.MOCK_RESULT);
+}
+----
+
+===== Break on First Error in Batching Mode
+
+The `breakOnFirstError` option is also supported in batching mode, providing the same error handling behavior as in streaming mode but applied to batch processing.
+
+When `breakOnFirstError=true` is configured with batching enabled:
+
+* **Auto Commit Mode**: When an error occurs during batch processing, Camel will commit the current batch position and trigger a consumer reconnection. This allows the problematic batch to be retried on the next polling cycle.
+
+* **Manual Commit Mode**: When an error occurs, the route's error handler is responsible for performing the manual commit (if desired) before the consumer reconnects.
+
+* **Reconnection**: After an error triggers `breakOnFirstError`, the consumer automatically reconnects and resumes polling from the committed position.
+
+The behavior is consistent with streaming mode, ensuring that error handling patterns work similarly across both processing modes.
+
+Example with automatic commits:
+
+[tabs]
+====
+Java DSL::
++
+[source,java]
+----
+from("kafka:topic?groupId=myGroup&pollTimeoutMs=1000&batching=true&maxPollRecords=10&breakOnFirstError=true&autoCommitEnable=true")
+    .process(e -> {
+        final List<?> exchanges = e.getMessage().getBody(List.class);
+        // Process batch - any exception will trigger breakOnFirstError behavior
+        for (Object exchange : exchanges) {
+            // ... processing logic
+        }
+    }).to("mock:result");
+----
+
+YAML::
++
+[source,yaml]
+----
+- route:
+    from:
+      uri: "kafka:topic"
+      parameters:
+        groupId: "myGroup"
+        pollTimeoutMs: 1000
+        batching: true
+        maxPollRecords: 10
+        breakOnFirstError: true
+        autoCommitEnable: true
+    steps:
+      - process:
+          ref: "batchProcessor"
+      - to: "mock:result"
+----
+
+Processor Implementation::
++
+[source,java]
+----
+@Component("batchProcessor")
+public class BatchProcessor implements Processor {
+    private static final Logger LOG = LoggerFactory.getLogger(BatchProcessor.class);
+
+    @Override
+    public void process(Exchange exchange) throws Exception {
+        final List<?> exchanges = exchange.getMessage().getBody(List.class);
+
+        if (exchanges == null || exchanges.isEmpty()) {
+            return;
+        }
+
+        // Process each exchange in the batch
+        for (Object obj : exchanges) {
+            if (obj instanceof Exchange batchExchange) {
+                String body = batchExchange.getMessage().getBody(String.class);
+                LOG.info("Processing exchange with body: {}", body);
+
+                // Your business logic here
+                // Any exception thrown will trigger breakOnFirstError behavior
+                processMessage(body);
+            }
+        }
+    }
+
+    private void processMessage(String message) {
+        // Implement your message processing logic
+        // Throw exceptions for error conditions that should trigger breakOnFirstError
+        if (message.contains("error")) {
+            throw new RuntimeException("Processing failed for message: " + message);
+        }
+    }
+}
+----
+====
+
+Example with manual commits:
+
+[tabs]
+====
+Java DSL::
++
+[source,java]
+----
+// Error handler that performs manual commit before reconnection
+onException(Exception.class)
+    .handled(false)
+    .process(exchange -> {
+        // Commit manually when error occurs
+        KafkaManualCommit manual = exchange.getMessage()
+            .getHeader(KafkaConstants.MANUAL_COMMIT, KafkaManualCommit.class);
+        manual.commit();
+    });
+
+from("kafka:topic?groupId=myGroup&batching=true&breakOnFirstError=true&autoCommitEnable=false&allowManualCommit=true")
+    .process(e -> {
+        final List<?> exchanges = e.getMessage().getBody(List.class);
+        // Process batch - errors will be handled by the error handler above
+        for (Object exchange : exchanges) {
+            // ... processing logic
+        }
+    })
+    .process(exchange -> {
+        // Manual commit on successful processing
+        KafkaManualCommit manual = exchange.getMessage()
+            .getHeader(KafkaConstants.MANUAL_COMMIT, KafkaManualCommit.class);
+        manual.commit();
+    })
+    .to("mock:result");
+----
+
+YAML::
++
+[source,yaml]
+----
+- route:
+    on-exception:
+      - exception: "java.lang.Exception"
+        handled: false
+        steps:
+          - process:
+              ref: "errorCommitProcessor"
+    from:
+      uri: "kafka:topic"
+      parameters:
+        groupId: "myGroup"
+        batching: true
+        breakOnFirstError: true
+        autoCommitEnable: false
+        allowManualCommit: true
+    steps:
+      - process:
+          ref: "batchProcessorManual"
+      - process:
+          ref: "successCommitProcessor"
+      - to: "mock:result"
+----
+
+Processor Implementations::
++
+[source,java]
+----
+@Component("batchProcessorManual")
+public class BatchProcessorManual implements Processor {
+    private static final Logger LOG = LoggerFactory.getLogger(BatchProcessorManual.class);
+
+    @Override
+    public void process(Exchange exchange) throws Exception {
+        final List<?> exchanges = exchange.getMessage().getBody(List.class);
+
+        if (exchanges == null || exchanges.isEmpty()) {
+            return;
+        }
+
+        // Process each exchange in the batch
+        for (Object obj : exchanges) {
+            if (obj instanceof Exchange batchExchange) {
+                String body = batchExchange.getMessage().getBody(String.class);
+                LOG.info("Processing exchange with body: {}", body);
+
+                // Your business logic here
+                // Errors will be handled by the error handler
+                processMessage(body);
+            }
+        }
+    }
+
+    private void processMessage(String message) {
+        // Implement your message processing logic
+        if (message.contains("error")) {
+            throw new RuntimeException("Processing failed for message: " + message);
+        }
+    }
+}
+
+@Component("errorCommitProcessor")
+public class ErrorCommitProcessor implements Processor {
+    private static final Logger LOG = LoggerFactory.getLogger(ErrorCommitProcessor.class);
+
+    @Override
+    public void process(Exchange exchange) throws Exception {
+        LOG.warn("Error occurred, performing manual commit before reconnection");
+
+        KafkaManualCommit manual = exchange.getMessage()
+            .getHeader(KafkaConstants.MANUAL_COMMIT, KafkaManualCommit.class);
+
+        if (manual != null) {
+            manual.commit();
+            LOG.info("Manual commit completed after error");
+        }
+    }
+}
+
+@Component("successCommitProcessor")
+public class SuccessCommitProcessor implements Processor {
+    private static final Logger LOG = LoggerFactory.getLogger(SuccessCommitProcessor.class);
+
+    @Override
+    public void process(Exchange exchange) throws Exception {
+        LOG.debug("Batch processed successfully, performing manual commit");
+
+        KafkaManualCommit manual = exchange.getMessage()
+            .getHeader(KafkaConstants.MANUAL_COMMIT, KafkaManualCommit.class);
+
+        if (manual != null) {
+            manual.commit();
+            LOG.debug("Manual commit completed after successful processing");
+        }
+    }
+}
+----
+====
+
+==== Manual Commits
+
+When working with batch processing with manual commits, it's up to the application to commit the records, and handle the outcome of potentially invalid records.
+
+The code below provides an example of this approach:
+
+[source,java]
+----
+public void configure() {
+    from("kafka:topic?batching=true&allowManualCommit=true&maxPollRecords=100&kafkaManualCommitFactory=#class:org.apache.camel.component.kafka.consumer.DefaultKafkaManualCommitFactory")
+    .process(e -> {
+        // The received records are stored as exchanges in a list. This gets the list of those exchanges
+        final List<?> exchanges = e.getMessage().getBody(List.class);
+
+        // Ensure we are actually receiving what we are asking for
+        if (exchanges == null || exchanges.isEmpty()) {
+            return;
+        }
+
+        /*
+        Every exchange in that list should contain a reference to the manual commit object. We use the reference
+        for the last exchange in the list to commit the whole batch
+         */
+        final Object tmp = exchanges.getLast();
+        if (tmp instanceof Exchange exchange) {
+            KafkaManualCommit manual =
+                    exchange.getMessage().getHeader(KafkaConstants.MANUAL_COMMIT, KafkaManualCommit.class);
+            LOG.debug("Performing manual commit");
+            manual.commit();
+            LOG.debug("Done performing manual commit");
+        }
+    });
+}
+----
+
+==== Dealing with long polling timeouts
+
+In some cases, applications may want the polling process to have a long timeout (see: `pollTimeoutMs`).
+
+To properly do so, first make sure to have a max polling interval that is higher than the polling timeout (see: `maxPollIntervalMs`).
+
+Then, increase the shutdown timeout to ensure that committing, closing and other Kafka operations are not abruptly aborted. For instance:
+
+[source,java]
+----
+public void configure() {
+    // Note that this can be configured in other ways
+    getCamelContext().getShutdownStrategy().setTimeout(10000);
+
+    // route setup ...
+}
+----
+
+=== Custom Subscription Adapters
+
+Applications with complex subscription logic may provide a custom bean to handle the subscription process. To so, it is
+necessary to implement the interface `SubscribeAdapter`.
+
+[source,java]
+.Example subscriber adapter that subscribes to a set of Kafka topics or patterns
+----
+public class CustomSubscribeAdapter implements SubscribeAdapter {
+    @Override
+    public void subscribe(Consumer<?, ?> consumer, ConsumerRebalanceListener reBalanceListener, TopicInfo topicInfo) {
+        if (topicInfo.isPattern()) {
+            consumer.subscribe(topicInfo.getPattern(), reBalanceListener);
+        } else {
+            consumer.subscribe(topicInfo.getTopics(), reBalanceListener);
+        }
+    }
+}
+----
+
+Then, it is necessary to add it as named bean instance to the registry:
+
+[source,java]
+.Add to registry example
+----
+context.getRegistry().bind(KafkaConstants.KAFKA_SUBSCRIBE_ADAPTER, new CustomSubscribeAdapter());
+----
+
+=== Interoperability
+
+==== JMS
+
+When interoperating Kafka and JMS, it may be necessary to coerce the JMS headers into their expected type.
+
+For instance, when consuming messages from Kafka carrying JMS headers and then sending them to a JMS broker, those headers are
+first deserialized into a byte array. Then, the `camel-jms` component tries to coerce this byte array into the
+specific type used by.
+However, both the origin endpoint as well as how this was setup on the code itself may affect how the data is serialized and
+deserialized. As such, it is not feasible to naively assume the data type of the byte array.
+
+To address this issue, we provide a custom header deserializer to force Kafka to de-serialize the JMS data according to
+the JMS specification. This approach ensures that the headers are properly interpreted and processed by the camel-jms component.
+
+Due to the inherent complexity of each possible system and endpoint, it may not be possible for this deserializer to cover all
+possible scenarios. As such, it is provided as model that can be modified and/or adapted for the specific needs of each application.
+
+To utilize this solution, you need to modify the route URI on the consumer end of the pipeline by including the
+`headerDeserializer` option.
+For example:
+
+[source,java]
+.Route snippet
+----
+from("kafka:topic?headerDeserializer=#class:org.apache.camel.component.kafka.consumer.support.interop.JMSDeserializer")
+    .to("...");
+----
+
+=== Producer Performance
+
+If the producer is performing too slowly for your needs, you may want to aggregate the exchanges before sending.
+
+[source,java]
+.Route snippet
+----
+from("source")
+    // .other route stuff
+    .aggregate(constant(true), new GroupedExchangeAggregationStrategy())
+    .to("kafka:topic");
+----
+
+The reason for this is related to how the producer handles the two different cases:
+
+* with the `aggregrate` it should process the messages in a "batch-sized chunk" semi-asynchronously (that is, send all messages in the batch and then wait for their acknowledgements)
+* without that, it sends synchronously, eventually blocking on the record metadata fetch per exchange.
+
+NOTE: the downside of this approach is an increased number of in-flight exchanges and the potential risks (even though small and rare) associated with that.
+
+== Examples
+
+=== Consuming messages from Kafka
+
+Here is the minimal route you need to read messages from Kafka.
+
+[source,java]
+----
+from("kafka:test?brokers=localhost:9092")
+    .log("Message received from Kafka : ${body}")
+    .log("    on the topic ${headers[kafka.TOPIC]}")
+    .log("    on the partition ${headers[kafka.PARTITION]}")
+    .log("    with the offset ${headers[kafka.OFFSET]}")
+    .log("    with the key ${headers[kafka.KEY]}")
+----
+
+If you need to consume messages from multiple topics, you can use a comma separated list of topic names.
+
+[source,java]
+----
+from("kafka:test,test1,test2?brokers=localhost:9092")
+    .log("Message received from Kafka : ${body}")
+    .log("    on the topic ${headers[kafka.TOPIC]}")
+    .log("    on the partition ${headers[kafka.PARTITION]}")
+    .log("    with the offset ${headers[kafka.OFFSET]}")
+    .log("    with the key ${headers[kafka.KEY]}")
+----
+
+It's also possible to subscribe to multiple topics giving a pattern as the topic name and using the `topicIsPattern` option.
+
+[source,java]
+----
+from("kafka:test.*?brokers=localhost:9092&topicIsPattern=true")
+    .log("Message received from Kafka : ${body}")
+    .log("    on the topic ${headers[kafka.TOPIC]}")
+    .log("    on the partition ${headers[kafka.PARTITION]}")
+    .log("    with the offset ${headers[kafka.OFFSET]}")
+    .log("    with the key ${headers[kafka.KEY]}")
+----
+
+When consuming messages from Kafka, you can use your own offset management and not delegate this management to Kafka.
+To keep the offsets, the component needs a `StateRepository` implementation such as `FileStateRepository`.
+This bean should be available in the registry.
+Here how to use it :
+
+[source,java]
+----
+// Create the repository in which the Kafka offsets will be persisted
+FileStateRepository repository = FileStateRepository.fileStateRepository(new File("/path/to/repo.dat"));
+
+// Bind this repository into the Camel registry
+Registry registry = createCamelRegistry();
+registry.bind("offsetRepo", repository);
+
+// Configure the camel context
+DefaultCamelContext camelContext = new DefaultCamelContext(registry);
+camelContext.addRoutes(new RouteBuilder() {
+    @Override
+    public void configure() throws Exception {
+        fromF("kafka:%s?brokers=localhost:{{kafkaPort}}" +
+                     // Set up the topic and broker address
+                     "&groupId=A" +
+                     // The consumer processor group ID
+                     "&autoOffsetReset=earliest" +
+                     // Ask to start from the beginning if we have unknown offset
+                     "&offsetRepository=#offsetRepo", TOPIC)
+                     // Keep the offsets in the previously configured repository
+                .to("mock:result");
+    }
+});
+----
+
+
+=== Producing messages to Kafka
+
+Here is the minimal route you need to produce messages to Kafka.
+
+[source,java]
+----
+from("direct:start")
+    .setBody(constant("Message from Camel"))          // Message to send
+    .setHeader(KafkaConstants.KEY, constant("Camel")) // Key of the message
+    .to("kafka:test?brokers=localhost:9092");
+----
+
+=== SSL configuration
+
+You have two different ways to configure the SSL communication on the Kafka component.
+
+The first way is through the many SSL endpoint parameters:
+
+[source,java]
+----
+from("kafka:" + TOPIC + "?brokers=localhost:{{kafkaPort}}" +
+             "&groupId=A" +
+             "&sslKeystoreLocation=/path/to/keystore.jks" +
+             "&sslKeystorePassword=changeit" +
+             "&sslKeyPassword=changeit" +
+             "&securityProtocol=SSL")
+        .to("mock:result");
+----
+
+The second way is to use the `sslContextParameters` endpoint parameter:
+
+[source,java]
+----
+// Configure the SSLContextParameters object
+KeyStoreParameters ksp = new KeyStoreParameters();
+ksp.setResource("/path/to/keystore.jks");
+ksp.setPassword("changeit");
+KeyManagersParameters kmp = new KeyManagersParameters();
+kmp.setKeyStore(ksp);
+kmp.setKeyPassword("changeit");
+SSLContextParameters scp = new SSLContextParameters();
+scp.setKeyManagers(kmp);
+
+// Bind this SSLContextParameters into the Camel registry
+Registry registry = createCamelRegistry();
+registry.bind("ssl", scp);
+
+// Configure the camel context
+DefaultCamelContext camelContext = new DefaultCamelContext(registry);
+camelContext.addRoutes(new RouteBuilder() {
+    @Override
+    public void configure() throws Exception {
+        from("kafka:" + TOPIC + "?brokers=localhost:{{kafkaPort}}" +
+                     // Set up the topic and broker address
+                     "&groupId=A" +
+                     // The consumer processor group ID
+                     "&sslContextParameters=#ssl" +
+                     // The security protocol
+                     "&securityProtocol=SSL)
+                     // Reference the SSL configuration
+                .to("mock:result");
+    }
+});
+----
+
+include::spring-boot:partial$starter.adoc[]

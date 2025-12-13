@@ -1,0 +1,66 @@
+= Apache Camel 4.x Upgrade Guide
+
+This document is for helping you upgrade your Apache Camel application
+from Camel 4.x to 4.y. For example, if you are upgrading Camel 4.0 to 4.2, then you should follow the guides
+from both 4.0 to 4.1 and 4.1 to 4.2.
+
+[NOTE]
+====
+https://github.com/apache/camel-upgrade-recipes/[The Camel Upgrade Recipes project] provides automated assistance for some common migration tasks.
+Note that manual migration is still required.
+See the xref:camel-upgrade-recipes-tool.adoc[documentation] page for details.
+====
+
+== Upgrading Camel 4.16 to 4.17
+
+=== camel-core
+
+The `transform` EIP has moved the data-type function to a new specialized `transformDataType` EIP that
+works across all DSLs (Java, XML and YAML).
+
+For Java DSL that means code should be changed
+
+[source,java]
+----
+from("direct:start")
+    .transform(new DataType("myDataType"))
+    .to("mock:result");
+----
+
+to:
+
+[source,java]
+----
+from("direct:start")
+    .transformDataType(new DataType("myDataType"))
+    .to("mock:result");
+----
+
+=== camel-jbang
+
+The `camel-kamelets-catalog` JAR is now downloaded on-demand.
+The version of the Kamelets is now specified via `--kamelets-version` option (or via maven dependencies).
+The following option is no longer in use `-Dcamel-kamelets.version`.
+
+Removed automatic fallback to download Kamelet YAML files from GitHub. Instead, kamelets are
+now only loaded from embedded `camel-kamelets` JAR.
+
+=== camel-infinispan
+
+`camel-infinispan` has been upgraded to https://infinispan.org/blog/2025/11/10/infinispan-16-0[Infinispan 16].
+Virtual threads are enabled by default for embedded mode with `camel-infinispan-embedded`.
+
+If you choose to listen for cache events on the `infinispan-embedded` consumer, it is possible that events are not processed in a predicatable order.
+Disabling virtual threads by setting system property `org.infinispan.threads.virtual` to `false` leads to more predicatable event order processing.
+
+=== camel-tika
+
+Upgraded to Tika v3, and removed `textMain` from `tikaParseOutputFormat` option.
+
+=== Component deprecation
+
+The `camel-stomp` component is deprecated.
+
+=== TestContainers updated to 2.0.2
+
+TestContainers (TC) is updated to 2.0.2, see the https://github.com/testcontainers/testcontainers-java/releases[TC release notes since 2.0.0] and CAMEL-22720, noteworthy are: Removed JUnit 4 support, All modules are now prefixed with testcontainers-. For example, org.testcontainers:mysql is now org.testcontainers:testcontainers-mysql. Update docker image version to 25.0.5. Set default docker API version to 1.44.

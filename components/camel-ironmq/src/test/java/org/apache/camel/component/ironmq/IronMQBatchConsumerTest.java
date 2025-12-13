@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,14 +20,12 @@ import java.util.HashMap;
 import java.util.Map;
 
 import io.iron.ironmq.Message;
-
 import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
-
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
 public class IronMQBatchConsumerTest extends CamelTestSupport {
 
@@ -38,13 +36,13 @@ public class IronMQBatchConsumerTest extends CamelTestSupport {
         for (int counter = 0; counter <= 5; counter++) {
             Message message = new Message();
             message.setBody("{\"body\": \"Message " + counter + "\"}");
-            message.setId("" + counter);
-            ((MockQueue)endpoint.getClient().queue("testqueue")).add(message);
+            message.setId(Integer.toString(counter));
+            ((MockQueue) endpoint.getClient().queue("testqueue")).add(message);
         }
 
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMessageCount(5);
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         mock.message(0).exchangeProperty(Exchange.BATCH_INDEX).isEqualTo(0);
         mock.message(1).exchangeProperty(Exchange.BATCH_INDEX).isEqualTo(1);
@@ -65,19 +63,20 @@ public class IronMQBatchConsumerTest extends CamelTestSupport {
 
         CamelContext context = super.createCamelContext();
         IronMQComponent component = new IronMQComponent(context);
-        Map<String, Object> parameters = new HashMap<String, Object>();
+        component.init();
+        Map<String, Object> parameters = new HashMap<>();
         parameters.put("projectId", "dummy");
         parameters.put("token", "dummy");
         parameters.put("maxMessagesPerPoll", "5");
         parameters.put("batchDelete", "true");
-        endpoint = (IronMQEndpoint)component.createEndpoint("ironmq", "testqueue", parameters);
+        endpoint = (IronMQEndpoint) component.createEndpoint("ironmq", "testqueue", parameters);
         endpoint.setClient(new IronMQClientMock("dummy", "dummy"));
         context.addComponent("ironmq", component);
         return context;
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
             public void configure() {

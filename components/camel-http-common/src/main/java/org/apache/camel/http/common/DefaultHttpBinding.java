@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -28,35 +28,44 @@ import java.net.URLDecoder;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Enumeration;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
-import javax.activation.DataHandler;
-import javax.servlet.ServletOutputStream;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import java.util.concurrent.TimeoutException;
+import java.util.zip.GZIPOutputStream;
+
+import jakarta.activation.DataHandler;
+import jakarta.servlet.ServletOutputStream;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
+import org.apache.camel.ExchangePropertyKey;
 import org.apache.camel.InvalidPayloadException;
 import org.apache.camel.Message;
 import org.apache.camel.RuntimeCamelException;
 import org.apache.camel.StreamCache;
+import org.apache.camel.attachment.AttachmentMessage;
+import org.apache.camel.attachment.CamelFileDataSource;
 import org.apache.camel.converter.stream.CachedOutputStream;
 import org.apache.camel.spi.HeaderFilterStrategy;
-import org.apache.camel.util.GZIPHelper;
+import org.apache.camel.support.ExchangeHelper;
+import org.apache.camel.support.GZIPHelper;
+import org.apache.camel.support.MessageHelper;
+import org.apache.camel.support.ObjectHelper;
+import org.apache.camel.util.FileUtil;
 import org.apache.camel.util.IOHelper;
-import org.apache.camel.util.MessageHelper;
-import org.apache.camel.util.ObjectHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.apache.camel.support.http.HttpUtil.determineResponseCode;
 
 /**
  * Binding between {@link HttpMessage} and {@link HttpServletResponse}.
  * <p/>
- * Uses by default the {@link org.apache.camel.http.common.HttpHeaderFilterStrategy}
+ * Uses by default the {@link org.apache.camel.http.base.HttpHeaderFilterStrategy}
  */
 public class DefaultHttpBinding implements HttpBinding {
 
@@ -76,11 +85,14 @@ public class DefaultHttpBinding implements HttpBinding {
     private boolean useReaderForPayload;
     private boolean eagerCheckContentAvailable;
     private boolean transferException;
+    private boolean muteException;
+    private boolean logException;
     private boolean allowJavaSerializedObject;
     private boolean mapHttpMessageBody = true;
     private boolean mapHttpMessageHeaders = true;
     private boolean mapHttpMessageFormUrlEncodedBody = true;
-    private HeaderFilterStrategy headerFilterStrategy = new HttpHeaderFilterStrategy();
+    private HeaderFilterStrategy headerFilterStrategy = new org.apache.camel.http.base.HttpHeaderFilterStrategy();
+    private String fileNameExtWhitelist;
 
     public DefaultHttpBinding() {
     }
@@ -94,12 +106,15 @@ public class DefaultHttpBinding implements HttpBinding {
     public DefaultHttpBinding(HttpCommonEndpoint endpoint) {
         this.headerFilterStrategy = endpoint.getHeaderFilterStrategy();
         this.transferException = endpoint.isTransferException();
+        this.muteException = endpoint.isMuteException();
+        this.logException = endpoint.isLogException();
         if (endpoint.getComponent() != null) {
             this.allowJavaSerializedObject = endpoint.getComponent().isAllowJavaSerializedObject();
         }
     }
 
-    public void readRequest(HttpServletRequest request, HttpMessage message) {
+    @Override
+    public void readRequest(HttpServletRequest request, Message message) {
         LOG.trace("readRequest {}", request);
 
         // must read body before headers
@@ -129,9 +144,7 @@ public class DefaultHttpBinding implements HttpBinding {
         headers.put(Exchange.HTTP_URI, request.getRequestURI());
         headers.put(Exchange.HTTP_PATH, rawPath);
         // only set content type if not already extracted
-        if (!headers.containsKey(Exchange.CONTENT_TYPE)) {
-            headers.put(Exchange.CONTENT_TYPE, request.getContentType());
-        }
+        headers.computeIfAbsent(Exchange.CONTENT_TYPE, k -> request.getContentType());
 
         if (LOG.isTraceEnabled()) {
             LOG.trace("HTTP method {}", request.getMethod());
@@ -143,31 +156,39 @@ public class DefaultHttpBinding implements HttpBinding {
         }
     }
 
-    protected void readHeaders(HttpServletRequest request, HttpMessage message) {
+    protected void readHeaders(HttpServletRequest request, Message message) {
         LOG.trace("readHeaders {}", request);
 
         Map<String, Object> headers = message.getHeaders();
 
-        //apply the headerFilterStrategy
         Enumeration<?> names = request.getHeaderNames();
         while (names.hasMoreElements()) {
-            String name = (String)names.nextElement();
-            String value = request.getHeader(name);
-            // use http helper to extract parameter value as it may contain multiple values
-            Object extracted = HttpHelper.extractHttpParameterValue(value);
+            String name = (String) names.nextElement();
             // mapping the content-type
-            if (name.toLowerCase().equals("content-type")) {
+            if (name.equalsIgnoreCase("content-type")) {
                 name = Exchange.CONTENT_TYPE;
             }
-            if (headerFilterStrategy != null
-                    && !headerFilterStrategy.applyFilterToExternalHeaders(name, extracted, message.getExchange())) {
-                HttpHelper.appendHeader(headers, name, extracted);
+            // some implementations like Jetty might return unique header names, while some others might not.
+            // Since we are going to call request.getHeaders() to get all values for a header name,
+            // we only need to process a header once.
+            if (!headers.containsKey(name)) {
+                Enumeration<String> values = request.getHeaders(name);
+                while (values.hasMoreElements()) {
+                    String value = values.nextElement();
+                    // use http helper to extract parameter value as it may contain multiple values
+                    Object extracted = HttpHelper.extractHttpParameterValue(value);
+                    //apply the headerFilterStrategy
+                    if (headerFilterStrategy != null
+                            && !headerFilterStrategy.applyFilterToExternalHeaders(name, extracted, message.getExchange())) {
+                        HttpHelper.appendHeader(headers, name, extracted);
+                    }
+                }
             }
         }
 
         if (request.getCharacterEncoding() != null) {
             headers.put(Exchange.HTTP_CHARACTER_ENCODING, request.getCharacterEncoding());
-            message.getExchange().setProperty(Exchange.CHARSET_NAME, request.getCharacterEncoding());
+            message.getExchange().setProperty(ExchangePropertyKey.CHARSET_NAME, request.getCharacterEncoding());
         }
 
         try {
@@ -177,22 +198,27 @@ public class DefaultHttpBinding implements HttpBinding {
         }
     }
 
-    protected void readBody(HttpServletRequest request, HttpMessage message) {
+    protected void readBody(HttpServletRequest request, Message message) {
         LOG.trace("readBody {}", request);
+
+        // Process attachments first as some servlet containers expect the body to not have been read at this point
+        populateAttachments(request, message);
 
         // lets parse the body
         Object body = message.getBody();
         // reset the stream cache if the body is the instance of StreamCache
-        if (body instanceof StreamCache) {
-            ((StreamCache) body).reset();
+        if (body instanceof StreamCache streamCache) {
+            streamCache.reset();
         }
 
         // if content type is serialized java object, then de-serialize it to a Java object
-        if (request.getContentType() != null && HttpConstants.CONTENT_TYPE_JAVA_SERIALIZED_OBJECT.equals(request.getContentType())) {
+        if (request.getContentType() != null
+                && HttpConstants.CONTENT_TYPE_JAVA_SERIALIZED_OBJECT.equals(request.getContentType())) {
             // only deserialize java if allowed
             if (allowJavaSerializedObject || isTransferException()) {
                 try {
-                    InputStream is = message.getExchange().getContext().getTypeConverter().mandatoryConvertTo(InputStream.class, body);
+                    InputStream is
+                            = message.getExchange().getContext().getTypeConverter().mandatoryConvertTo(InputStream.class, body);
                     Object object = HttpHelper.deserializeJavaObjectFromStream(is, message.getExchange().getContext());
                     if (object != null) {
                         message.setBody(object);
@@ -205,24 +231,27 @@ public class DefaultHttpBinding implements HttpBinding {
                 message.setBody(null);
             }
         }
-
-        populateAttachments(request, message);
     }
 
-    protected void populateRequestParameters(HttpServletRequest request, HttpMessage message) throws Exception {
+    protected void populateRequestParameters(HttpServletRequest request, Message message) {
         //we populate the http request parameters without checking the request method
         Map<String, Object> headers = message.getHeaders();
         Enumeration<?> names = request.getParameterNames();
         while (names.hasMoreElements()) {
-            String name = (String)names.nextElement();
+            String name = (String) names.nextElement();
             // there may be multiple values for the same name
             String[] values = request.getParameterValues(name);
-            LOG.trace("HTTP parameter {} = {}", name, values);
-
-            if (values != null) {
-                for (String value : values) {
+            // Avoid potential injections
+            String[] sanitizedValues = HttpHelper.sanitizeLog(values);
+            if (sanitizedValues != null) {
+                if (LOG.isTraceEnabled()) {
+                    LOG.trace("HTTP parameter {} = {}", name, sanitizedValues);
+                }
+                for (String value : sanitizedValues) {
+                    // use http helper to extract parameter value as it may contain multiple values
+                    Object extracted = HttpHelper.extractHttpParameterValue(value);
                     if (headerFilterStrategy != null
-                        && !headerFilterStrategy.applyFilterToExternalHeaders(name, value, message.getExchange())) {
+                            && !headerFilterStrategy.applyFilterToExternalHeaders(name, extracted, message.getExchange())) {
                         HttpHelper.appendHeader(headers, name, value);
                     }
                 }
@@ -230,7 +259,7 @@ public class DefaultHttpBinding implements HttpBinding {
         }
     }
 
-    protected void readFormUrlEncodedBody(HttpServletRequest request, HttpMessage message) throws UnsupportedEncodingException {
+    protected void readFormUrlEncodedBody(HttpServletRequest request, Message message) throws UnsupportedEncodingException {
         LOG.trace("readFormUrlEncodedBody {}", request);
         // should we extract key=value pairs from form bodies (application/x-www-form-urlencoded)
         // and map those to Camel headers
@@ -250,13 +279,13 @@ public class DefaultHttpBinding implements HttpBinding {
                 // lets parse the body
                 Object body = message.getBody();
                 // reset the stream cache if the body is the instance of StreamCache
-                if (body instanceof StreamCache) {
-                    ((StreamCache) body).reset();
+                if (body instanceof StreamCache streamCache) {
+                    streamCache.reset();
                 }
 
                 // Push POST form params into the headers to retain compatibility with DefaultHttpBinding
                 String text = message.getBody(String.class);
-                if (ObjectHelper.isNotEmpty(text)) {
+                if (org.apache.camel.util.ObjectHelper.isNotEmpty(text)) {
                     for (String param : text.split("&")) {
                         String[] pair = param.split("=", 2);
                         if (pair.length == 2) {
@@ -273,17 +302,18 @@ public class DefaultHttpBinding implements HttpBinding {
                 }
 
                 // reset the stream cache if the body is the instance of StreamCache
-                if (body instanceof StreamCache) {
-                    ((StreamCache) body).reset();
+                if (body instanceof StreamCache streamCache) {
+                    streamCache.reset();
                 }
             }
         }
     }
 
-    private String getRawPath(HttpServletRequest request) {
+    protected String getRawPath(HttpServletRequest request) {
         String uri = request.getRequestURI();
         /**
          * In async case, it seems that request.getContextPath() can return null
+         *
          * @see https://dev.eclipse.org/mhonarc/lists/jetty-users/msg04669.html
          */
         String contextPath = request.getContextPath() == null ? "" : request.getContextPath();
@@ -291,22 +321,46 @@ public class DefaultHttpBinding implements HttpBinding {
         return uri.substring(contextPath.length() + servletPath.length());
     }
 
-    protected void populateAttachments(HttpServletRequest request, HttpMessage message) {
+    protected void populateAttachments(HttpServletRequest request, Message message) {
         // check if there is multipart files, if so will put it into DataHandler
         Enumeration<?> names = request.getAttributeNames();
         while (names.hasMoreElements()) {
             String name = (String) names.nextElement();
             Object object = request.getAttribute(name);
             LOG.trace("HTTP attachment {} = {}", name, object);
-            if (object instanceof File) {
+            if (object instanceof File fileObject) {
                 String fileName = request.getParameter(name);
-                message.addAttachment(fileName, new DataHandler(new CamelFileDataSource((File)object, fileName)));
+                // fix file name if using malicious parameter name
+                if (fileName != null) {
+                    fileName = fileName.replaceAll("[\n\r\t]", "_");
+                }
+                // is the file name accepted
+                boolean accepted = true;
+                if (fileNameExtWhitelist != null) {
+                    String ext = FileUtil.onlyExt(fileName);
+                    if (ext != null) {
+                        ext = ext.toLowerCase(Locale.US);
+                        fileNameExtWhitelist = fileNameExtWhitelist.toLowerCase(Locale.US);
+                        if (!fileNameExtWhitelist.equals("*") && !fileNameExtWhitelist.contains(ext)) {
+                            accepted = false;
+                        }
+                    }
+                }
+                if (accepted) {
+                    AttachmentMessage am = message.getExchange().getMessage(AttachmentMessage.class);
+                    am.addAttachment(fileName, new DataHandler(new CamelFileDataSource(fileObject, fileName)));
+                } else {
+                    LOG.debug(
+                            "Cannot add file as attachment: {} because the file is not accepted according to fileNameExtWhitelist: {}",
+                            fileName, fileNameExtWhitelist);
+                }
             }
         }
     }
 
+    @Override
     public void writeResponse(Exchange exchange, HttpServletResponse response) throws IOException {
-        Message target = exchange.hasOut() ? exchange.getOut() : exchange.getIn();
+        Message target = exchange.getMessage();
         if (exchange.isFailed()) {
             if (exchange.getException() != null) {
                 doWriteExceptionResponse(exchange.getException(), response);
@@ -327,39 +381,51 @@ public class DefaultHttpBinding implements HttpBinding {
         if (request.getHeader(Exchange.CONTENT_ENCODING) != null) {
             String contentEncoding = request.getHeader(Exchange.CONTENT_ENCODING, String.class);
             response.setHeader(Exchange.CONTENT_ENCODING, contentEncoding);
-        }        
+        }
         if (checkChunked(response, response.getExchange())) {
             response.setHeader(Exchange.TRANSFER_ENCODING, "chunked");
         }
     }
 
+    @Override
     public void doWriteExceptionResponse(Throwable exception, HttpServletResponse response) throws IOException {
-        // 500 for internal server error
-        response.setStatus(500);
-
-        if (isTransferException()) {
-            // transfer the exception as a serialized java object
-            HttpHelper.writeObjectToServletResponse(response, exception);
-        } else {
-            // write stacktrace as plain text
+        if (exception instanceof TimeoutException) {
+            response.setStatus(HttpServletResponse.SC_GATEWAY_TIMEOUT);
             response.setContentType("text/plain");
-            PrintWriter pw = response.getWriter();
-            exception.printStackTrace(pw);
-            pw.flush();
+            response.getWriter().write("Timeout error");
+        } else if (isMuteException()) {
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            response.setContentLength(0);
+            response.setContentType("text/plain");
+            if (isLogException()) {
+                LOG.error("Server internal error response returned due to '{}'", exception.getMessage(), exception);
+            }
+        } else {
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+
+            if (isTransferException()) {
+                // transfer the exception as a serialized java object
+                HttpHelper.writeObjectToServletResponse(response, exception);
+            } else {
+                // write stacktrace as plain text
+                response.setContentType("text/plain");
+                PrintWriter pw = response.getWriter();
+                exception.printStackTrace(pw);
+                pw.flush();
+            }
         }
     }
 
+    @Override
     public void doWriteFaultResponse(Message message, HttpServletResponse response, Exchange exchange) throws IOException {
-        message.setHeader(Exchange.HTTP_RESPONSE_CODE, 500);
         doWriteResponse(message, response, exchange);
     }
 
+    @Override
     public void doWriteResponse(Message message, HttpServletResponse response, Exchange exchange) throws IOException {
-        // set the status code in the response. Default is 200.
-        if (message.getHeader(Exchange.HTTP_RESPONSE_CODE) != null) {
-            int code = message.getHeader(Exchange.HTTP_RESPONSE_CODE, Integer.class);
-            response.setStatus(code);
-        }
+        int statusCode = determineResponseCode(exchange, exchange.getMessage().getBody());
+        response.setStatus(statusCode);
+
         // set the content type in the response.
         String contentType = MessageHelper.getContentType(message);
         if (contentType != null) {
@@ -372,7 +438,7 @@ public class DefaultHttpBinding implements HttpBinding {
             String key = entry.getKey();
             Object value = entry.getValue();
             // use an iterator as there can be multiple values. (must not use a delimiter)
-            final Iterator<?> it = ObjectHelper.createIterator(value, null);
+            final Iterator<?> it = ObjectHelper.createIterator(value, null, true);
             while (it.hasNext()) {
                 String headerValue = convertHeaderValueToString(exchange, it.next());
                 if (headerValue != null && headerFilterStrategy != null
@@ -391,17 +457,16 @@ public class DefaultHttpBinding implements HttpBinding {
             }
         }
     }
-    
+
     protected String convertHeaderValueToString(Exchange exchange, Object headerValue) {
-        if ((headerValue instanceof Date || headerValue instanceof Locale)
-            && convertDateAndLocaleLocally(exchange)) {
-            if (headerValue instanceof Date) {
-                return toHttpDate((Date)headerValue);
-            } else {
-                return toHttpLanguage((Locale)headerValue);
-            }
+        if (headerValue instanceof Date date && convertDateAndLocaleLocally(exchange)) {
+            return toHttpDate(date);
         } else {
-            return exchange.getContext().getTypeConverter().convertTo(String.class, headerValue);
+            if (headerValue instanceof Locale locale && convertDateAndLocaleLocally(exchange)) {
+                return toHttpLanguage(locale);
+            } else {
+                return exchange.getContext().getTypeConverter().convertTo(String.class, headerValue);
+            }
         }
     }
 
@@ -419,7 +484,7 @@ public class DefaultHttpBinding implements HttpBinding {
         }
         return false;
     }
-    
+
     protected int copyStream(InputStream is, OutputStream os, int bufferSize) throws IOException {
         try {
             // copy stream, and must flush on each write as etc Jetty has better performance when
@@ -433,7 +498,7 @@ public class DefaultHttpBinding implements HttpBinding {
     protected void doWriteDirectResponse(Message message, HttpServletResponse response, Exchange exchange) throws IOException {
         // if content type is serialized Java object, then serialize and write it to the response
         String contentType = message.getHeader(Exchange.CONTENT_TYPE, String.class);
-        if (contentType != null && HttpConstants.CONTENT_TYPE_JAVA_SERIALIZED_OBJECT.equals(contentType)) {
+        if (HttpConstants.CONTENT_TYPE_JAVA_SERIALIZED_OBJECT.equals(contentType)) {
             if (allowJavaSerializedObject || isTransferException()) {
                 try {
                     Object object = message.getMandatoryBody(Serializable.class);
@@ -444,7 +509,8 @@ public class DefaultHttpBinding implements HttpBinding {
                     throw new IOException(e);
                 }
             } else {
-                throw new RuntimeCamelException("Content-type " + HttpConstants.CONTENT_TYPE_JAVA_SERIALIZED_OBJECT + " is not allowed");
+                throw new RuntimeCamelException(
+                        "Content-type " + HttpConstants.CONTENT_TYPE_JAVA_SERIALIZED_OBJECT + " is not allowed");
             }
         }
 
@@ -469,15 +535,15 @@ public class DefaultHttpBinding implements HttpBinding {
                     // we need to setup the length if message is not chucked
                     response.setContentLength(len);
                     OutputStream current = stream.getCurrentStream();
-                    if (current instanceof ByteArrayOutputStream) {
+                    if (current instanceof ByteArrayOutputStream bos) {
                         if (LOG.isDebugEnabled()) {
-                            LOG.debug("Streaming (direct) response in non-chunked mode with content-length {}");
+                            LOG.debug("Streaming (direct) response in non-chunked mode with content-length {}", len);
                         }
-                        ByteArrayOutputStream bos = (ByteArrayOutputStream) current;
                         bos.writeTo(os);
                     } else {
                         if (LOG.isDebugEnabled()) {
-                            LOG.debug("Streaming response in non-chunked mode with content-length {} and buffer size: {}", len, len);
+                            LOG.debug("Streaming response in non-chunked mode with content-length {} and buffer size: {}", len,
+                                    len);
                         }
                         copyStream(stream.getInputStream(), os, len);
                     }
@@ -495,12 +561,13 @@ public class DefaultHttpBinding implements HttpBinding {
             String data = message.getBody(String.class);
             if (data != null) {
                 // set content length and encoding before we write data
-                String charset = IOHelper.getCharsetName(exchange, true);
+                String charset = ExchangeHelper.getCharsetName(exchange, true);
                 final int dataByteLength = data.getBytes(charset).length;
                 response.setCharacterEncoding(charset);
                 response.setContentLength(dataByteLength);
                 if (LOG.isDebugEnabled()) {
-                    LOG.debug("Writing response in non-chunked mode as plain text with content-length {} and buffer size: {}", dataByteLength, response.getBufferSize());
+                    LOG.debug("Writing response in non-chunked mode as plain text with content-length {} and buffer size: {}",
+                            dataByteLength, response.getBufferSize());
                 }
                 try {
                     response.getWriter().print(data);
@@ -516,8 +583,8 @@ public class DefaultHttpBinding implements HttpBinding {
         if (message.getHeader(Exchange.HTTP_CHUNKED) == null) {
             // check the endpoint option
             Endpoint endpoint = exchange.getFromEndpoint();
-            if (endpoint instanceof HttpCommonEndpoint) {
-                answer = ((HttpCommonEndpoint)endpoint).isChunked();
+            if (endpoint instanceof HttpCommonEndpoint httpCommonEndpoint) {
+                answer = httpCommonEndpoint.isChunked();
             }
         } else {
             answer = message.getHeader(Exchange.HTTP_CHUNKED, boolean.class);
@@ -526,30 +593,34 @@ public class DefaultHttpBinding implements HttpBinding {
     }
 
     protected void doWriteGZIPResponse(Message message, HttpServletResponse response, Exchange exchange) throws IOException {
-        byte[] bytes;
-        try {
-            bytes = message.getMandatoryBody(byte[].class);
-        } catch (InvalidPayloadException e) {
-            throw ObjectHelper.wrapRuntimeCamelException(e);
-        }
-
-        byte[] data = GZIPHelper.compressGZIP(bytes);
         ServletOutputStream os = response.getOutputStream();
-        try {
+        GZIPOutputStream gos = new GZIPOutputStream(os);
+
+        Object body = exchange.getIn().getBody();
+        if (body instanceof InputStream is) {
             if (LOG.isDebugEnabled()) {
-                LOG.debug("Streaming response as GZIP in non-chunked mode with content-length {} and buffer size: {}", data.length, response.getBufferSize());
+                LOG.debug("Streaming GZIP response in chunked mode with buffer size {}", response.getBufferSize());
             }
-            response.setContentLength(data.length);
-            os.write(data);
-            os.flush();
-        } finally {
-            IOHelper.close(os);
+            copyStream(is, gos, response.getBufferSize());
+        } else {
+            byte[] bytes;
+            try {
+                bytes = message.getMandatoryBody(byte[].class);
+            } catch (InvalidPayloadException e) {
+                throw RuntimeCamelException.wrapRuntimeCamelException(e);
+            }
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Writing GZIP response in chunked mode from byte array with length: {}", bytes.length);
+            }
+            gos.write(bytes);
+            gos.flush();
+            IOHelper.close(gos);
         }
     }
 
-    public Object parseBody(HttpMessage httpMessage) throws IOException {
+    @Override
+    public Object parseBody(HttpServletRequest request, Message message) throws IOException {
         // lets assume the body is a reader
-        HttpServletRequest request = httpMessage.getRequest();
         // there is only a body if we have a content length, or its -1 to indicate unknown length
         int len = request.getContentLength();
         LOG.trace("HttpServletRequest content-length: {}", len);
@@ -569,72 +640,118 @@ public class DefaultHttpBinding implements HttpBinding {
                 }
             }
             // read the response body from servlet request
-            return HttpHelper.readRequestBodyFromServletRequest(request, httpMessage.getExchange());
+            return HttpHelper.readRequestBodyFromServletRequest(request, message.getExchange());
         }
     }
 
+    @Override
     public boolean isUseReaderForPayload() {
         return useReaderForPayload;
     }
 
+    @Override
     public void setUseReaderForPayload(boolean useReaderForPayload) {
         this.useReaderForPayload = useReaderForPayload;
     }
 
+    @Override
     public boolean isEagerCheckContentAvailable() {
         return eagerCheckContentAvailable;
     }
 
+    @Override
     public void setEagerCheckContentAvailable(boolean eagerCheckContentAvailable) {
         this.eagerCheckContentAvailable = eagerCheckContentAvailable;
     }
 
+    @Override
     public boolean isTransferException() {
         return transferException;
     }
 
+    @Override
     public void setTransferException(boolean transferException) {
         this.transferException = transferException;
     }
 
+    @Override
+    public boolean isMuteException() {
+        return muteException;
+    }
+
+    @Override
+    public void setMuteException(boolean muteException) {
+        this.muteException = muteException;
+    }
+
+    @Override
+    public boolean isLogException() {
+        return logException;
+    }
+
+    @Override
+    public void setLogException(boolean logException) {
+        this.logException = logException;
+    }
+
+    @Override
     public boolean isAllowJavaSerializedObject() {
         return allowJavaSerializedObject;
     }
 
+    @Override
     public void setAllowJavaSerializedObject(boolean allowJavaSerializedObject) {
         this.allowJavaSerializedObject = allowJavaSerializedObject;
     }
 
+    @Override
     public HeaderFilterStrategy getHeaderFilterStrategy() {
         return headerFilterStrategy;
     }
 
+    @Override
     public void setHeaderFilterStrategy(HeaderFilterStrategy headerFilterStrategy) {
         this.headerFilterStrategy = headerFilterStrategy;
     }
 
+    @Override
     public boolean isMapHttpMessageBody() {
         return mapHttpMessageBody;
     }
 
+    @Override
     public void setMapHttpMessageBody(boolean mapHttpMessageBody) {
         this.mapHttpMessageBody = mapHttpMessageBody;
     }
 
+    @Override
     public boolean isMapHttpMessageHeaders() {
         return mapHttpMessageHeaders;
     }
 
+    @Override
     public void setMapHttpMessageHeaders(boolean mapHttpMessageHeaders) {
         this.mapHttpMessageHeaders = mapHttpMessageHeaders;
     }
 
+    @Override
     public boolean isMapHttpMessageFormUrlEncodedBody() {
         return mapHttpMessageFormUrlEncodedBody;
     }
 
+    @Override
     public void setMapHttpMessageFormUrlEncodedBody(boolean mapHttpMessageFormUrlEncodedBody) {
         this.mapHttpMessageFormUrlEncodedBody = mapHttpMessageFormUrlEncodedBody;
+    }
+
+    @Override
+    public String getFileNameExtWhitelist() {
+        return fileNameExtWhitelist;
+    }
+
+    @Override
+    public void setFileNameExtWhitelist(String fileNameExtWhitelist) {
+        this.fileNameExtWhitelist = fileNameExtWhitelist;
     }
 
     protected static SimpleDateFormat getHttpDateFormat() {
@@ -642,17 +759,17 @@ public class DefaultHttpBinding implements HttpBinding {
         dateFormat.setTimeZone(TIME_ZONE_GMT);
         return dateFormat;
     }
-    
+
     protected static String toHttpDate(Date date) {
         SimpleDateFormat format = getHttpDateFormat();
         return format.format(date);
     }
-    
+
     protected static String toHttpLanguage(Locale locale) {
         StringBuilder sb = new StringBuilder();
         sb.append(locale.getLanguage());
         if (locale.getCountry() != null) {
-            // Locale.toString() will use a "_" separator instead, 
+            // Locale.toString() will use a "_" separator instead,
             // while '-' is expected in headers such as Content-Language, etc:
             // http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.10
             sb.append('-').append(locale.getCountry());

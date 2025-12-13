@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,58 +18,46 @@ package org.apache.camel.component.optaplanner;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
-import org.apache.camel.impl.DefaultConsumer;
-import org.optaplanner.core.api.solver.Solver;
-import org.optaplanner.core.api.solver.event.BestSolutionChangedEvent;
-import org.optaplanner.core.api.solver.event.SolverEventListener;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.camel.support.DefaultConsumer;
 
-/**
- * OptaPlanner component for Camel
- */
 public class OptaPlannerConsumer extends DefaultConsumer {
-    private static final transient Logger LOGGER = LoggerFactory.getLogger(OptaPlannerConsumer.class);
     private final OptaPlannerEndpoint endpoint;
     private final OptaPlannerConfiguration configuration;
-    private final SolverEventListener listener;
+    private OptaplannerSolutionEventListener solverJobListener;
 
     public OptaPlannerConsumer(OptaPlannerEndpoint endpoint, Processor processor, OptaPlannerConfiguration configuration) {
         super(endpoint, processor);
         this.endpoint = endpoint;
         this.configuration = configuration;
-        listener = new SolverEventListener() {
-            @Override
-            public void bestSolutionChanged(BestSolutionChangedEvent event) {
-                if (event.isEveryProblemFactChangeProcessed() && event.isNewBestSolutionInitialized()) {
-                    processEvent(event);
-                }
-            }
-        };
+        this.solverJobListener = this::processSolverJobEvent;
     }
 
-    public void processEvent(BestSolutionChangedEvent event) {
-        Exchange exchange = getEndpoint().createExchange();
-        exchange.getOut().setHeader(OptaPlannerConstants.BEST_SOLUTION, event.getNewBestSolution());
+    public void processSolverJobEvent(OptaplannerSolutionEvent event) {
+        Exchange exchange = createExchange(true);
+        exchange.getMessage().setHeader(OptaPlannerConstants.BEST_SOLUTION, event.getBestSolution());
         try {
             getProcessor().process(exchange);
         } catch (Exception e) {
-            LOGGER.error("Error processing event ", e);
+            exchange.setException(e);
+        }
+        if (exchange.getException() != null) {
+            getExceptionHandler().handleException(exchange.getException());
         }
     }
 
     @Override
     protected void doStart() throws Exception {
-        Solver solver = endpoint.getOrCreateSolver(configuration.getSolverId());
-        solver.addEventListener(listener);
+        final Long problemId = configuration.getProblemId();
+        endpoint.addSolutionEventListener(problemId, solverJobListener);
+
         super.doStart();
     }
 
     @Override
     protected void doStop() throws Exception {
-        Solver solver = endpoint.getOrCreateSolver(configuration.getSolverId());
-        solver.removeEventListener(listener);
+        final Long problemId = configuration.getProblemId();
+        endpoint.removeSolutionEventListener(problemId, solverJobListener);
+
         super.doStop();
     }
 }
-

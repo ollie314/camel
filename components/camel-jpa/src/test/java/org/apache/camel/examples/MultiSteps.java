@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,24 +16,22 @@
  */
 package org.apache.camel.examples;
 
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.Id;
-import javax.persistence.NamedQuery;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.NamedQuery;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.component.jpa.Consumed;
 import org.apache.camel.component.jpa.PreConsumed;
-import org.junit.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 /**
- * Represents a task which has multiple steps so that it can move from stage to stage
- * with the method annotated with {@link @Consumed} being invoked when the Camel consumer
- * has processed the entity bean
- *
- * @version 
+ * Represents a task which has multiple steps so that it can move from stage to stage with the method annotated with
+ * {@link @Consumed} being invoked when the Camel consumer has processed the entity bean
  */
 @Entity
 @NamedQuery(name = "step1", query = "select x from MultiSteps x where x.step = 1")
@@ -76,11 +74,11 @@ public class MultiSteps {
     public void setStep(int step) {
         this.step = step;
     }
-    
+
     @PreConsumed
     public void beforeGoToNextStep(Exchange exchange) {
         // we could do some thing to update the entity by using the exchange property
-        Assert.assertNotNull(exchange);
+        assertNotNull(exchange);
         LOG.info("Calling beforeGoToNextStep");
     }
 

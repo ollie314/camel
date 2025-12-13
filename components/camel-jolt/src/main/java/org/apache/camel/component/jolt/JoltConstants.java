@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,13 +16,16 @@
  */
 package org.apache.camel.component.jolt;
 
+import org.apache.camel.spi.Metadata;
+
 /**
  * Jolt Constants.
  */
 public final class JoltConstants {
 
+    @Metadata(description = "The resource URI", javaType = "String")
     public static final String JOLT_RESOURCE_URI = "CamelJoltResourceUri";
-    
+    @Metadata(description = "The context", javaType = "Map<String, Object>")
     public static final String JOLT_CONTEXT = "CamelJoltContext";
 
     private JoltConstants() {

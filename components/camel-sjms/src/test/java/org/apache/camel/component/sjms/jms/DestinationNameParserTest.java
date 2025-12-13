@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,41 +16,40 @@
  */
 package org.apache.camel.component.sjms.jms;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * @author jkorab
- */
 public class DestinationNameParserTest {
 
     @Test
-    public void testIsTopic() throws Exception {
-        DestinationNameParser parser = new DestinationNameParser();
-        assertTrue(parser.isTopic("topic:foo"));
-        assertFalse(parser.isTopic("queue:bar"));
-        assertFalse(parser.isTopic("bar"));
-    }
-
-    @Test(expected = IllegalArgumentException.class)
-    public void testIsTopicNullDestinationName() throws Exception {
-        DestinationNameParser parser = new DestinationNameParser();
-        parser.isTopic(null);
+    public void testIsTopic() {
+        assertTrue(DestinationNameParser.isTopic("topic:foo.DestinationNameParserTest"));
+        assertFalse(DestinationNameParser.isTopic("queue:bar.DestinationNameParserTest"));
+        assertFalse(DestinationNameParser.isTopic("bar"));
     }
 
     @Test
-    public void testGetShortName() throws Exception {
-        DestinationNameParser parser = new DestinationNameParser();
-        assertEquals("foo", parser.getShortName("topic:foo"));
-        assertFalse("bar", parser.isTopic("queue:bar"));
-        assertFalse("bar", parser.isTopic("bar"));
+    public void testIsTopicNullDestinationName() {
+        assertThrows(IllegalArgumentException.class,
+                () -> DestinationNameParser.isTopic(null));
     }
 
-    @Test(expected = IllegalArgumentException.class)
-    public void testGetShortNameNullDestinationName() throws Exception {
-        DestinationNameParser parser = new DestinationNameParser();
-        parser.getShortName(null);
+    @Test
+    public void testGetShortName() {
+        assertEquals("foo.DestinationNameParserTest",
+                DestinationNameParser.getShortName("topic:foo.DestinationNameParserTest"));
+        assertFalse(DestinationNameParser.isTopic("queue:bar.DestinationNameParserTest"), "bar");
+        assertFalse(DestinationNameParser.isTopic("bar"), "bar");
+    }
+
+    @Test
+    public void testGetShortNameNullDestinationName() {
+        assertThrows(IllegalArgumentException.class,
+                () -> DestinationNameParser.getShortName(null));
     }
 
 }

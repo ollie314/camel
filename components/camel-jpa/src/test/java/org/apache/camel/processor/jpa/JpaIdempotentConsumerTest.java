@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,8 +20,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import javax.persistence.EntityManagerFactory;
-import javax.persistence.Query;
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.Query;
 
 import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
@@ -30,18 +30,18 @@ import org.apache.camel.Processor;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.processor.idempotent.jpa.MessageProcessed;
 import org.apache.camel.spring.SpringRouteBuilder;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
 
 import static org.apache.camel.processor.idempotent.jpa.JpaMessageIdRepository.jpaMessageIdRepository;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * @version 
- */
 public class JpaIdempotentConsumerTest extends AbstractJpaTest {
-    protected static final String SELECT_ALL_STRING = "select x from " + MessageProcessed.class.getName() + " x where x.processorName = ?1";
+    protected static final String SELECT_ALL_STRING
+            = "select x from " + MessageProcessed.class.getName() + " x where x.processorName = ?1";
     protected static final String PROCESSOR_NAME = "myProcessorName";
 
     protected Endpoint startEndpoint;
@@ -69,10 +69,8 @@ public class JpaIdempotentConsumerTest extends AbstractJpaTest {
         });
     }
 
-    @Override
-    @Before
-    public void setUp() throws Exception {
-        super.setUp();
+    @BeforeEach
+    public void setEndpoints() {
         startEndpoint = resolveMandatoryEndpoint("direct:start");
         resultEndpoint = getMockEndpoint("mock:result");
     }
@@ -82,12 +80,11 @@ public class JpaIdempotentConsumerTest extends AbstractJpaTest {
     public void testDuplicateMessagesAreFilteredOut() throws Exception {
         context.addRoutes(new SpringRouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // START SNIPPET: idempotent
                 from("direct:start").idempotentConsumer(
                         header("messageId"),
-                        jpaMessageIdRepository(lookup(EntityManagerFactory.class), PROCESSOR_NAME)
-                ).to("mock:result");
+                        jpaMessageIdRepository(lookup(EntityManagerFactory.class), PROCESSOR_NAME)).to("mock:result");
                 // END SNIPPET: idempotent
             }
         });
@@ -102,10 +99,10 @@ public class JpaIdempotentConsumerTest extends AbstractJpaTest {
         sendMessage("1", "one");
         sendMessage("3", "three");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // all 3 messages should be in jpa repo
-        Set<String> ids = new HashSet<String>();
+        Set<String> ids = new HashSet<>();
         Query query = entityManager.createQuery(SELECT_ALL_STRING);
         query.setParameter(1, PROCESSOR_NAME);
         List<MessageProcessed> list = query.getResultList();
@@ -114,9 +111,9 @@ public class JpaIdempotentConsumerTest extends AbstractJpaTest {
         }
 
         assertEquals(3, ids.size());
-        assertTrue("Should contain message 1", ids.contains("1"));
-        assertTrue("Should contain message 2", ids.contains("2"));
-        assertTrue("Should contain message 3", ids.contains("3"));
+        assertTrue(ids.contains("1"), "Should contain message 1");
+        assertTrue(ids.contains("2"), "Should contain message 2");
+        assertTrue(ids.contains("3"), "Should contain message 3");
     }
 
     @SuppressWarnings("unchecked")
@@ -124,20 +121,19 @@ public class JpaIdempotentConsumerTest extends AbstractJpaTest {
     public void testFailedExchangesNotAdded() throws Exception {
         context.addRoutes(new SpringRouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 errorHandler(deadLetterChannel("mock:error").maximumRedeliveries(0).redeliveryDelay(0).logStackTrace(false));
 
                 from("direct:start").idempotentConsumer(
                         header("messageId"),
-                        jpaMessageIdRepository(lookup(EntityManagerFactory.class), PROCESSOR_NAME)
-                ).process(new Processor() {
-                    public void process(Exchange exchange) throws Exception {
-                        String id = exchange.getIn().getHeader("messageId", String.class);
-                        if (id.equals("2")) {
-                            throw new IllegalArgumentException("Damn I cannot handle id 2");
-                        }
-                    }
-                }).to("mock:result");
+                        jpaMessageIdRepository(lookup(EntityManagerFactory.class), PROCESSOR_NAME)).process(new Processor() {
+                            public void process(Exchange exchange) {
+                                String id = exchange.getIn().getHeader("messageId", String.class);
+                                if (id.equals("2")) {
+                                    throw new IllegalArgumentException("Damn I cannot handle id 2");
+                                }
+                            }
+                        }).to("mock:result");
             }
         });
         context.start();
@@ -153,10 +149,10 @@ public class JpaIdempotentConsumerTest extends AbstractJpaTest {
         sendMessage("1", "one");
         sendMessage("3", "three");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // only message 1 and 3 should be in jpa repo
-        Set<String> ids = new HashSet<String>();
+        Set<String> ids = new HashSet<>();
         Query query = entityManager.createQuery(SELECT_ALL_STRING);
         query.setParameter(1, PROCESSOR_NAME);
         List<MessageProcessed> list = query.getResultList();
@@ -165,8 +161,8 @@ public class JpaIdempotentConsumerTest extends AbstractJpaTest {
         }
 
         assertEquals(2, ids.size());
-        assertTrue("Should contain message 1", ids.contains("1"));
-        assertTrue("Should contain message 3", ids.contains("3"));
+        assertTrue(ids.contains("1"), "Should contain message 1");
+        assertTrue(ids.contains("3"), "Should contain message 3");
     }
 
     protected void sendMessage(final Object messageId, final Object body) {

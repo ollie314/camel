@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.camel.component.disruptor;
 
 import java.util.ArrayList;
@@ -33,12 +32,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicMarkableReference;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.LockSupport;
+import java.util.concurrent.locks.ReentrantLock;
 
 import com.lmax.disruptor.InsufficientCapacityException;
 import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.dsl.Disruptor;
-
 import org.apache.camel.Exchange;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,8 +46,8 @@ import org.slf4j.LoggerFactory;
 /**
  * Holder for Disruptor references.
  * <p/>
- * This is used to keep track of the usages of the Disruptors, so we know when a Disruptor is no longer in use, and
- * can safely be discarded.
+ * This is used to keep track of the usages of the Disruptors, so we know when a Disruptor is no longer in use, and can
+ * safely be discarded.
  */
 public class DisruptorReference {
     private static final Logger LOGGER = LoggerFactory.getLogger(DisruptorReference.class);
@@ -64,7 +64,7 @@ public class DisruptorReference {
     //(null,  true) : in process of reconfiguring
     //( x  , false) : normally functioning Disruptor
     //( x  ,  true) : never set
-    private final AtomicMarkableReference<Disruptor<ExchangeEvent>> disruptor = new AtomicMarkableReference<Disruptor<ExchangeEvent>>(null, false);
+    private final AtomicMarkableReference<Disruptor<ExchangeEvent>> disruptor = new AtomicMarkableReference<>(null, false);
 
     private final DelayedExecutor delayedExecutor = new DelayedExecutor();
 
@@ -75,6 +75,7 @@ public class DisruptorReference {
     private final DisruptorWaitStrategy waitStrategy;
 
     private final Queue<Exchange> temporaryExchangeBuffer;
+    private final Lock lock = new ReentrantLock();
 
     //access guarded by this
     private ExecutorService executor;
@@ -91,7 +92,7 @@ public class DisruptorReference {
         this.size = size;
         this.producerType = producerType;
         this.waitStrategy = waitStrategy;
-        temporaryExchangeBuffer = new ArrayBlockingQueue<Exchange>(size);
+        temporaryExchangeBuffer = new ArrayBlockingQueue<>(size);
         reconfigure();
     }
 
@@ -131,24 +132,31 @@ public class DisruptorReference {
         publishExchangeOnRingBuffer(exchange, getCurrentDisruptor().getRingBuffer());
     }
 
-    private void publishExchangeOnRingBuffer(final Exchange exchange,
-                                                             final RingBuffer<ExchangeEvent> ringBuffer) {
+    private void publishExchangeOnRingBuffer(
+            final Exchange exchange,
+            final RingBuffer<ExchangeEvent> ringBuffer) {
         final long sequence = ringBuffer.next();
         ringBuffer.get(sequence).setExchange(exchange, uniqueConsumerCount);
         ringBuffer.publish(sequence);
     }
 
-    private void tryPublishExchangeOnRingBuffer(final Exchange exchange, final RingBuffer<ExchangeEvent> ringBuffer) throws InsufficientCapacityException {
+    private void tryPublishExchangeOnRingBuffer(final Exchange exchange, final RingBuffer<ExchangeEvent> ringBuffer)
+            throws InsufficientCapacityException {
         final long sequence = ringBuffer.tryNext();
         ringBuffer.get(sequence).setExchange(exchange, uniqueConsumerCount);
         ringBuffer.publish(sequence);
     }
 
-    public synchronized void reconfigure() throws Exception {
-        LOGGER.debug("Reconfiguring disruptor {}", this);
-        shutdownDisruptor(true);
+    public void reconfigure() throws Exception {
+        lock.lock();
+        try {
+            LOGGER.debug("Reconfiguring disruptor {}", this);
+            shutdownDisruptor(true);
 
-        start();
+            start();
+        } finally {
+            lock.unlock();
+        }
     }
 
     private void start() throws Exception {
@@ -178,7 +186,8 @@ public class DisruptorReference {
                     }
                     eventHandlerStarted = true;
                 } catch (InterruptedException e) {
-                    //just retry
+                    LOGGER.info("Interrupted while waiting for the startup to complete");
+                    Thread.currentThread().interrupt();
                 }
             }
         }
@@ -190,17 +199,18 @@ public class DisruptorReference {
 
     private Disruptor<ExchangeEvent> createDisruptor() throws Exception {
         //create a new Disruptor
-        final Disruptor<ExchangeEvent> newDisruptor = new Disruptor<ExchangeEvent>(
+        final Disruptor<ExchangeEvent> newDisruptor = new Disruptor<>(
                 ExchangeEventFactory.INSTANCE, size, delayedExecutor, producerType.getProducerType(),
                 waitStrategy.createWaitStrategyInstance());
 
         //determine the list of eventhandlers to be associated to the Disruptor
-        final ArrayList<LifecycleAwareExchangeEventHandler> eventHandlers = new ArrayList<LifecycleAwareExchangeEventHandler>();
+        final ArrayList<LifecycleAwareExchangeEventHandler> eventHandlers = new ArrayList<>();
 
         uniqueConsumerCount = 0;
 
         for (final DisruptorEndpoint endpoint : endpoints) {
-            final Map<DisruptorConsumer, Collection<LifecycleAwareExchangeEventHandler>> consumerEventHandlers = endpoint.createConsumerEventHandlers();
+            final Map<DisruptorConsumer, Collection<LifecycleAwareExchangeEventHandler>> consumerEventHandlers
+                    = endpoint.createConsumerEventHandlers();
 
             if (consumerEventHandlers != null) {
                 uniqueConsumerCount += consumerEventHandlers.keySet().size();
@@ -215,13 +225,14 @@ public class DisruptorReference {
 
         LOGGER.debug("Disruptor created with {} event handlers", eventHandlers.size());
         handleEventsWith(newDisruptor,
-                eventHandlers.toArray(new LifecycleAwareExchangeEventHandler[eventHandlers.size()]));
+                eventHandlers.toArray(new LifecycleAwareExchangeEventHandler[0]));
 
         return newDisruptor;
     }
 
-    private void handleEventsWith(Disruptor<ExchangeEvent> newDisruptor,
-                                  final LifecycleAwareExchangeEventHandler[] newHandlers) {
+    private void handleEventsWith(
+            Disruptor<ExchangeEvent> newDisruptor,
+            final LifecycleAwareExchangeEventHandler[] newHandlers) {
         if (newHandlers == null || newHandlers.length == 0) {
             handlers = new LifecycleAwareExchangeEventHandler[1];
             handlers[0] = new BlockingExchangeEventHandler();
@@ -234,7 +245,7 @@ public class DisruptorReference {
 
     private void publishBufferedExchanges(Disruptor<ExchangeEvent> newDisruptor) {
         //now empty out all buffered Exchange if we had any
-        final List<Exchange> exchanges = new ArrayList<Exchange>(temporaryExchangeBuffer.size());
+        final List<Exchange> exchanges = new ArrayList<>(temporaryExchangeBuffer.size());
         while (!temporaryExchangeBuffer.isEmpty()) {
             exchanges.add(temporaryExchangeBuffer.remove());
         }
@@ -256,12 +267,19 @@ public class DisruptorReference {
             //we need to shut down our executor
             component.getCamelContext().getExecutorServiceManager().shutdown(executor);
             executor = null;
-        } else if (executor instanceof ThreadPoolExecutor) {
+        } else if (executor instanceof ThreadPoolExecutor threadPoolExecutor) {
             LOGGER.debug("Resizing existing executor to {} threads", newSize);
             //our thread pool executor is of type ThreadPoolExecutor, we know how to resize it
-            final ThreadPoolExecutor threadPoolExecutor = (ThreadPoolExecutor)executor;
-            threadPoolExecutor.setCorePoolSize(newSize);
-            threadPoolExecutor.setMaximumPoolSize(newSize);
+            //Java 9 support, checkout http://download.java.net/java/jdk9/docs/api/java/util/concurrent/ThreadPoolExecutor.html#setCorePoolSize-int-
+            // and http://download.java.net/java/jdk9/docs/api/java/util/concurrent/ThreadPoolExecutor.html#setMaximumPoolSize-int-
+            //for more information
+            if (newSize <= threadPoolExecutor.getCorePoolSize()) {
+                threadPoolExecutor.setCorePoolSize(newSize);
+                threadPoolExecutor.setMaximumPoolSize(newSize);
+            } else {
+                threadPoolExecutor.setMaximumPoolSize(newSize);
+                threadPoolExecutor.setCorePoolSize(newSize);
+            }
         } else if (newSize > 0) {
             LOGGER.debug("Shutting down old and creating new executor with {} threads", newSize);
             //hmmm...no idea what kind of executor this is...just kill it and start fresh
@@ -272,52 +290,62 @@ public class DisruptorReference {
         }
     }
 
-    private synchronized void shutdownDisruptor(boolean isReconfiguring) {
-        LOGGER.debug("Shutting down disruptor {}, reconfiguring: {}", this, isReconfiguring);
-        Disruptor<ExchangeEvent> currentDisruptor = disruptor.getReference();
-        disruptor.set(null, isReconfiguring);
+    private void shutdownDisruptor(boolean isReconfiguring) {
+        lock.lock();
+        try {
+            LOGGER.debug("Shutting down disruptor {}, reconfiguring: {}", this, isReconfiguring);
+            Disruptor<ExchangeEvent> currentDisruptor = disruptor.getReference();
+            disruptor.set(null, isReconfiguring);
 
-        if (currentDisruptor != null) {
-            //check if we had a blocking event handler to keep an empty disruptor 'busy'
-            if (handlers != null && handlers.length == 1
-                    && handlers[0] instanceof BlockingExchangeEventHandler) {
-                // yes we did, unblock it so we can get rid of our backlog,
-                // The eventhandler will empty its pending exchanges in our temporary buffer
-                final BlockingExchangeEventHandler blockingExchangeEventHandler = (BlockingExchangeEventHandler)handlers[0];
-                blockingExchangeEventHandler.unblock();
-            }
+            if (currentDisruptor != null) {
+                //check if we had a blocking event handler to keep an empty disruptor 'busy'
+                if (handlers != null && handlers.length == 1
+                        && handlers[0] instanceof BlockingExchangeEventHandler blockingExchangeEventHandler) {
+                    // yes we did, unblock it so we can get rid of our backlog,
+                    // The eventhandler will empty its pending exchanges in our temporary buffer
+                    blockingExchangeEventHandler.unblock();
+                }
 
-            currentDisruptor.shutdown();
+                currentDisruptor.shutdown();
 
-            //they have already been given a trigger to halt when they are done by shutting down the disruptor
-            //we do however want to await their completion before they are scheduled to process events from the new
-            for (final LifecycleAwareExchangeEventHandler eventHandler : handlers) {
-                boolean eventHandlerFinished = false;
-                //the disruptor is now empty and all consumers are either done or busy processing their last exchange
-                while (!eventHandlerFinished) {
-                    try {
-                        //The disruptor shutdown command executed above should have triggered a halt signal to all
-                        //event processors which, in their death, should notify our event handlers. They respond by
-                        //switching a latch and we want to await that latch here to make sure they are done.
-                        if (!eventHandler.awaitStopped(10, TimeUnit.SECONDS)) {
-                            //we wait for a relatively long, but limited amount of time to prevent an application using
-                            //this component from hanging indefinitely
-                            //Please report a bug if you can repruduce this
-                            LOGGER.error("Disruptor/event handler failed to shut down properly, PLEASE REPORT");
+                //they have already been given a trigger to halt when they are done by shutting down the disruptor
+                //we do however want to await their completion before they are scheduled to process events from the new
+                for (final LifecycleAwareExchangeEventHandler eventHandler : handlers) {
+                    boolean eventHandlerFinished = false;
+                    //the disruptor is now empty and all consumers are either done or busy processing their last exchange
+                    while (!eventHandlerFinished) {
+                        try {
+                            //The disruptor shutdown command executed above should have triggered a halt signal to all
+                            //event processors which, in their death, should notify our event handlers. They respond by
+                            //switching a latch and we want to await that latch here to make sure they are done.
+                            if (!eventHandler.awaitStopped(10, TimeUnit.SECONDS)) {
+                                //we wait for a relatively long, but limited amount of time to prevent an application using
+                                //this component from hanging indefinitely
+                                //Please report a bug if you can repruduce this
+                                LOGGER.error("Disruptor/event handler failed to shut down properly, PLEASE REPORT");
+                            }
+                            eventHandlerFinished = true;
+                        } catch (InterruptedException e) {
+                            LOGGER.info("Interrupted while waiting for the shutdown to complete");
+                            Thread.currentThread().interrupt();
                         }
-                        eventHandlerFinished = true;
-                    } catch (InterruptedException e) {
-                        //just retry
                     }
                 }
-            }
 
-            handlers = new LifecycleAwareExchangeEventHandler[0];
+                handlers = new LifecycleAwareExchangeEventHandler[0];
+            }
+        } finally {
+            lock.unlock();
         }
     }
 
-    private synchronized void shutdownExecutor() {
-        resizeThreadPoolExecutor(0);
+    private void shutdownExecutor() {
+        lock.lock();
+        try {
+            resizeThreadPoolExecutor(0);
+        } finally {
+            lock.unlock();
+        }
     }
 
     public String getName() {
@@ -343,7 +371,7 @@ public class DisruptorReference {
     public int getPendingExchangeCount() {
         try {
             if (!hasNullReference()) {
-                return (int)(getBufferSize() - getRemainingCapacity() + temporaryExchangeBuffer.size());
+                return (int) (getBufferSize() - getRemainingCapacity() + temporaryExchangeBuffer.size());
             }
         } catch (DisruptorNotStartedException e) {
             //fall through...
@@ -351,28 +379,43 @@ public class DisruptorReference {
         return temporaryExchangeBuffer.size();
     }
 
-    public synchronized void addEndpoint(final DisruptorEndpoint disruptorEndpoint) {
-        LOGGER.debug("Adding Endpoint: " + disruptorEndpoint);
-        endpoints.add(disruptorEndpoint);
-        LOGGER.debug("Endpoint added: {}, new total endpoints {}", disruptorEndpoint, endpoints.size());
-    }
-
-    public synchronized void removeEndpoint(final DisruptorEndpoint disruptorEndpoint) {
-        LOGGER.debug("Removing Endpoint: " + disruptorEndpoint);
-        if (getEndpointCount() == 1) {
-            LOGGER.debug("Last Endpoint removed, shutdown disruptor");
-            //Shutdown our disruptor
-            shutdownDisruptor(false);
-
-            //As there are no endpoints dependent on this Disruptor, we may also shutdown our executor
-            shutdownExecutor();
+    public void addEndpoint(final DisruptorEndpoint disruptorEndpoint) {
+        lock.lock();
+        try {
+            LOGGER.debug("Adding Endpoint: {}", disruptorEndpoint);
+            endpoints.add(disruptorEndpoint);
+            LOGGER.debug("Endpoint added: {}, new total endpoints {}", disruptorEndpoint, endpoints.size());
+        } finally {
+            lock.unlock();
         }
-        endpoints.remove(disruptorEndpoint);
-        LOGGER.debug("Endpoint removed: {}, new total endpoints {}", disruptorEndpoint, getEndpointCount());
     }
 
-    public synchronized int getEndpointCount() {
-        return endpoints.size();
+    public void removeEndpoint(final DisruptorEndpoint disruptorEndpoint) {
+        lock.lock();
+        try {
+            LOGGER.debug("Removing Endpoint: {}", disruptorEndpoint);
+            if (getEndpointCount() == 1) {
+                LOGGER.debug("Last Endpoint removed, shutdown disruptor");
+                //Shutdown our disruptor
+                shutdownDisruptor(false);
+
+                //As there are no endpoints dependent on this Disruptor, we may also shutdown our executor
+                shutdownExecutor();
+            }
+            endpoints.remove(disruptorEndpoint);
+            LOGGER.debug("Endpoint removed: {}, new total endpoints {}", disruptorEndpoint, getEndpointCount());
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public int getEndpointCount() {
+        lock.lock();
+        try {
+            return endpoints.size();
+        } finally {
+            lock.unlock();
+        }
     }
 
     @Override
@@ -394,7 +437,9 @@ public class DisruptorReference {
             blockingLatch.await();
             final Exchange exchange = event.getSynchronizedExchange().cancelAndGetOriginalExchange();
 
-            if (exchange.getProperty(DisruptorEndpoint.DISRUPTOR_IGNORE_EXCHANGE, false, boolean.class)) {
+            final boolean ignoreExchange
+                    = exchange.getProperty(DisruptorEndpoint.DISRUPTOR_IGNORE_EXCHANGE, false, boolean.class);
+            if (ignoreExchange) {
                 // Property was set and it was set to true, so don't process Exchange.
                 LOGGER.trace("Ignoring exchange {}", exchange);
             } else {
@@ -409,18 +454,19 @@ public class DisruptorReference {
     }
 
     /**
-     * When a consumer is added or removed, we need to create a new Disruptor due to its static configuration. However, we
-     * would like to reuse our thread pool executor and only add or remove the threads we need. On a reconfiguraion of the
-     * Disruptor, we need to atomically swap the current RingBuffer with a new and fully configured one in order to keep
-     * the producers operational without the risk of losing messages. Configuration of a RingBuffer by the Disruptor's
-     * start method has a side effect that immediately starts execution of the event processors (consumers) on the
-     * Executor passed as a constructor argument which is stored in a final field. In order to be able to delay actual
-     * execution of the event processors until the event processors of the previous RingBuffer are done processing and the
-     * thread pool executor has been resized to match the new consumer count, we delay their execution using this class.
+     * When a consumer is added or removed, we need to create a new Disruptor due to its static configuration. However,
+     * we would like to reuse our thread pool executor and only add or remove the threads we need. On a reconfiguraion
+     * of the Disruptor, we need to atomically swap the current RingBuffer with a new and fully configured one in order
+     * to keep the producers operational without the risk of losing messages. Configuration of a RingBuffer by the
+     * Disruptor's start method has a side effect that immediately starts execution of the event processors (consumers)
+     * on the Executor passed as a constructor argument which is stored in a final field. In order to be able to delay
+     * actual execution of the event processors until the event processors of the previous RingBuffer are done
+     * processing and the thread pool executor has been resized to match the new consumer count, we delay their
+     * execution using this class.
      */
     private static class DelayedExecutor implements Executor {
 
-        private final Queue<Runnable> delayedCommands = new LinkedList<Runnable>();
+        private final Queue<Runnable> delayedCommands = new LinkedList<>();
 
         @Override
         public void execute(final Runnable command) {

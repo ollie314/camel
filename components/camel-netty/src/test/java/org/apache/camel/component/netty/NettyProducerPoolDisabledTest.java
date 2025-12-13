@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,15 +17,14 @@
 package org.apache.camel.component.netty;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 public class NettyProducerPoolDisabledTest extends BaseNettyTest {
 
     @Test
-    public void testProducerPoolDisabled() throws Exception {
+    public void testProducerPoolDisabled() {
         for (int i = 0; i < 10; i++) {
             String reply = template.requestBody("direct:start", "Hello " + i, String.class);
             assertEquals("Bye " + i, reply);
@@ -33,17 +32,17 @@ public class NettyProducerPoolDisabledTest extends BaseNettyTest {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .to("netty:tcp://localhost:{{port}}?textline=true&sync=true&producerPoolEnabled=false");
+                        .to("netty:tcp://localhost:{{port}}?textline=true&sync=true&producerPoolEnabled=false");
 
                 from("netty:tcp://localhost:{{port}}?textline=true&sync=true")
-                    // body should be a String when using textline codec
-                    .validate(body().isInstanceOf(String.class))
-                    .transform(body().regexReplaceAll("Hello", "Bye"));
+                        // body should be a String when using textline codec
+                        .validate(body().isInstanceOf(String.class))
+                        .transform(body().regexReplaceAll("Hello", "Bye"));
             }
         };
     }

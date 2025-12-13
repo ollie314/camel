@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.camel.component.stream;
 
 import java.io.File;
@@ -23,21 +22,21 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.apache.camel.test.junit5.TestSupport.createDirectory;
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
 
 /**
  *
  */
 public class ScanStreamDelayTest extends CamelTestSupport {
 
-
     private File file;
 
     @Override
-    @Before
-    public void setUp() throws Exception {
+    public void doPreSetup() throws Exception {
         deleteDirectory("target/stream");
         createDirectory("target/stream");
 
@@ -51,22 +50,21 @@ public class ScanStreamDelayTest extends CamelTestSupport {
         fos.write("Hello\n".getBytes());
         fos.write("World\n".getBytes());
         fos.close();
-
-        super.setUp();
     }
 
     @Test
     public void testScanFile() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMessageCount(6);
-        assertMockEndpointsSatisfied(1, TimeUnit.SECONDS);
+        MockEndpoint.assertIsSatisfied(context, 1, TimeUnit.SECONDS);
     }
 
+    @Override
     protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
                 from("stream:file?fileName=target/stream/scanstreamdelayfile.txt&scanStream=true&scanStreamDelay=1000")
-                    .to("mock:result");
+                        .to("mock:result");
             }
         };
     }

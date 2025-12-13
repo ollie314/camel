@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,9 +19,12 @@ package org.apache.camel.component.undertow;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class UndertowComponentTest extends BaseUndertowTest {
     private static final Logger LOG = LoggerFactory.getLogger(UndertowComponentTest.class);
@@ -30,7 +33,7 @@ public class UndertowComponentTest extends BaseUndertowTest {
     public void testUndertow() throws Exception {
         MockEndpoint mockEndpoint = getMockEndpoint("mock:myapp");
         mockEndpoint.expectedHeaderReceived(Exchange.HTTP_METHOD, "POST");
-        LOG.debug("Number of exchanges in mock:myapp " + mockEndpoint.getExchanges().size());
+        LOG.debug("Number of exchanges in mock:myapp {}", mockEndpoint.getExchanges().size());
 
         String response = template.requestBody("undertow:http://localhost:{{port}}/myapp", "Hello Camel!", String.class);
         assertNotNull(response);
@@ -44,15 +47,14 @@ public class UndertowComponentTest extends BaseUndertowTest {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
                 from("undertow:http://localhost:{{port}}/myapp")
-                    .transform().constant("Bye Camel!")
-                    .to("mock:myapp");
+                        .transform().constant("Bye Camel!")
+                        .to("mock:myapp");
             }
         };
     }
-
 
 }

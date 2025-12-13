@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -26,57 +26,60 @@ import org.apache.camel.component.git.GitTestSupport;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.Status;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.transport.PushResult;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class GitRemoteProducerTest extends GitTestSupport {
-    
-    @Ignore("Require a remote git repository")
+
+    @Disabled("Require a remote git repository")
     @Test
     public void pushTest() throws Exception {
 
         Repository repository = getTestRepository();
-        
-        File fileToAdd = new File(gitLocalRepo, filenameToAdd);
+
+        File fileToAdd = new File(getGitDir(), filenameToAdd);
         fileToAdd.createNewFile();
-        
+
         template.send("direct:add", new Processor() {
             @Override
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setHeader(GitConstants.GIT_FILE_NAME, filenameToAdd);
             }
         });
-        File gitDir = new File(gitLocalRepo, ".git");
-        assertEquals(gitDir.exists(), true);
-        
+        File gitDir = new File(getGitDir(), ".git");
+        assertEquals(true, gitDir.exists());
+
         Status status = new Git(repository).status().call();
         assertTrue(status.getAdded().contains(filenameToAdd));
-        
+
         template.send("direct:commit", new Processor() {
             @Override
-            public void process(Exchange exchange) throws Exception {
+            public void process(Exchange exchange) {
                 exchange.getIn().setHeader(GitConstants.GIT_COMMIT_MESSAGE, commitMessage);
             }
         });
 
-        Iterable<PushResult> result = template.requestBody("direct:push", "", Iterable.class);
-        
+        template.requestBody("direct:push", "", Iterable.class);
+
         repository.close();
     }
-   
+
     @Override
     protected RouteBuilder createRouteBuilder() throws Exception {
-        return new RouteBuilder() {            
+        // force create git repo before routes
+        getTestRepository();
+        final String dir = getGitDir().getPath();
+        return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("direct:add")
-                        .to("git://" + gitLocalRepo + "?operation=add");
-                from("direct:commit")
-                        .to("git://" + gitLocalRepo + "?operation=commit");
+            public void configure() {
+                from("direct:add").to("git://" + dir + "?operation=add");
+                from("direct:commit").to("git://" + dir + "?operation=commit");
                 from("direct:push")
-                        .to("git://" + gitLocalRepo + "?operation=push&remotePath=remoteURL&username=xxx&password=xxx");
-            } 
+                        .to("git://" + dir + "?operation=push&remotePath=remoteURL&username=xxx&password=xxx");
+            }
         };
     }
 

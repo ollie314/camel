@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,17 +19,21 @@ package org.apache.camel.component.leveldb;
 import java.io.File;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.impl.DefaultExchange;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.support.DefaultExchange;
+import org.apache.camel.test.junit5.params.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
-public class LevelDBAggregationRepositoryAlotDataTest extends CamelTestSupport {
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+@DisabledOnOs({ OS.AIX, OS.OTHER })
+public class LevelDBAggregationRepositoryAlotDataTest extends LevelDBTestSupport {
 
     private LevelDBFile levelDBFile;
 
     @Override
-    public void setUp() throws Exception {
-        super.setUp();
+    public void doPostSetup() {
         deleteDirectory("target/data");
         File file = new File("target/data/leveldb.dat");
         levelDBFile = new LevelDBFile();
@@ -38,14 +42,13 @@ public class LevelDBAggregationRepositoryAlotDataTest extends CamelTestSupport {
     }
 
     @Override
-    public void tearDown() throws Exception {
+    public void doPostTearDown() {
         levelDBFile.stop();
-        super.tearDown();
     }
 
     @Test
     public void testWithAlotOfDataSameKey() {
-        LevelDBAggregationRepository repo = new LevelDBAggregationRepository();
+        LevelDBAggregationRepository repo = getRepo();
         repo.setLevelDBFile(levelDBFile);
         repo.setRepositoryName("repo1");
 
@@ -62,7 +65,7 @@ public class LevelDBAggregationRepositoryAlotDataTest extends CamelTestSupport {
 
     @Test
     public void testWithAlotOfDataTwoKesy() {
-        LevelDBAggregationRepository repo = new LevelDBAggregationRepository();
+        LevelDBAggregationRepository repo = getRepo();
         repo.setLevelDBFile(levelDBFile);
         repo.setRepositoryName("repo1");
 
@@ -83,7 +86,7 @@ public class LevelDBAggregationRepositoryAlotDataTest extends CamelTestSupport {
 
     @Test
     public void testWithAlotOfDataWithDifferentKesy() {
-        LevelDBAggregationRepository repo = new LevelDBAggregationRepository();
+        LevelDBAggregationRepository repo = getRepo();
         repo.setLevelDBFile(levelDBFile);
         repo.setRepositoryName("repo1");
 

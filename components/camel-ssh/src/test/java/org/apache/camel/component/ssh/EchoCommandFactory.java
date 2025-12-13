@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,15 +20,16 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-import org.apache.sshd.server.Command;
-import org.apache.sshd.server.CommandFactory;
 import org.apache.sshd.server.Environment;
 import org.apache.sshd.server.ExitCallback;
+import org.apache.sshd.server.channel.ChannelSession;
+import org.apache.sshd.server.command.Command;
+import org.apache.sshd.server.command.CommandFactory;
 
 public class EchoCommandFactory implements CommandFactory {
 
     @Override
-    public Command createCommand(String command) {
+    public Command createCommand(ChannelSession channelSession, String command) {
         return new EchoCommand(command);
     }
 
@@ -63,14 +64,14 @@ public class EchoCommandFactory implements CommandFactory {
         }
 
         @Override
-        public void start(Environment env) throws IOException {
+        public void start(ChannelSession channelSession, Environment environment) throws IOException {
             thread = new Thread(this, "EchoCommand");
             thread.start();
         }
 
         @Override
-        public void destroy() {
-            thread.interrupt();
+        public void destroy(ChannelSession channelSession) throws Exception {
+            // noop
         }
 
         @Override

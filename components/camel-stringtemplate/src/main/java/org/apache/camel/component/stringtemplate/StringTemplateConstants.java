@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,13 +16,20 @@
  */
 package org.apache.camel.component.stringtemplate;
 
+import org.apache.camel.spi.Metadata;
+
 /**
  * StringTemplate constants.
  */
 public final class StringTemplateConstants {
 
+    @Metadata(description = "A URI for the template resource to use instead of the endpoint configured.", javaType = "String")
     public static final String STRINGTEMPLATE_RESOURCE_URI = "CamelStringTemplateResourceUri";
+    @Metadata(description = "Map of the variables which are made available to a script or template",
+              javaType = "Map<String, Object>")
     public static final String STRINGTEMPLATE_VARIABLE_MAP = "CamelStringTemplateVariableMap";
+    @Metadata(description = "The template to use instead of the endpoint configured.", javaType = "String")
+    public static final String STRINGTEMPLATE_TEMPLATE = "CamelStringTemplateTemplate";
 
     private StringTemplateConstants() {
         // Utility class

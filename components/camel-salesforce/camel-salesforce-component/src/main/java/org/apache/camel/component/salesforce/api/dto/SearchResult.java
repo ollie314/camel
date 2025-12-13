@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,13 +17,11 @@
 package org.apache.camel.component.salesforce.api.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.thoughtworks.xstream.annotations.XStreamAlias;
 
 /**
- * DTO for Salesforce SOSL Search result record.
+ * DTO for Salesforce SOSL Search result record. Starting with v37, this is wrapped by
+ * {@link org.apache.camel.component.salesforce.api.dto.SearchResult2}
  */
-@XStreamAlias("SearchResult")
-//CHECKSTYLE:OFF
 public final class SearchResult extends AbstractDTOBase {
 
     // WARNING: these fields have case sensitive names,
@@ -49,6 +47,4 @@ public final class SearchResult extends AbstractDTOBase {
     public void setId(String id) {
         this.Id = id;
     }
-
 }
-//CHECKSTYLE:ON

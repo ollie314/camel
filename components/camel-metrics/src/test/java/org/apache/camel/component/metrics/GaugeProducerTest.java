@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,23 +20,24 @@ import com.codahale.metrics.MetricRegistry;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.component.metrics.GaugeProducer.CamelMetricsGauge;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentMatcher;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.apache.camel.component.metrics.MetricsConstants.HEADER_GAUGE_SUBJECT;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThat;
 import static org.mockito.Mockito.argThat;
 import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class GaugeProducerTest {
 
     private static final String METRICS_NAME = "metrics.name";
@@ -58,26 +59,26 @@ public class GaugeProducerTest {
 
     private GaugeProducer producer;
 
-    @Before
-    public void setUp() throws Exception {
-        when(endpoint.getRegistry()).thenReturn(registry);
-        when(endpoint.getSubject()).thenReturn(VALUE);
-        when(endpoint.getMetricsName()).thenReturn(METRICS_NAME);
-        when(exchange.getIn()).thenReturn(in);
+    @BeforeEach
+    public void setUp() {
+        lenient().when(endpoint.getRegistry()).thenReturn(registry);
+        lenient().when(endpoint.getSubject()).thenReturn(VALUE);
+        lenient().when(endpoint.getMetricsName()).thenReturn(METRICS_NAME);
+        lenient().when(exchange.getIn()).thenReturn(in);
         producer = new GaugeProducer(endpoint);
     }
 
     @Test
-    public void testGaugeProducer() throws Exception {
+    public void testGaugeProducer() {
         assertThat(producer.getEndpoint().equals(endpoint), is(true));
     }
 
     @Test
-    public void testDefault() throws Exception {
+    public void testDefault() {
         verify(registry, times(1)).register(eq(METRICS_NAME), argThat(new ArgumentMatcher<CamelMetricsGauge>() {
             @Override
-            public boolean matches(Object argument) {
-                return argument instanceof CamelMetricsGauge && VALUE.equals(((CamelMetricsGauge)argument).getValue());
+            public boolean matches(CamelMetricsGauge argument) {
+                return VALUE.equals(argument.getValue());
             }
         }));
     }
@@ -89,14 +90,14 @@ public class GaugeProducerTest {
         verify(in, times(1)).getHeader(HEADER_GAUGE_SUBJECT, Object.class);
         verify(registry, times(1)).register(eq(METRICS_NAME), argThat(new ArgumentMatcher<CamelMetricsGauge>() {
             @Override
-            public boolean matches(Object argument) {
-                return argument instanceof CamelMetricsGauge && VALUE.equals(((CamelMetricsGauge)argument).getValue());
+            public boolean matches(CamelMetricsGauge argument) {
+                return VALUE.equals(argument.getValue());
             }
         }));
         verify(registry, times(1)).register(eq(METRICS_NAME_HEADER), argThat(new ArgumentMatcher<CamelMetricsGauge>() {
             @Override
-            public boolean matches(Object argument) {
-                return argument instanceof CamelMetricsGauge && VALUE_HEADER.equals(((CamelMetricsGauge)argument).getValue());
+            public boolean matches(CamelMetricsGauge argument) {
+                return VALUE_HEADER.equals(argument.getValue());
             }
         }));
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,51 +16,47 @@
  */
 package org.apache.camel.component.quartz;
 
-import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.spring.CamelSpringTestSupport;
-import org.junit.Test;
-import org.springframework.context.support.AbstractXmlApplicationContext;
-import org.springframework.context.support.ClassPathXmlApplicationContext;
+import java.util.concurrent.TimeUnit;
 
-/**
- * @version 
- */
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.spring.junit5.CamelSpringTestSupport;
+import org.awaitility.Awaitility;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+import org.springframework.context.support.AbstractXmlApplicationContext;
+
+@DisabledOnOs(OS.AIX)
 public class SpringQuartzPersistentStoreRestartRouteTest extends CamelSpringTestSupport {
 
     @Override
     protected AbstractXmlApplicationContext createApplicationContext() {
-        return new ClassPathXmlApplicationContext("org/apache/camel/component/quartz/SpringQuartzPersistentStoreTest.xml");
+        return newAppContext("SpringQuartzPersistentStoreTest.xml");
     }
 
     @Test
     public void testQuartzPersistentStore() throws Exception {
-        // skip testing on aix
-        if (isPlatform("aix")) {
-            return;
-        }
-
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMinimumMessageCount(2);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         // restart route
-        context().stopRoute("myRoute");
+        context().getRouteController().stopRoute("myRoute");
         mock.reset();
         mock.expectedMessageCount(0);
 
         // wait a bit
-        Thread.sleep(2000);
-
-        assertMockEndpointsSatisfied();
+        Awaitility.await().atMost(2, TimeUnit.SECONDS)
+                .untilAsserted(() -> MockEndpoint.assertIsSatisfied(context));
 
         // start route, and we got messages again
         mock.reset();
         mock.expectedMinimumMessageCount(2);
 
-        context().startRoute("myRoute");
+        context().getRouteController().startRoute("myRoute");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
 }

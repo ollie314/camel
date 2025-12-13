@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -25,13 +25,13 @@ import org.apache.camel.dataformat.bindy.csv.BindyCsvDataFormat;
 public class BindyUnmarshalCommaIssue2Test extends BindyUnmarshalCommaIssueTest {
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .unmarshal(new BindyCsvDataFormat(org.apache.camel.dataformat.bindy.csv2.WeatherModel.class))
-                    .to("mock:result");
+                        .unmarshal(new BindyCsvDataFormat(org.apache.camel.dataformat.bindy.csv2.WeatherModel.class))
+                        .to("mock:result");
             }
         };
     }

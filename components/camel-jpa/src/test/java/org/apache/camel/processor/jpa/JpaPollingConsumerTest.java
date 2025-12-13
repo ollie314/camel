@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,24 +21,12 @@ import java.util.List;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.examples.Customer;
-import org.apache.camel.spring.SpringRouteBuilder;
-import org.junit.Test;
-import org.springframework.transaction.TransactionStatus;
-import org.springframework.transaction.support.TransactionCallback;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class JpaPollingConsumerTest extends AbstractJpaTest {
     protected static final String SELECT_ALL_STRING = "select x from " + Customer.class.getName() + " x";
-
-    protected void save(final Customer customer) {
-        transactionTemplate.execute(new TransactionCallback<Object>() {
-            public Object doInTransaction(TransactionStatus status) {
-                entityManager.joinTransaction();
-                entityManager.persist(customer);
-                entityManager.flush();
-                return null;
-            }
-        });
-    }
 
     protected void assertEntitiesInDatabase(int count, String entity) {
         List<?> results = entityManager.createQuery("select o from " + entity + " o").getResultList();
@@ -49,10 +37,10 @@ public class JpaPollingConsumerTest extends AbstractJpaTest {
     public void testPollingConsumer() throws Exception {
         Customer customer = new Customer();
         customer.setName("Donald Duck");
-        save(customer);
+        saveEntityInDB(customer);
         Customer customer2 = new Customer();
         customer2.setName("Goofy");
-        save(customer2);
+        saveEntityInDB(customer2);
 
         assertEntitiesInDatabase(2, Customer.class.getName());
 
@@ -61,22 +49,24 @@ public class JpaPollingConsumerTest extends AbstractJpaTest {
 
         template.sendBodyAndHeader("direct:start", "Hello NAME how are you today?", "name", "Donald%");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
     protected RouteBuilder createRouteBuilder() {
-        return new SpringRouteBuilder() {
+        return new RouteBuilder() {
             public void configure() {
                 from("direct:start")
-                    .pollEnrich().simple("jpa://" + Customer.class.getName() + "?query=select c from Customer c where c.name like '${header.name}'")
+                        .pollEnrich()
+                        .simple("jpa://" + Customer.class.getName()
+                                + "?query=select c from Customer c where c.name like '${header.name}'")
                         .aggregationStrategy((a, b) -> {
                             String name = b.getIn().getBody(Customer.class).getName();
                             String phrase = a.getIn().getBody(String.class).replace("NAME", name);
                             a.getIn().setBody(phrase);
                             return a;
                         })
-                    .to("mock:result");
+                        .to("mock:result");
             }
         };
     }

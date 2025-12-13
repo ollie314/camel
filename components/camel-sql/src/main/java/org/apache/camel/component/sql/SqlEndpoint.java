@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,37 +16,44 @@
  */
 package org.apache.camel.component.sql;
 
+import org.apache.camel.Category;
 import org.apache.camel.Component;
 import org.apache.camel.Consumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
 import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriEndpoint;
+import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriPath;
 import org.apache.camel.util.UnsafeUriCharactersEncoder;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
- * The sql component allows you to work with databases using JDBC Stored Procedure queries.
+ * Perform SQL queries using Spring JDBC.
  */
-@UriEndpoint(scheme = "sql", title = "SQL", syntax = "sql:query", consumerClass = SqlConsumer.class, label = "database,sql")
+@UriEndpoint(firstVersion = "1.4.0", scheme = "sql", title = "SQL", syntax = "sql:query",
+             category = { Category.DATABASE }, headersClass = SqlConstants.class)
 public class SqlEndpoint extends DefaultSqlEndpoint {
 
     @UriPath(description = "Sets the SQL query to perform. You can externalize the query by using file: or classpath: as prefix and specify the location of the file.")
-    @Metadata(required = "true")
+    @Metadata(required = true, supportFileReference = true, largeInput = true, inputLanguage = "sql")
     private String query;
+    @UriParam(label = "producer", defaultValue = "true",
+              description = "Whether to optimize batch by turning off auto-commit which can dramatic improve performance, and instead execute as a manual commit after the entire batch operation is complete")
+    private boolean batchAutoCommitDisabled = true;
 
     public SqlEndpoint() {
     }
 
-    public SqlEndpoint(String uri, Component component, JdbcTemplate jdbcTemplate, String query) {
-        super(uri, component, jdbcTemplate);
-        this.query = query;
+    public SqlEndpoint(String endpointUri, Component component) {
+        super(endpointUri, component);
     }
 
+    @Override
     public Consumer createConsumer(Processor processor) throws Exception {
-        SqlPrepareStatementStrategy prepareStrategy = getPrepareStatementStrategy() != null ? getPrepareStatementStrategy() : new DefaultSqlPrepareStatementStrategy(getSeparator());
-        SqlProcessingStrategy proStrategy = getProcessingStrategy() != null ? getProcessingStrategy() : new DefaultSqlProcessingStrategy(prepareStrategy);
+        SqlPrepareStatementStrategy prepareStrategy = getPrepareStatementStrategy() != null
+                ? getPrepareStatementStrategy() : new DefaultSqlPrepareStatementStrategy(getSeparator());
+        SqlProcessingStrategy proStrategy
+                = getProcessingStrategy() != null ? getProcessingStrategy() : new DefaultSqlProcessingStrategy(prepareStrategy);
         SqlConsumer consumer = new SqlConsumer(this, processor, getJdbcTemplate(), query, prepareStrategy, proStrategy);
         consumer.setMaxMessagesPerPoll(getMaxMessagesPerPoll());
         consumer.setOnConsume(getOnConsume());
@@ -56,13 +63,18 @@ public class SqlEndpoint extends DefaultSqlEndpoint {
         consumer.setExpectedUpdateCount(getExpectedUpdateCount());
         consumer.setUseIterator(isUseIterator());
         consumer.setRouteEmptyResultSet(isRouteEmptyResultSet());
+        consumer.setParametersCount(getParametersCount());
+        consumer.setAlwaysPopulateStatement(isAlwaysPopulateStatement());
         configureConsumer(consumer);
         return consumer;
     }
 
+    @Override
     public Producer createProducer() throws Exception {
-        SqlPrepareStatementStrategy prepareStrategy = getPrepareStatementStrategy() != null ? getPrepareStatementStrategy() : new DefaultSqlPrepareStatementStrategy(getSeparator());
-        SqlProducer result = new SqlProducer(this, query, getJdbcTemplate(), prepareStrategy, isBatch(),
+        SqlPrepareStatementStrategy prepareStrategy = getPrepareStatementStrategy() != null
+                ? getPrepareStatementStrategy() : new DefaultSqlPrepareStatementStrategy(getSeparator());
+        SqlProducer result = new SqlProducer(
+                this, query, getJdbcTemplate(), prepareStrategy, isBatch(),
                 isAlwaysPopulateStatement(), isUseMessageBodyForSql());
         result.setParametersCount(getParametersCount());
         return result;
@@ -79,10 +91,22 @@ public class SqlEndpoint extends DefaultSqlEndpoint {
     }
 
     /**
-     * Sets the SQL query to perform. You can externalize the query by using file: or classpath: as prefix and specify the location of the file.
+     * Sets the SQL query to perform. You can externalize the query by using file: or classpath: as prefix and specify
+     * the location of the file.
      */
     public void setQuery(String query) {
         this.query = query;
     }
 
+    public boolean isBatchAutoCommitDisabled() {
+        return batchAutoCommitDisabled;
+    }
+
+    /**
+     * Whether to optimize batch by turning off auto-commit which can dramatic improve performance, and instead execute
+     * as a manual commit after the entire batch operation is complete
+     */
+    public void setBatchAutoCommitDisabled(boolean batchAutoCommitDisabled) {
+        this.batchAutoCommitDisabled = batchAutoCommitDisabled;
+    }
 }

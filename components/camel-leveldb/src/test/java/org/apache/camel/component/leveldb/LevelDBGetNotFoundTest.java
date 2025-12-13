@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,17 +19,25 @@ package org.apache.camel.component.leveldb;
 import java.io.File;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.impl.DefaultExchange;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.support.DefaultExchange;
+import org.apache.camel.test.junit5.params.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-public class LevelDBGetNotFoundTest extends CamelTestSupport {
+import static org.apache.camel.test.junit5.TestSupport.deleteDirectory;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
+@DisabledOnOs({ OS.AIX, OS.OTHER })
+public class LevelDBGetNotFoundTest extends LevelDBTestSupport {
 
     private LevelDBFile levelDBFile;
+    private Logger log = LoggerFactory.getLogger(getClass());
 
     @Override
-    public void setUp() throws Exception {
-        super.setUp();
+    public void doPostSetup() {
         deleteDirectory("target/data");
         File file = new File("target/data/leveldb.dat");
         levelDBFile = new LevelDBFile();
@@ -38,14 +46,13 @@ public class LevelDBGetNotFoundTest extends CamelTestSupport {
     }
 
     @Override
-    public void tearDown() throws Exception {
+    public void doPostTearDown() {
         levelDBFile.stop();
-        super.tearDown();
     }
 
     @Test
     public void testGetNotFound() {
-        LevelDBAggregationRepository repo = new LevelDBAggregationRepository();
+        LevelDBAggregationRepository repo = getRepo();
         repo.setLevelDBFile(levelDBFile);
         repo.setRepositoryName("repo1");
 
@@ -53,29 +60,29 @@ public class LevelDBGetNotFoundTest extends CamelTestSupport {
         exchange.getIn().setBody("Hello World");
 
         Exchange out = repo.get(context, exchange.getExchangeId());
-        assertNull("Should not find exchange", out);
+        assertNull(out, "Should not find exchange");
     }
 
     @Test
     public void testPutAndGetNotFound() {
-        LevelDBAggregationRepository repo = new LevelDBAggregationRepository();
+        LevelDBAggregationRepository repo = getRepo();
         repo.setLevelDBFile(levelDBFile);
         repo.setRepositoryName("repo1");
 
         Exchange exchange = new DefaultExchange(context);
         exchange.getIn().setBody("Hello World");
-        log.info("Created " + exchange.getExchangeId());
+        log.info("Created {}", exchange.getExchangeId());
 
         repo.add(context, exchange.getExchangeId(), exchange);
         Exchange out = repo.get(context, exchange.getExchangeId());
-        assertNotNull("Should find exchange", out);
+        assertNotNull(out, "Should find exchange");
 
         Exchange exchange2 = new DefaultExchange(context);
         exchange2.getIn().setBody("Bye World");
-        log.info("Created " + exchange2.getExchangeId());
+        log.info("Created {}", exchange2.getExchangeId());
 
         Exchange out2 = repo.get(context, exchange2.getExchangeId());
-        assertNull("Should not find exchange", out2);
+        assertNull(out2, "Should not find exchange");
     }
 
 }

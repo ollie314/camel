@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,18 +23,11 @@ import org.apache.ignite.cluster.ClusterGroup;
  * Convenient set of commonly used {@link ClusterGroupExpression}s.
  */
 public final class ClusterGroupExpressions {
-    
+
     public static final ClusterGroupExpression FOR_CLIENTS = new ClusterGroupExpression() {
         @Override
         public ClusterGroup getClusterGroup(Ignite ignite) {
             return ignite.cluster().forClients();
-        }
-    };
-
-    public static final ClusterGroupExpression FOR_DAEMONS = new ClusterGroupExpression() {
-        @Override
-        public ClusterGroup getClusterGroup(Ignite ignite) {
-            return ignite.cluster().forDaemons();
         }
     };
 
@@ -80,6 +73,7 @@ public final class ClusterGroupExpressions {
         }
     };
 
-    private ClusterGroupExpressions() { }
-    
+    private ClusterGroupExpressions() {
+    }
+
 }

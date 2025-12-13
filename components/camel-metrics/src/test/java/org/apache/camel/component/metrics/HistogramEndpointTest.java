@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,22 +18,22 @@ package org.apache.camel.component.metrics;
 
 import com.codahale.metrics.MetricRegistry;
 import org.apache.camel.Producer;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertThat;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class HistogramEndpointTest {
 
     private static final String METRICS_NAME = "metrics.name";
@@ -46,19 +46,19 @@ public class HistogramEndpointTest {
 
     private InOrder inOrder;
 
-    @Before
-    public void setUp() throws Exception {
+    @BeforeEach
+    public void setUp() {
         endpoint = new MetricsEndpoint(null, null, registry, MetricsType.HISTOGRAM, METRICS_NAME);
         inOrder = Mockito.inOrder(registry);
     }
 
-    @After
-    public void tearDown() throws Exception {
+    @AfterEach
+    public void tearDown() {
         inOrder.verifyNoMoreInteractions();
     }
 
     @Test
-    public void testHistogramEndpoint() throws Exception {
+    public void testHistogramEndpoint() {
         assertThat(endpoint, is(notNullValue()));
         assertThat(endpoint.getRegistry(), is(registry));
         assertThat(endpoint.getMetricsName(), is(METRICS_NAME));
@@ -72,12 +72,12 @@ public class HistogramEndpointTest {
     }
 
     @Test
-    public void testGetValue() throws Exception {
+    public void testGetValue() {
         assertThat(endpoint.getValue(), is(nullValue()));
     }
 
     @Test
-    public void testSetValue() throws Exception {
+    public void testSetValue() {
         assertThat(endpoint.getValue(), is(nullValue()));
         endpoint.setValue(VALUE);
         assertThat(endpoint.getValue(), is(VALUE));

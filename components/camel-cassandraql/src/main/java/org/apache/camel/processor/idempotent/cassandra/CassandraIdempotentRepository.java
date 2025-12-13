@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,19 +16,21 @@
  */
 package org.apache.camel.processor.idempotent.cassandra;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.ConsistencyLevel;
-import com.datastax.driver.core.PreparedStatement;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Row;
-import com.datastax.driver.core.Session;
-import com.datastax.driver.core.querybuilder.Delete;
-import com.datastax.driver.core.querybuilder.Insert;
-import com.datastax.driver.core.querybuilder.Select;
-import com.datastax.driver.core.querybuilder.Truncate;
-
+import com.datastax.oss.driver.api.core.ConsistencyLevel;
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.cql.PreparedStatement;
+import com.datastax.oss.driver.api.core.cql.ResultSet;
+import com.datastax.oss.driver.api.core.cql.Row;
+import com.datastax.oss.driver.api.core.cql.SimpleStatement;
+import com.datastax.oss.driver.api.querybuilder.delete.Delete;
+import com.datastax.oss.driver.api.querybuilder.insert.Insert;
+import com.datastax.oss.driver.api.querybuilder.select.Select;
+import com.datastax.oss.driver.api.querybuilder.truncate.Truncate;
+import org.apache.camel.spi.Configurer;
 import org.apache.camel.spi.IdempotentRepository;
-import org.apache.camel.support.ServiceSupport;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.support.service.ServiceSupport;
+import org.apache.camel.util.ObjectHelper;
 import org.apache.camel.utils.cassandra.CassandraSessionHolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,47 +43,39 @@ import static org.apache.camel.utils.cassandra.CassandraUtils.generateSelect;
 import static org.apache.camel.utils.cassandra.CassandraUtils.generateTruncate;
 
 /**
- * Implementation of {@link IdempotentRepository} using Cassandra table to store
- * message ids.
- * Advice: use LeveledCompaction for this table and tune read/write consistency levels.
- * Warning: Cassandra is not the best tool for queuing use cases
- * See http://www.datastax.com/dev/blog/cassandra-anti-patterns-queues-and-queue-like-datasets
- *
- * @param <K> Message Id
+ * Implementation of {@link IdempotentRepository} using Cassandra table to store message ids. Advice: use
+ * LeveledCompaction for this table and tune read/write consistency levels. Warning: Cassandra is not the best tool for
+ * queuing use cases See http://www.datastax.com/dev/blog/cassandra-anti-patterns-queues-and-queue-like-datasets
  */
-public class CassandraIdempotentRepository<K> extends ServiceSupport implements IdempotentRepository<K> {
-    /**
-     * Logger
-     */
+@Metadata(label = "bean",
+          description = "Idempotent repository that uses Cassandra table to store message ids."
+                        + " Advice: use LeveledCompaction for this table and tune read/write consistency levels.",
+          annotations = { "interfaceName=org.apache.camel.spi.IdempotentRepository" })
+@Configurer(metadataOnly = true)
+public class CassandraIdempotentRepository extends ServiceSupport implements IdempotentRepository {
+
     private static final Logger LOGGER = LoggerFactory.getLogger(CassandraIdempotentRepository.class);
-    /**
-     * Session holder
-     */
-    private CassandraSessionHolder sessionHolder;
-    /**
-     * Table name
-     */
+
+    @Metadata(description = "Cassandra session", required = true)
+    private CassandraSessionHolder session;
+    @Metadata(description = "The table name for storing the data", defaultValue = "CAMEL_IDEMPOTENT")
     private String table = "CAMEL_IDEMPOTENT";
-    /**
-     * Values used as primary key prefix
-     */
-    private Object[] prefixPKValues = new Object[0];
-    /**
-     * Primary key columns
-     */
-    private String[] pkColumns = {"KEY"};
-    /**
-     * Time to live in seconds used for inserts
-     */
+    @Metadata(description = "Values used as primary key prefix. Multiple values can be separated by comma.",
+              displayName = "Prefix Primary Key Values")
+    private String prefixPKValues;
+    @Metadata(description = "Primary key columns. Multiple values can be separated by comma.",
+              displayName = "Primary Key Columns",
+              javaType = "java.lang.String", defaultValue = "KEY")
+    private String pkColumns = "KEY";
+    @Metadata(description = "Time to live in seconds used for inserts", displayName = "Time to Live")
     private Integer ttl;
-    /**
-     * Write consistency level
-     */
+    @Metadata(description = "Write consistency level",
+              enums = "ANY,ONE,TWO,THREE,QUORUM,ALL,LOCAL_ONE,LOCAL_QUORUM,EACH_QUORUM,SERIAL,LOCAL_SERIAL")
     private ConsistencyLevel writeConsistencyLevel;
-    /**
-     * Read consistency level
-     */
+    @Metadata(description = "Read consistency level",
+              enums = "ANY,ONE,TWO,THREE,QUORUM,ALL,LOCAL_ONE,LOCAL_QUORUM,EACH_QUORUM,SERIAL,LOCAL_SERIAL")
     private ConsistencyLevel readConsistencyLevel;
+
     private PreparedStatement insertStatement;
     private PreparedStatement selectStatement;
     private PreparedStatement deleteStatement;
@@ -90,12 +84,8 @@ public class CassandraIdempotentRepository<K> extends ServiceSupport implements 
     public CassandraIdempotentRepository() {
     }
 
-    public CassandraIdempotentRepository(Session session) {
-        this.sessionHolder = new CassandraSessionHolder(session);
-    }
-
-    public CassandraIdempotentRepository(Cluster cluster, String keyspace) {
-        this.sessionHolder = new CassandraSessionHolder(cluster, keyspace);
+    public CassandraIdempotentRepository(CqlSession session) {
+        this.session = new CassandraSessionHolder(session);
     }
 
     private boolean isKey(ResultSet resultSet) {
@@ -105,24 +95,30 @@ public class CassandraIdempotentRepository<K> extends ServiceSupport implements 
             return false;
         } else {
             LOGGER.debug("Row with {} columns to check key", row.getColumnDefinitions());
-            return row.getColumnDefinitions().size() >= pkColumns.length;
+            int len = pkColumns.split(",").length;
+            return row.getColumnDefinitions().size() >= len;
         }
     }
 
     protected final boolean isApplied(ResultSet resultSet) {
         Row row = resultSet.one();
-        return row == null || row.getBool("[applied]");
+        return row == null || row.getBoolean("[applied]");
     }
 
-    protected Object[] getPKValues(K key) {
-        return append(prefixPKValues, key);
+    protected Object[] getPKValues(String key) {
+        if (prefixPKValues != null) {
+            return append(prefixPKValues.split(","), key);
+        } else {
+            return new Object[] { key };
+        }
     }
     // -------------------------------------------------------------------------
     // Lifecycle methods
 
     @Override
     protected void doStart() throws Exception {
-        sessionHolder.start();
+        ObjectHelper.notNull(session, "session", this);
+        session.start();
         initInsertStatement();
         initSelectStatement();
         initDeleteStatement();
@@ -131,20 +127,22 @@ public class CassandraIdempotentRepository<K> extends ServiceSupport implements 
 
     @Override
     protected void doStop() throws Exception {
-        sessionHolder.stop();
+        if (session != null) {
+            session.stop();
+        }
     }
     // -------------------------------------------------------------------------
     // Add key to repository
 
     protected void initInsertStatement() {
-        Insert insert = generateInsert(table, pkColumns, true, ttl);
-        insert = applyConsistencyLevel(insert, writeConsistencyLevel);
-        LOGGER.debug("Generated Insert {}", insert);
-        insertStatement = getSession().prepare(insert);
+        Insert insert = generateInsert(table, pkColumns.split(","), true, ttl);
+        SimpleStatement statement = applyConsistencyLevel(insert.build(), writeConsistencyLevel);
+        LOGGER.debug("Generated Insert {}", statement);
+        insertStatement = getSession().prepare(statement);
     }
 
     @Override
-    public boolean add(K key) {
+    public boolean add(String key) {
         Object[] idValues = getPKValues(key);
         LOGGER.debug("Inserting key {}", (Object) idValues);
         return isApplied(getSession().execute(insertStatement.bind(idValues)));
@@ -154,21 +152,21 @@ public class CassandraIdempotentRepository<K> extends ServiceSupport implements 
     // Check if key is in repository
 
     protected void initSelectStatement() {
-        Select select = generateSelect(table, pkColumns, pkColumns);
-        select = applyConsistencyLevel(select, readConsistencyLevel);
-        LOGGER.debug("Generated Select {}", select);
-        selectStatement = getSession().prepare(select);
+        Select select = generateSelect(table, pkColumns.split(","), pkColumns.split(","));
+        SimpleStatement statement = applyConsistencyLevel(select.build(), readConsistencyLevel);
+        LOGGER.debug("Generated Select {}", statement);
+        selectStatement = getSession().prepare(statement);
     }
 
     @Override
-    public boolean contains(K key) {
+    public boolean contains(String key) {
         Object[] idValues = getPKValues(key);
         LOGGER.debug("Checking key {}", (Object) idValues);
         return isKey(getSession().execute(selectStatement.bind(idValues)));
     }
 
     @Override
-    public boolean confirm(K key) {
+    public boolean confirm(String key) {
         return true;
     }
 
@@ -176,44 +174,44 @@ public class CassandraIdempotentRepository<K> extends ServiceSupport implements 
     // Remove key from repository
 
     protected void initDeleteStatement() {
-        Delete delete = generateDelete(table, pkColumns, true);
-        delete = applyConsistencyLevel(delete, writeConsistencyLevel);
-        LOGGER.debug("Generated Delete {}", delete);
-        deleteStatement = getSession().prepare(delete);
+        Delete delete = generateDelete(table, pkColumns.split(","), true);
+        SimpleStatement statement = applyConsistencyLevel(delete.build(), writeConsistencyLevel);
+        LOGGER.debug("Generated Delete {}", statement);
+        deleteStatement = getSession().prepare(statement);
     }
 
     @Override
-    public boolean remove(K key) {
+    public boolean remove(String key) {
         Object[] idValues = getPKValues(key);
         LOGGER.debug("Deleting key {}", (Object) idValues);
         return isApplied(getSession().execute(deleteStatement.bind(idValues)));
     }
-    
+
     // -------------------------------------------------------------------------
     // Clear the repository
-    
+
     protected void initClearStatement() {
         Truncate truncate = generateTruncate(table);
-        truncate = applyConsistencyLevel(truncate, writeConsistencyLevel);
-        LOGGER.debug("Generated truncate for clear operation {}", truncate);
-        truncateStatement = getSession().prepare(truncate);
+        SimpleStatement statement = applyConsistencyLevel(truncate.build(), writeConsistencyLevel);
+        LOGGER.debug("Generated truncate for clear operation {}", statement);
+        truncateStatement = getSession().prepare(statement);
     }
-    
+
     @Override
     public void clear() {
         LOGGER.debug("Clear table {}", table);
-        getSession().execute(truncateStatement.bind());        
+        getSession().execute(truncateStatement.bind());
     }
-    
+
     // -------------------------------------------------------------------------
     // Getters & Setters
 
-    public Session getSession() {
-        return sessionHolder.getSession();
+    public CqlSession getSession() {
+        return session.getSession();
     }
 
-    public void setSession(Session session) {
-        this.sessionHolder = new CassandraSessionHolder(session);
+    public void setSession(CqlSession session) {
+        this.session = new CassandraSessionHolder(session);
     }
 
     public String getTable() {
@@ -222,14 +220,6 @@ public class CassandraIdempotentRepository<K> extends ServiceSupport implements 
 
     public void setTable(String table) {
         this.table = table;
-    }
-
-    public String[] getPKColumns() {
-        return pkColumns;
-    }
-
-    public void setPKColumns(String... pkColumns) {
-        this.pkColumns = pkColumns;
     }
 
     public Integer getTtl() {
@@ -256,12 +246,19 @@ public class CassandraIdempotentRepository<K> extends ServiceSupport implements 
         this.readConsistencyLevel = readConsistencyLevel;
     }
 
-    public Object[] getPrefixPKValues() {
+    public String getPrefixPKValues() {
         return prefixPKValues;
     }
 
-    public void setPrefixPKValues(Object[] prefixPKValues) {
+    public void setPrefixPKValues(String prefixPKValues) {
         this.prefixPKValues = prefixPKValues;
     }
 
+    public String getPkColumns() {
+        return pkColumns;
+    }
+
+    public void setPkColumns(String pkColumns) {
+        this.pkColumns = pkColumns;
+    }
 }

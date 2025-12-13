@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,11 +16,9 @@
  */
 package org.apache.camel.coap;
 
-import java.net.URI;
-
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
-import org.apache.camel.impl.DefaultProducer;
+import org.apache.camel.support.DefaultProducer;
 import org.eclipse.californium.core.CoapClient;
 import org.eclipse.californium.core.CoapResponse;
 import org.eclipse.californium.core.coap.MediaTypeRegistry;
@@ -30,78 +28,74 @@ import org.eclipse.californium.core.coap.MediaTypeRegistry;
  */
 public class CoAPProducer extends DefaultProducer {
     private final CoAPEndpoint endpoint;
-    private CoapClient client;
+    private volatile CoapClient client;
 
     public CoAPProducer(CoAPEndpoint endpoint) {
         super(endpoint);
         this.endpoint = endpoint;
     }
 
+    @Override
     public void process(Exchange exchange) throws Exception {
-        CoapClient client = getClient(exchange);
-        String ct = exchange.getIn().getHeader(Exchange.CONTENT_TYPE, String.class);
+        initClient();
+
+        String ct = exchange.getIn().getHeader(CoAPConstants.CONTENT_TYPE, String.class);
         if (ct == null) {
-            //?default?
+            // ?default?
             ct = "application/octet-stream";
         }
-        String method = exchange.getIn().getHeader(Exchange.HTTP_METHOD, String.class);
-        if (method == null) {
-            method = endpoint.getCoapMethod();
-        }
-        if (method == null) {
-            Object body = exchange.getIn().getBody();
-            if (body == null) {
-                method = "GET";
-            } else {
-                method = "POST";
-            }
-        }
+        String method = CoAPHelper.getDefaultMethod(exchange, client);
         int mediaType = MediaTypeRegistry.parse(ct);
         CoapResponse response = null;
         boolean pingResponse = false;
         switch (method) {
-        case "GET":
-            response = client.get();
-            break;
-        case "DELETE":
-            response = client.delete();
-            break;
-        case "POST":
-            byte[] bodyPost = exchange.getIn().getBody(byte[].class);
-            response = client.post(bodyPost, mediaType);
-            break;
-        case "PUT":
-            byte[] bodyPut = exchange.getIn().getBody(byte[].class);
-            response = client.put(bodyPut, mediaType);
-            break;
-        case "PING":
-            pingResponse = client.ping();
-            break;
-        default:
-            break;
+            case CoAPConstants.METHOD_GET:
+                response = client.get();
+                break;
+            case CoAPConstants.METHOD_DELETE:
+                response = client.delete();
+                break;
+            case CoAPConstants.METHOD_POST:
+                byte[] bodyPost = exchange.getIn().getBody(byte[].class);
+                response = client.post(bodyPost, mediaType);
+                break;
+            case CoAPConstants.METHOD_PUT:
+                byte[] bodyPut = exchange.getIn().getBody(byte[].class);
+                response = client.put(bodyPut, mediaType);
+                break;
+            case CoAPConstants.METHOD_PING:
+                pingResponse = client.ping();
+                break;
+            default:
+                break;
         }
 
         if (response != null) {
-            Message resp = exchange.getOut();
-            String mt = MediaTypeRegistry.toString(response.getOptions().getContentFormat());
-            resp.setHeader(org.apache.camel.Exchange.CONTENT_TYPE, mt);
-            resp.setBody(response.getPayload());
+            CoAPHelper.convertCoapResponseToMessage(response, exchange.getOut());
         }
-        
-        if (method.equalsIgnoreCase("PING")) {
+
+        if (method.equalsIgnoreCase(CoAPConstants.METHOD_PING)) {
             Message resp = exchange.getOut();
             resp.setBody(pingResponse);
         }
     }
 
-    private synchronized CoapClient getClient(Exchange exchange) {
-        if (client == null) {
-            URI uri = exchange.getIn().getHeader("coapUri", URI.class);
-            if (uri == null) {
-                uri = endpoint.getUri();
+    protected void initClient() throws Exception {
+        lock.lock();
+        try {
+            if (client == null) {
+                client = endpoint.createCoapClient(endpoint.getUri());
             }
-            client = new CoapClient(uri);
+        } finally {
+            lock.unlock();
         }
-        return client;
+    }
+
+    @Override
+    protected void doStop() throws Exception {
+        if (client != null) {
+            client.shutdown();
+            client = null;
+        }
     }
 }

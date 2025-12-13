@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,19 +23,24 @@ import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class UndertowConsumerUnregisterTest extends BaseUndertowTest {
 
     @Test
-    public void testUnregisterUndertowConsumersForPort() throws Exception {
+    public void testUnregisterUndertowConsumersForPort() {
         UndertowComponent component = context.getComponent("undertow", UndertowComponent.class);
         UndertowConsumer consumerFoo = (UndertowConsumer) context.getRoute("route-foo").getConsumer();
         UndertowConsumer consumerBar = (UndertowConsumer) context.getRoute("route-bar").getConsumer();
 
-        component.unregisterConsumer(consumerFoo);
-        component.unregisterConsumer(consumerBar);
+        component.unregisterEndpoint(consumerFoo, consumerFoo.getEndpoint().getHttpHandlerRegistrationInfo(),
+                consumerFoo.getEndpoint().getSslContext());
+        component.unregisterEndpoint(consumerBar, consumerBar.getEndpoint().getHttpHandlerRegistrationInfo(),
+                consumerBar.getEndpoint().getSslContext());
 
         try {
             template.requestBody("undertow:http://localhost:{{port}}/foo", null, String.class);
@@ -59,33 +64,43 @@ public class UndertowConsumerUnregisterTest extends BaseUndertowTest {
             }
         };
         Exchange ret = template.request("undertow:http://localhost:{{port}}/foo", sender);
-        Assert.assertEquals(200, ret.getOut().getHeader(Exchange.HTTP_RESPONSE_CODE));
-        Assert.assertEquals("test", ret.getOut().getBody(String.class));
+        assertEquals(200, ret.getMessage().getHeader(Exchange.HTTP_RESPONSE_CODE));
+        assertEquals("test", ret.getMessage().getBody(String.class));
+
         ret = template.request("undertow:http://localhost:{{port}}/bar", sender);
-        Assert.assertEquals(200, ret.getOut().getHeader(Exchange.HTTP_RESPONSE_CODE));
-        Assert.assertEquals("test", ret.getOut().getBody(String.class));
+        assertEquals(200, ret.getMessage().getHeader(Exchange.HTTP_RESPONSE_CODE));
+        assertEquals("test", ret.getMessage().getBody(String.class));
 
         UndertowComponent component = context.getComponent("undertow", UndertowComponent.class);
         UndertowConsumer consumerFoo = (UndertowConsumer) context.getRoute("route-foo").getConsumer();
-        component.unregisterConsumer(consumerFoo);
-        
+        component.unregisterEndpoint(consumerFoo, consumerFoo.getEndpoint().getHttpHandlerRegistrationInfo(),
+                consumerFoo.getEndpoint().getSslContext());
+
         ret = template.request("undertow:http://localhost:{{port}}/foo", sender);
-        Assert.assertEquals(404, ret.getOut().getHeader(Exchange.HTTP_RESPONSE_CODE));
-        Assert.assertEquals("No matching path found", ret.getOut().getBody(String.class));
+        assertEquals(404, ret.getMessage().getHeader(Exchange.HTTP_RESPONSE_CODE));
+        assertEquals("No matching path found", ret.getMessage().getBody(String.class));
+
         ret = template.request("undertow:http://localhost:{{port}}/bar", sender);
-        Assert.assertEquals(200, ret.getOut().getHeader(Exchange.HTTP_RESPONSE_CODE));
-        Assert.assertEquals("test", ret.getOut().getBody(String.class));
+        assertEquals(200, ret.getMessage().getHeader(Exchange.HTTP_RESPONSE_CODE));
+        assertEquals("test", ret.getMessage().getBody(String.class));
 
         mockFoo.assertIsSatisfied();
         mockBar.assertIsSatisfied();
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
-                from("undertow:http://localhost:{{port}}/foo").id("route-foo").to("mock:foo");
-                from("undertow:http://localhost:{{port}}/bar").id("route-bar").to("mock:bar");
+                from("undertow:http://localhost:{{port}}/foo")
+                        .id("route-foo")
+                        .setBody().constant("test")
+                        .to("mock:foo");
+
+                from("undertow:http://localhost:{{port}}/bar")
+                        .id("route-bar")
+                        .setBody().constant("test")
+                        .to("mock:bar");
             }
         };
     }

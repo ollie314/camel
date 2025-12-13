@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,54 +16,46 @@
  */
 package org.apache.camel.component.netty.http;
 
-import java.nio.charset.Charset;
-import java.util.ArrayList;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.zip.GZIPInputStream;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.impl.JndiRegistry;
-import org.jboss.netty.channel.ChannelHandler;
-import org.jboss.netty.handler.codec.http.HttpContentDecompressor;
-import org.junit.Test;
+import org.apache.camel.util.IOHelper;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Isolated;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+@Isolated
 public class NettyHttpCompressTest extends BaseNettyTest {
-    
-    // setup the decompress decoder here
-    @Override
-    protected JndiRegistry createRegistry() throws Exception {
-        JndiRegistry registry = super.createRegistry();
-        List<ChannelHandler> decoders = new ArrayList<ChannelHandler>();
-        decoders.add(new HttpContentDecompressor());
-        registry.bind("myDecoders", decoders);
-        return registry;
-    }
-    
 
     @Test
     public void testContentType() throws Exception {
-        
-        byte[] data = "Hello World".getBytes(Charset.forName("UTF-8"));
-        Map<String, Object> headers = new HashMap<String, Object>();
+        byte[] data = "Hello World".getBytes(StandardCharsets.UTF_8);
+        Map<String, Object> headers = new HashMap<>();
         headers.put("content-type", "text/plain; charset=\"UTF-8\"");
         headers.put("Accept-Encoding", "compress, gzip");
-        String out = template.requestBodyAndHeaders("netty-http:http://localhost:9001/foo?decoders=#myDecoders", data,
-                headers, String.class);
+        byte[] out
+                = template.requestBodyAndHeaders("netty-http:http://localhost:{{port}}/foo", data,
+                        headers, byte[].class);
+        // deflate the zip
+        GZIPInputStream zis = new GZIPInputStream(new ByteArrayInputStream(out));
+        String s = IOHelper.loadText(zis);
+        IOHelper.close(zis);
         // The decoded out has some space to clean up.
-        assertEquals("Bye World", out.trim());
-        
-
-        
+        assertEquals("Bye World", s.trim());
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
-                from("netty-http:http://0.0.0.0:9001/foo?compression=true")
-                    .transform().constant("Bye World").setHeader("content-type").constant("text/plain; charset=\"UTF-8\"");
+            public void configure() {
+                from("netty-http:http://0.0.0.0:{{port}}/foo?compression=true")
+                        .transform().constant("Bye World").setHeader("content-type").constant("text/plain; charset=\"UTF-8\"");
             }
         };
     }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,8 +19,9 @@ package org.apache.camel.component.stomp;
 import org.apache.camel.AsyncCallback;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
-import org.apache.camel.impl.DefaultAsyncProducer;
+import org.apache.camel.support.DefaultAsyncProducer;
 
+@Deprecated(since = "4.17")
 public class StompProducer extends DefaultAsyncProducer implements Processor {
 
     private final StompEndpoint stompEndpoint;
@@ -30,6 +31,7 @@ public class StompProducer extends DefaultAsyncProducer implements Processor {
         this.stompEndpoint = stompEndpoint;
     }
 
+    @Override
     public boolean process(Exchange exchange, AsyncCallback callback) {
         try {
             stompEndpoint.send(exchange, callback);

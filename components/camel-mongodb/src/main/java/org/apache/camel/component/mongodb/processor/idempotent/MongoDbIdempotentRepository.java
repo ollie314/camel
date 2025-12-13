@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,23 +17,36 @@
 package org.apache.camel.component.mongodb.processor.idempotent;
 
 import com.mongodb.ErrorCategory;
-import com.mongodb.MongoClient;
+import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.result.DeleteResult;
 import org.apache.camel.api.management.ManagedOperation;
 import org.apache.camel.api.management.ManagedResource;
+import org.apache.camel.spi.Configurer;
 import org.apache.camel.spi.IdempotentRepository;
-import org.apache.camel.support.ServiceSupport;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.support.service.ServiceSupport;
 import org.apache.camel.util.ObjectHelper;
-import org.bson.BsonDocument;
 import org.bson.Document;
+import org.bson.conversions.Bson;
 
-@ManagedResource(description = "Mongo db based message id repository")
-public class MongoDbIdempotentRepository<E> extends ServiceSupport implements IdempotentRepository<E> {
+import static com.mongodb.client.model.Filters.eq;
+import static org.apache.camel.component.mongodb.MongoDbConstants.MONGO_ID;
 
+@Metadata(label = "bean",
+          description = "Idempotent repository that uses MongoDB to store message ids.",
+          annotations = { "interfaceName=org.apache.camel.spi.IdempotentRepository" })
+@Configurer(metadataOnly = true)
+@ManagedResource(description = "MongoDB based message id repository")
+public class MongoDbIdempotentRepository extends ServiceSupport implements IdempotentRepository {
+
+    @Metadata(description = "The MongoClient to use for connecting to the MongoDB server", required = true)
     private MongoClient mongoClient;
-    private String collectionName;
+    @Metadata(description = "The Database name", required = true)
     private String dbName;
+    @Metadata(description = "The collection name", required = true)
+    private String collectionName;
+
     private MongoCollection<Document> collection;
 
     public MongoDbIdempotentRepository() {
@@ -43,13 +56,12 @@ public class MongoDbIdempotentRepository<E> extends ServiceSupport implements Id
         this.mongoClient = mongoClient;
         this.collectionName = collectionName;
         this.dbName = dbName;
-        this.collection = mongoClient.getDatabase(dbName).getCollection(collectionName);
     }
 
     @ManagedOperation(description = "Adds the key to the store")
     @Override
-    public boolean add(E key) {
-        Document document = new Document("_id", key);
+    public boolean add(String key) {
+        Document document = new Document(MONGO_ID, key);
         try {
             collection.insertOne(document);
         } catch (com.mongodb.MongoWriteException ex) {
@@ -63,29 +75,29 @@ public class MongoDbIdempotentRepository<E> extends ServiceSupport implements Id
 
     @ManagedOperation(description = "Does the store contain the given key")
     @Override
-    public boolean contains(E key) {
-        Document document = new Document("_id", key);
-        long count =  collection.count(document);
+    public boolean contains(String key) {
+        Bson document = eq(MONGO_ID, key);
+        long count = collection.countDocuments(document);
         return count > 0;
     }
 
     @ManagedOperation(description = "Remove the key from the store")
     @Override
-    public boolean remove(E key) {
-        Document document = new Document("_id", key);
+    public boolean remove(String key) {
+        Bson document = eq(MONGO_ID, key);
         DeleteResult res = collection.deleteOne(document);
-        return  res.getDeletedCount() > 0;
+        return res.getDeletedCount() > 0;
     }
 
     @Override
-    public boolean confirm(E key) {
+    public boolean confirm(String key) {
         return true;
     }
 
     @ManagedOperation(description = "Clear the store")
     @Override
     public void clear() {
-        collection.deleteMany(new BsonDocument());
+        collection.deleteMany(new Document());
     }
 
     @Override
@@ -128,4 +140,3 @@ public class MongoDbIdempotentRepository<E> extends ServiceSupport implements Id
         this.dbName = dbName;
     }
 }
-

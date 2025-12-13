@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,28 +17,26 @@
 package org.apache.camel.component.sjms.consumer;
 
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.component.sjms.support.JmsTestSupport;
+import org.junit.jupiter.api.Test;
 
-import org.junit.Test;
-
-/**
- * @version 
- */
 public class EmptyMessageBodyTest extends JmsTestSupport {
 
     @Test
     public void testSynchronous() throws Exception {
         getMockEndpoint("mock:result").expectedMessageCount(2);
 
-        template.sendBody("sjms:start", "");
-        template.sendBody("sjms:start", null);
-        assertMockEndpointsSatisfied();
+        template.sendBody("sjms:start.queue.EmptyMessageBodyTest", "");
+        template.sendBody("sjms:start.queue.EmptyMessageBodyTest", null);
+        MockEndpoint.assertIsSatisfied(context);
     }
 
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from("sjms:queue:start").to("mock:result");
+            public void configure() {
+                from("sjms:queue:start.queue.EmptyMessageBodyTest").to("mock:result");
             }
         };
     }

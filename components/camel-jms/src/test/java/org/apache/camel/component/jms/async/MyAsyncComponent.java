@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,7 +19,8 @@ package org.apache.camel.component.jms.async;
 import java.util.Map;
 
 import org.apache.camel.Endpoint;
-import org.apache.camel.impl.DefaultComponent;
+import org.apache.camel.support.DefaultComponent;
+import org.apache.camel.util.StringHelper;
 
 /**
  *
@@ -35,13 +36,13 @@ public class MyAsyncComponent extends DefaultComponent {
     }
 
     private String prepareReply(String value) {
-        // to make URIs valid we make the conventions of using ':' for ' ' and 
+        // to make URIs valid we make the conventions of using ':' for ' ' and
         // capitalize words
         String[] words = value.split(":");
         String result = "";
         for (String word : words) {
             result += result.isEmpty() ? "" : " ";
-            result += word.substring(0, 1).toUpperCase() + word.substring(1);
+            result += StringHelper.capitalize(word);
         }
         return result;
     }

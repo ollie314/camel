@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,34 +16,67 @@
  */
 package org.apache.camel.component.http;
 
-import java.util.List;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.apache.camel.util.URISupport;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.io.HttpClientConnectionManager;
+import org.junit.jupiter.api.Test;
 
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class HttpEndpointURLTest extends CamelTestSupport {
-    
-    @Test
-    public void testHttpEndpointURLWithAuthPassWord() {
-        HttpEndpoint endpoint = (HttpEndpoint)context.getEndpoint("http://localhost/test?authMethod=Basic&authPassword=RAW(pa&&word)&authUsername=usr");
-        HttpClientConfigurer configurer = endpoint.getHttpClientConfigurer();
-        assertTrue("Expect the CompositeHttpConfigurer", configurer instanceof CompositeHttpConfigurer);
-        List<HttpClientConfigurer> configurers =  ((CompositeHttpConfigurer)configurer).getConfigurers();
-        BasicAuthenticationHttpClientConfigurer basicAuthenticationConfigurer = null;
-        for (HttpClientConfigurer config : configurers) {
-            if (config instanceof BasicAuthenticationHttpClientConfigurer) {
-                basicAuthenticationConfigurer = (BasicAuthenticationHttpClientConfigurer)config;
-                break;
-            }
-        }
-        assertNotNull("We should find the basicAuthenticationConfigurer", basicAuthenticationConfigurer);
-        assertEquals("pa&&word", basicAuthenticationConfigurer.getPassword());
-    }
-    
+
     @Test
     public void testHttpEndpointURLWithIPv6() {
-        HttpEndpoint endpoint = (HttpEndpoint)context.getEndpoint("http://[2a00:8a00:6000:40::1413]:30300/test?test=true");
+        HttpEndpoint endpoint = (HttpEndpoint) context.getEndpoint("http://[2a00:8a00:6000:40::1413]:30300/test?test=true");
         assertEquals("http://[2a00:8a00:6000:40::1413]:30300/test?test=true", endpoint.getHttpUri().toString());
+    }
+
+    @Test
+    public void testHttpEndpointHttpUri() {
+        HttpEndpoint http1 = context.getEndpoint("http://www.google.com", HttpEndpoint.class);
+        HttpEndpoint http2 = context.getEndpoint(
+                "https://www.google.com?test=parameter&proxyHost=myotherproxy&proxyPort=2345", HttpEndpoint.class);
+        HttpEndpoint http3 = context.getEndpoint("https://www.google.com?test=parameter", HttpEndpoint.class);
+
+        assertEquals("http://www.google.com", http1.getHttpUri().toString(), "Get a wrong HttpUri of http1");
+        assertEquals("https://www.google.com?test=parameter", http2.getHttpUri().toString(), "Get a wrong HttpUri of http2");
+        assertEquals(http2.getHttpUri(), http3.getHttpUri(), "Get a wrong HttpUri of http2 andhttp3");
+
+        // secure because protocol in remainder is https
+        HttpEndpoint http4 = context.getEndpoint("http://https://www.google.com", HttpEndpoint.class);
+        assertEquals("https://www.google.com", http4.getHttpUri().toString(), "Get a wrong HttpUri of http1");
+
+        // secure because protocol in remainder is https
+        HttpEndpoint http5 = context.getEndpoint("https://https://www.google.com", HttpEndpoint.class);
+        assertEquals("https://www.google.com", http5.getHttpUri().toString(), "Get a wrong HttpUri of http1");
+
+        // not secure because protocol in remainder is plain http
+        HttpEndpoint http6 = context.getEndpoint("https://http://www.google.com", HttpEndpoint.class);
+        assertEquals("http://www.google.com", http6.getHttpUri().toString(), "Get a wrong HttpUri of http1");
+    }
+
+    @Test
+    public void testConnectionManagerFromHttpUri() {
+        HttpEndpoint http1
+                = context.getEndpoint("http://www.google.com?maxTotalConnections=40&connectionsPerRoute=5", HttpEndpoint.class);
+        HttpClientConnectionManager connectionManager = http1.getClientConnectionManager();
+        assertInstanceOf(PoolingHttpClientConnectionManager.class, connectionManager, "Get a wrong type of connection manager");
+        PoolingHttpClientConnectionManager poolManager = (PoolingHttpClientConnectionManager) connectionManager;
+        assertEquals(40, poolManager.getMaxTotal(), "Get a wrong setting of maxTotalConnections");
+        assertEquals(5, poolManager.getDefaultMaxPerRoute(), "Get a wrong setting of connectionsPerRoute");
+    }
+
+    @Test
+    // Just for CAMEL-8607
+    public void testRawWithUnsafeCharacters() {
+        HttpEndpoint http1 = context.getEndpoint(
+                "http://www.google.com?authenticationPreemptive=true&authPassword=RAW(foo%bar)&authUsername=RAW(username)",
+                HttpEndpoint.class);
+        assertTrue(URISupport.sanitizeUri(http1.getEndpointUri()).indexOf("authPassword=xxxxxx") > 0,
+                "The password is not loggged");
     }
 
 }

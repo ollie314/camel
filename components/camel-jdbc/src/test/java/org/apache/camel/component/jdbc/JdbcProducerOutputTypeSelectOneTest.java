@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,21 +21,23 @@ import java.util.Map;
 import org.apache.camel.EndpointInject;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class JdbcProducerOutputTypeSelectOneTest extends AbstractJdbcTestSupport {
 
-    @EndpointInject(uri = "mock:result")
+    @EndpointInject("mock:result")
     private MockEndpoint mock;
 
-    @SuppressWarnings({"unchecked"})
     @Test
     public void testOutputTypeSelectOne() throws Exception {
         mock.expectedMessageCount(1);
 
         template.sendBody("direct:start", "select * from customer where ID = 'cust1'");
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         Map row = assertIsInstanceOf(Map.class, mock.getReceivedExchanges().get(0).getIn().getBody(Map.class));
         assertEquals("cust1", row.get("ID"));
@@ -43,9 +45,9 @@ public class JdbcProducerOutputTypeSelectOneTest extends AbstractJdbcTestSupport
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start").to("jdbc:testdb?outputType=SelectOne").to("mock:result");
             }
         };

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,39 +19,74 @@ package org.apache.camel.component.netty.http;
 import org.apache.camel.CamelExecutionException;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.apache.camel.test.junit5.TestSupport.assertIsInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class NettyHttpOkStatusCodeTest extends BaseNettyTest {
 
     @Test
-    public void testNoOk() throws Exception {
+    public void testNoOk() {
         byte[] data = "Hello World".getBytes();
-        try {
-            template.requestBody("netty-http:http://localhost:{{port}}/test?okStatusCodeRange=200-200", data, String.class);
-            fail("Should have thrown exception");
-        } catch (CamelExecutionException e) {
-            NettyHttpOperationFailedException cause = assertIsInstanceOf(NettyHttpOperationFailedException.class, e.getCause());
-            assertEquals(209, cause.getStatusCode());
-            String body = context.getTypeConverter().convertTo(String.class, cause.getResponse().getContent());
-            assertEquals("Not allowed", body);
-        }
+        CamelExecutionException e = assertThrows(CamelExecutionException.class,
+                () -> template.requestBody("netty-http:http://localhost:{{port}}/test?okStatusCodeRange=200-200", data,
+                        String.class));
+        NettyHttpOperationFailedException cause = assertIsInstanceOf(NettyHttpOperationFailedException.class, e.getCause());
+        assertEquals(209, cause.getStatusCode());
+        String body = cause.getContentAsString();
+        assertEquals("Not allowed", body);
     }
 
     @Test
-    public void testOk() throws Exception {
+    public void testNoOkSingleValue() {
         byte[] data = "Hello World".getBytes();
-        String out = template.requestBody("netty-http:http://localhost:{{port}}/test?okStatusCodeRange=200-209", data, String.class);
+        CamelExecutionException e = assertThrows(CamelExecutionException.class,
+                () -> template.requestBody("netty-http:http://localhost:{{port}}/test?okStatusCodeRange=200", data,
+                        String.class));
+        NettyHttpOperationFailedException cause = assertIsInstanceOf(NettyHttpOperationFailedException.class, e.getCause());
+        assertEquals(209, cause.getStatusCode());
+        String body = cause.getContentAsString();
+        assertEquals("Not allowed", body);
+    }
+
+    @Test
+    public void testNoOkComplexRange() {
+        byte[] data = "Hello World".getBytes();
+        CamelExecutionException e = assertThrows(CamelExecutionException.class,
+                () -> template.requestBody("netty-http:http://localhost:{{port}}/test?okStatusCodeRange=200-204,301", data,
+                        String.class));
+        NettyHttpOperationFailedException cause = assertIsInstanceOf(NettyHttpOperationFailedException.class, e.getCause());
+        assertEquals(209, cause.getStatusCode());
+        String body = cause.getContentAsString();
+        assertEquals("Not allowed", body);
+    }
+
+    @Test
+    public void testOk() {
+        byte[] data = "Hello World".getBytes();
+        String out = template.requestBody("netty-http:http://localhost:{{port}}/test?okStatusCodeRange=200-209", data,
+                String.class);
+        assertEquals("Not allowed", out);
+    }
+
+    @Test
+    public void testOkComplexRange() {
+        byte[] data = "Hello World".getBytes();
+        String out = template.requestBody("netty-http:http://localhost:{{port}}/test?okStatusCodeRange=200-204,209,301-304",
+                data, String.class);
         assertEquals("Not allowed", out);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("netty-http:http://0.0.0.0:{{port}}/test")
-                    .setHeader(Exchange.HTTP_RESPONSE_CODE, constant(209))
-                    .transform().constant("Not allowed");
+                        .setHeader(Exchange.HTTP_RESPONSE_CODE, constant(209))
+                        .transform().constant("Not allowed");
             }
         };
     }

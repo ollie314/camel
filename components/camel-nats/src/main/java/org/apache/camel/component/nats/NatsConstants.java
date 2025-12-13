@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,8 +16,24 @@
  */
 package org.apache.camel.component.nats;
 
+import org.apache.camel.spi.Metadata;
+
 public interface NatsConstants {
 
+    @Metadata(description = "The timestamp of a consumed message.", javaType = "long")
     String NATS_MESSAGE_TIMESTAMP = "CamelNatsMessageTimestamp";
-    String NATS_SUBSCRIPTION_ID = "CamelNatsSubscriptionId";
+    @Metadata(description = "The SID of a consumed message.", javaType = "String", important = true)
+    String NATS_SID = "CamelNatsSID";
+    @Metadata(description = "The ReplyTo of a consumed message (may be null).", javaType = "String")
+    String NATS_REPLY_TO = "CamelNatsReplyTo";
+    @Metadata(description = "The Subject of a consumed message.", javaType = "String")
+    String NATS_SUBJECT = "CamelNatsSubject";
+    @Metadata(description = "The Queue name of a consumed message (may be null).", javaType = "String")
+    String NATS_QUEUE_NAME = "CamelNatsQueueName";
+    @Metadata(label = "consumer", description = "Status message code", javaType = "int", important = true)
+    String NATS_STATUS_CODE = "CamelNatsStatusCode";
+    @Metadata(label = "consumer", description = "Status message error message", javaType = "String", important = true)
+    String NATS_STATUS_ERROR = "CamelNatsStatusError";
+
+    String NATS_REQUEST_TIMEOUT_THREAD_PROFILE_NAME = "CamelNatsRequestTimeoutExecutor";
 }

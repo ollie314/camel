@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,11 +16,12 @@
  */
 package org.apache.camel.component.github.consumer;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Stack;
+import java.util.Queue;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
@@ -41,16 +42,16 @@ public class PullRequestCommentConsumer extends AbstractGitHubConsumer {
     private PullRequestService pullRequestService;
 
     private IssueService issueService;
-    
-    private List<Long> commentIds = new ArrayList<Long>();
-    
+
+    private List<Long> commentIds = new ArrayList<>();
+
     public PullRequestCommentConsumer(GitHubEndpoint endpoint, Processor processor) throws Exception {
         super(endpoint, processor);
 
         Registry registry = endpoint.getCamelContext().getRegistry();
         Object service = registry.lookupByName(GitHubConstants.GITHUB_PULL_REQUEST_SERVICE);
         if (service != null) {
-            LOG.debug("Using PullRequestService found in registry " + service.getClass().getCanonicalName());
+            LOG.debug("Using PullRequestService found in registry {}", service.getClass().getCanonicalName());
             pullRequestService = (PullRequestService) service;
         } else {
             pullRequestService = new PullRequestService();
@@ -69,7 +70,7 @@ public class PullRequestCommentConsumer extends AbstractGitHubConsumer {
         List<PullRequest> pullRequests = pullRequestService.getPullRequests(getRepository(), "open");
         for (PullRequest pullRequest : pullRequests) {
             List<CommitComment> commitComments = pullRequestService.getComments(getRepository(),
-                                                                                pullRequest.getNumber());
+                    pullRequest.getNumber());
             for (Comment comment : commitComments) {
                 commentIds.add(comment.getId());
             }
@@ -84,11 +85,11 @@ public class PullRequestCommentConsumer extends AbstractGitHubConsumer {
     protected int poll() throws Exception {
         // Do this here, rather than at the class level.  We only care about it for setting the Exchange header, so
         // there's no point growing memory over time.
-        Map<Long, PullRequest> commentIdToPullRequest = new HashMap<Long, PullRequest>();
-        
+        Map<Long, PullRequest> commentIdToPullRequest = new HashMap<>();
+
         List<PullRequest> pullRequests = pullRequestService.getPullRequests(getRepository(), "open");
         // In the end, we want comments oldest to newest.
-        Stack<Comment> newComments = new Stack<Comment>();
+        ArrayDeque<Comment> newComments = new ArrayDeque<>();
         for (PullRequest pullRequest : pullRequests) {
             List<CommitComment> commitComments = pullRequestService.getComments(getRepository(), pullRequest.getNumber());
             for (Comment comment : commitComments) {
@@ -107,17 +108,18 @@ public class PullRequestCommentConsumer extends AbstractGitHubConsumer {
                 }
             }
         }
-        
-        while (!newComments.empty()) {
+
+        Queue<Object> exchanges = new ArrayDeque<>();
+        while (!newComments.isEmpty()) {
             Comment newComment = newComments.pop();
-            Exchange e = getEndpoint().createExchange();
+            Exchange e = createExchange(true);
             e.getIn().setBody(newComment);
-            
+
             // Required by the producers.  Set it here for convenience.
             e.getIn().setHeader(GitHubConstants.GITHUB_PULLREQUEST, commentIdToPullRequest.get(newComment.getId()));
-            
-            getProcessor().process(e);
+            exchanges.add(e);
         }
-        return newComments.size();
+        return processBatch(exchanges);
     }
+
 }

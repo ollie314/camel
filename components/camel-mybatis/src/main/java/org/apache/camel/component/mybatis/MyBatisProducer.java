@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,22 +16,21 @@
  */
 package org.apache.camel.component.mybatis;
 
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.Map;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
-import org.apache.camel.impl.DefaultProducer;
-import org.apache.camel.util.ExchangeHelper;
-import org.apache.camel.util.ObjectHelper;
+import org.apache.camel.support.DefaultProducer;
+import org.apache.camel.support.ExchangeHelper;
+import org.apache.camel.support.ObjectHelper;
 import org.apache.ibatis.mapping.MappedStatement;
 import org.apache.ibatis.session.ExecutorType;
 import org.apache.ibatis.session.SqlSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * @version
- */
 public class MyBatisProducer extends DefaultProducer {
 
     private static final Logger LOG = LoggerFactory.getLogger(MyBatisProducer.class);
@@ -44,6 +43,7 @@ public class MyBatisProducer extends DefaultProducer {
         this.statement = endpoint.getStatement();
     }
 
+    @Override
     public void process(Exchange exchange) throws Exception {
         SqlSession session;
 
@@ -56,32 +56,32 @@ public class MyBatisProducer extends DefaultProducer {
 
         try {
             switch (endpoint.getStatementType()) {
-            case SelectOne:
-                doSelectOne(exchange, session);
-                break;
-            case SelectList:
-                doSelectList(exchange, session);
-                break;
-            case Insert:
-                doInsert(exchange, session);
-                break;
-            case InsertList:
-                doInsertList(exchange, session);
-                break;
-            case Update:
-                doUpdate(exchange, session);
-                break;
-            case UpdateList:
-                doUpdateList(exchange, session);
-                break;
-            case Delete:
-                doDelete(exchange, session);
-                break;
-            case DeleteList:
-                doDeleteList(exchange, session);
-                break;
-            default:
-                throw new IllegalArgumentException("Unsupported statementType: " + endpoint.getStatementType());
+                case SelectOne:
+                    doSelectOne(exchange, session);
+                    break;
+                case SelectList:
+                    doSelectList(exchange, session);
+                    break;
+                case Insert:
+                    doInsert(exchange, session);
+                    break;
+                case InsertList:
+                    doInsertList(exchange, session);
+                    break;
+                case Update:
+                    doUpdate(exchange, session);
+                    break;
+                case UpdateList:
+                    doUpdateList(exchange, session);
+                    break;
+                case Delete:
+                    doDelete(exchange, session);
+                    break;
+                case DeleteList:
+                    doDeleteList(exchange, session);
+                    break;
+                default:
+                    throw new IllegalArgumentException("Unsupported statementType: " + endpoint.getStatementType());
             }
             // flush the batch statements and commit the database connection
             session.commit();
@@ -95,7 +95,7 @@ public class MyBatisProducer extends DefaultProducer {
         }
     }
 
-    private void doSelectOne(Exchange exchange, SqlSession session) throws Exception {
+    private void doSelectOne(Exchange exchange, SqlSession session) {
         Object result;
         Object in = getInput(exchange);
         if (in != null) {
@@ -109,7 +109,7 @@ public class MyBatisProducer extends DefaultProducer {
         doProcessResult(exchange, result, session);
     }
 
-    private void doSelectList(Exchange exchange, SqlSession session) throws Exception {
+    private void doSelectList(Exchange exchange, SqlSession session) {
         Object result;
         Object in = getInput(exchange);
         if (in != null) {
@@ -123,12 +123,17 @@ public class MyBatisProducer extends DefaultProducer {
         doProcessResult(exchange, result, session);
     }
 
-    private void doInsert(Exchange exchange, SqlSession session) throws Exception {
+    private void doInsert(Exchange exchange, SqlSession session) {
         Object result;
         Object in = getInput(exchange);
         if (in != null) {
-            // lets handle arrays or collections of objects
-            Iterator<?> iter = ObjectHelper.createIterator(in);
+            Iterator<?> iter;
+            if (in instanceof Map) {
+                // we want the map as-is
+                iter = Collections.singletonList(in).iterator();
+            } else {
+                iter = ObjectHelper.createIterator(in);
+            }
             while (iter.hasNext()) {
                 Object value = iter.next();
                 LOG.trace("Inserting: {} using statement: {}", value, statement);
@@ -142,7 +147,7 @@ public class MyBatisProducer extends DefaultProducer {
         }
     }
 
-    private void doInsertList(Exchange exchange, SqlSession session) throws Exception {
+    private void doInsertList(Exchange exchange, SqlSession session) {
         Object result;
         Object in = getInput(exchange);
         if (in != null) {
@@ -157,12 +162,17 @@ public class MyBatisProducer extends DefaultProducer {
         }
     }
 
-    private void doUpdate(Exchange exchange, SqlSession session) throws Exception {
+    private void doUpdate(Exchange exchange, SqlSession session) {
         Object result;
         Object in = getInput(exchange);
         if (in != null) {
-            // lets handle arrays or collections of objects
-            Iterator<?> iter = ObjectHelper.createIterator(in);
+            Iterator<?> iter;
+            if (in instanceof Map) {
+                // we want the map as-is
+                iter = Collections.singletonList(in).iterator();
+            } else {
+                iter = ObjectHelper.createIterator(in);
+            }
             while (iter.hasNext()) {
                 Object value = iter.next();
                 LOG.trace("Updating: {} using statement: {}", value, statement);
@@ -176,7 +186,7 @@ public class MyBatisProducer extends DefaultProducer {
         }
     }
 
-    private void doUpdateList(Exchange exchange, SqlSession session) throws Exception {
+    private void doUpdateList(Exchange exchange, SqlSession session) {
         Object result;
         Object in = getInput(exchange);
         if (in != null) {
@@ -191,12 +201,17 @@ public class MyBatisProducer extends DefaultProducer {
         }
     }
 
-    private void doDelete(Exchange exchange, SqlSession session) throws Exception {
+    private void doDelete(Exchange exchange, SqlSession session) {
         Object result;
         Object in = getInput(exchange);
         if (in != null) {
-            // lets handle arrays or collections of objects
-            Iterator<?> iter = ObjectHelper.createIterator(in);
+            Iterator<?> iter;
+            if (in instanceof Map) {
+                // we want the map as-is
+                iter = Collections.singletonList(in).iterator();
+            } else {
+                iter = ObjectHelper.createIterator(in);
+            }
             while (iter.hasNext()) {
                 Object value = iter.next();
                 LOG.trace("Deleting: {} using statement: {}", value, statement);
@@ -210,7 +225,7 @@ public class MyBatisProducer extends DefaultProducer {
         }
     }
 
-    private void doDeleteList(Exchange exchange, SqlSession session) throws Exception {
+    private void doDeleteList(Exchange exchange, SqlSession session) {
         Object result;
         Object in = getInput(exchange);
         if (in != null) {
@@ -243,7 +258,8 @@ public class MyBatisProducer extends DefaultProducer {
             MappedStatement ms = session.getConfiguration().getMappedStatement(statement);
             if (ms != null && ms.getStatementType() == org.apache.ibatis.mapping.StatementType.CALLABLE) {
                 if (result == null) {
-                    LOG.trace("Setting result as existing body as MyBatis statement type is Callable, and there was no result.");
+                    LOG.trace(
+                            "Setting result as existing body as MyBatis statement type is Callable, and there was no result.");
                     answer.setBody(exchange.getIn().getBody());
                 } else {
                     if (outputHeader != null) {

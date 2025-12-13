@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,15 +27,12 @@ import javax.cache.event.CacheEntryListener;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.Processor;
-import org.apache.camel.impl.DefaultConsumer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.camel.support.DefaultConsumer;
 
 /**
  * The JCache consumer.
  */
 public class JCacheConsumer extends DefaultConsumer {
-    private static final Logger LOGGER = LoggerFactory.getLogger(JCacheConsumer.class);
 
     private CacheEntryListenerConfiguration<Object, Object> entryListenerConfiguration;
 
@@ -67,7 +64,7 @@ public class JCacheConsumer extends DefaultConsumer {
     }
 
     private JCacheEndpoint getJCacheEndpoint() {
-        return (JCacheEndpoint)getEndpoint();
+        return (JCacheEndpoint) getEndpoint();
     }
 
     private Cache getCache() throws Exception {
@@ -75,42 +72,35 @@ public class JCacheConsumer extends DefaultConsumer {
     }
 
     private CacheEntryListenerConfiguration<Object, Object> createEntryListenerConfiguration() {
+
+        Factory<CacheEntryListener<Object, Object>> listenerFactory = () -> new JCacheEntryEventListener() {
+            @Override
+            protected void onEvents(Iterable<CacheEntryEvent<?, ?>> events) {
+                for (CacheEntryEvent<?, ?> event : events) {
+                    Exchange exchange = createExchange(true);
+                    Message message = exchange.getIn();
+                    message.setHeader(JCacheConstants.EVENT_TYPE, event.getEventType().name());
+                    message.setHeader(JCacheConstants.KEY, event.getKey());
+                    message.setBody(event.getValue());
+
+                    if (event.isOldValueAvailable()) {
+                        message.setHeader(JCacheConstants.OLD_VALUE, event.getOldValue());
+                    }
+
+                    try {
+                        getProcessor().process(exchange);
+                    } catch (Exception e) {
+                        getExceptionHandler().handleException(e);
+                    }
+                }
+            }
+        };
+
+        Factory<CacheEntryEventFilter<Object, Object>> filterFactory = () -> getJCacheEndpoint().getManager().getEventFilter();
+
         return new MutableCacheEntryListenerConfiguration<>(
-            new Factory<CacheEntryListener<Object, Object>>() {
-                @Override
-                public CacheEntryListener<Object, Object> create() {
-                    return new JCacheEntryEventListener() {
-                        @Override
-                        protected void onEvents(Iterable<CacheEntryEvent<?, ?>> events) {
-                            for (CacheEntryEvent<?, ?> event : events) {
-                                Exchange exchange = getEndpoint().createExchange();
-                                Message message = exchange.getIn();
-                                message.setHeader(JCacheConstants.EVENT_TYPE, event.getEventType().name());
-                                message.setHeader(JCacheConstants.KEY, event.getKey());
-                                message.setBody(event.getValue());
-
-                                if (event.isOldValueAvailable()) {
-                                    message.setHeader(JCacheConstants.OLD_VALUE, event.getOldValue());
-                                }
-
-                                try {
-                                    getProcessor().process(exchange);
-                                } catch (Exception e) {
-                                    LOGGER.error("Error processing event ", e);
-                                }
-                            }
-                        }
-                    };
-                }
-            },
-            new Factory<CacheEntryEventFilter<Object, Object>>() {
-                @Override
-                public CacheEntryEventFilter<Object, Object> create() {
-                    return getJCacheEndpoint().getManager().getEventFilter();
-                }
-            },
-            getJCacheEndpoint().getManager().getConfiguration().isOldValueRequired(),
-            getJCacheEndpoint().getManager().getConfiguration().isSynchronous()
-        );
+                listenerFactory, filterFactory,
+                getJCacheEndpoint().getManager().getConfiguration().isOldValueRequired(),
+                getJCacheEndpoint().getManager().getConfiguration().isSynchronous());
     }
 }

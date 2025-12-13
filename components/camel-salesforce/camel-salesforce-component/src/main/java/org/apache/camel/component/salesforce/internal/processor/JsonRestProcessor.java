@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,30 +20,36 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.List;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import org.apache.camel.AsyncCallback;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.component.salesforce.SalesforceEndpoint;
 import org.apache.camel.component.salesforce.api.SalesforceException;
+import org.apache.camel.component.salesforce.api.TypeReferences;
 import org.apache.camel.component.salesforce.api.dto.AbstractDTOBase;
+import org.apache.camel.component.salesforce.api.dto.AbstractQueryRecordsBase;
 import org.apache.camel.component.salesforce.api.dto.CreateSObjectResult;
 import org.apache.camel.component.salesforce.api.dto.GlobalObjects;
-import org.apache.camel.component.salesforce.api.dto.RestResources;
+import org.apache.camel.component.salesforce.api.dto.Limits;
 import org.apache.camel.component.salesforce.api.dto.SObjectBasicInfo;
 import org.apache.camel.component.salesforce.api.dto.SObjectDescription;
-import org.apache.camel.component.salesforce.api.dto.SearchResult;
-import org.apache.camel.component.salesforce.api.dto.Version;
+import org.apache.camel.component.salesforce.api.dto.SearchResult2;
+import org.apache.camel.component.salesforce.api.dto.UpsertSObjectResult;
+import org.apache.camel.component.salesforce.api.dto.approval.ApprovalResult;
+import org.apache.camel.component.salesforce.api.dto.approval.Approvals;
 import org.apache.camel.component.salesforce.api.utils.JsonUtils;
-import org.eclipse.jetty.util.StringUtil;
+
+import static org.apache.camel.component.salesforce.SalesforceConstants.HEADER_SALESFORCE_QUERY_RESULT_TOTAL_SIZE;
 
 public class JsonRestProcessor extends AbstractRestProcessor {
-
-    private static final String RESPONSE_TYPE = JsonRestProcessor.class.getName() + ".responseType";
 
     // it is ok to use a single thread safe ObjectMapper
     private final ObjectMapper objectMapper;
@@ -62,114 +68,153 @@ public class JsonRestProcessor extends AbstractRestProcessor {
     protected void processRequest(Exchange exchange) throws SalesforceException {
 
         switch (operationName) {
-        case GET_VERSIONS:
-            // handle in built response types
-            exchange.setProperty(RESPONSE_TYPE, new TypeReference<List<Version>>() {
-            });
-            break;
+            case GET_VERSIONS:
+                // handle in built response types
+                exchange.setProperty(RESPONSE_TYPE, TypeReferences.VERSION_LIST_TYPE);
+                break;
 
-        case GET_RESOURCES:
-            // handle in built response types
-            exchange.setProperty(RESPONSE_CLASS, RestResources.class);
-            break;
+            case GET_RESOURCES:
+                // handle in built response types
+                exchange.setProperty(RESPONSE_TYPE, new TypeReference<Map<String, String>>() {
+                });
+                break;
 
-        case GET_GLOBAL_OBJECTS:
-            // handle in built response types
-            exchange.setProperty(RESPONSE_CLASS, GlobalObjects.class);
-            break;
+            case GET_GLOBAL_OBJECTS:
+                // handle in built response types
+                exchange.setProperty(RESPONSE_CLASS, GlobalObjects.class);
+                break;
 
-        case GET_BASIC_INFO:
-            // handle in built response types
-            exchange.setProperty(RESPONSE_CLASS, SObjectBasicInfo.class);
-            break;
+            case GET_BASIC_INFO:
+                // handle in built response types
+                exchange.setProperty(RESPONSE_CLASS, SObjectBasicInfo.class);
+                break;
 
-        case GET_DESCRIPTION:
-            // handle in built response types
-            exchange.setProperty(RESPONSE_CLASS, SObjectDescription.class);
-            break;
+            case GET_DESCRIPTION:
+                // handle in built response types
+                exchange.setProperty(RESPONSE_CLASS, SObjectDescription.class);
+                break;
 
-        case CREATE_SOBJECT:
-            // handle known response type
-            exchange.setProperty(RESPONSE_CLASS, CreateSObjectResult.class);
-            break;
+            case CREATE_SOBJECT:
+                // handle known response type
+                exchange.setProperty(RESPONSE_CLASS, CreateSObjectResult.class);
+                break;
 
-        case UPSERT_SOBJECT:
-            // handle known response type
-            exchange.setProperty(RESPONSE_CLASS, CreateSObjectResult.class);
-            break;
+            case UPSERT_SOBJECT:
+                // handle known response type
+                exchange.setProperty(RESPONSE_CLASS, UpsertSObjectResult.class);
+                break;
 
-        case SEARCH:
-            // handle known response type
-            exchange.setProperty(RESPONSE_TYPE, new TypeReference<List<SearchResult>>() {
-            });
-            break;
+            case SEARCH:
+                // handle known response type
+                if (Double.parseDouble(endpoint.getConfiguration().getApiVersion()) >= 37.0) {
+                    exchange.setProperty(RESPONSE_CLASS, SearchResult2.class);
+                } else {
+                    exchange.setProperty(RESPONSE_TYPE, TypeReferences.SEARCH_RESULT_TYPE);
+                }
+                break;
 
-        default:
-            // ignore, some operations do not require response class or type
+            case RECENT:
+                // handle known response type
+                exchange.setProperty(RESPONSE_TYPE, TypeReferences.RECENT_ITEM_LIST_TYPE);
+                break;
+
+            case LIMITS:
+                // handle known response type
+                exchange.setProperty(RESPONSE_CLASS, Limits.class);
+                break;
+
+            case APPROVAL:
+                // handle known response type
+                exchange.setProperty(RESPONSE_CLASS, ApprovalResult.class);
+                break;
+
+            case APPROVALS:
+                // handle known response type
+                exchange.setProperty(RESPONSE_CLASS, Approvals.class);
+                break;
+
+            default:
+                // ignore, some operations do not require response class or type
         }
     }
 
     @Override
     protected InputStream getRequestStream(Exchange exchange) throws SalesforceException {
-        try {
-            InputStream request;
-            Message in = exchange.getIn();
-            request = in.getBody(InputStream.class);
-            if (request == null) {
-                AbstractDTOBase dto = in.getBody(AbstractDTOBase.class);
-                if (dto != null) {
-                    // marshall the DTO
-                    ByteArrayOutputStream out = new ByteArrayOutputStream();
-                    objectMapper.writeValue(out, dto);
-                    request = new ByteArrayInputStream(out.toByteArray());
+        InputStream request;
+        Message in = exchange.getIn();
+        request = in.getBody(InputStream.class);
+        if (request == null) {
+            AbstractDTOBase dto = in.getBody(AbstractDTOBase.class);
+            if (dto != null) {
+                // marshall the DTO
+                request = getRequestStream(in, dto);
+            } else {
+                // if all else fails, get body as String
+                final String body = in.getBody(String.class);
+                if (null == body) {
+                    String msg = "Unsupported request message body " + (in.getBody() == null ? null : in.getBody().getClass());
+                    throw new SalesforceException(msg, null);
                 } else {
-                    // if all else fails, get body as String
-                    final String body = in.getBody(String.class);
-                    if (null == body) {
-                        String msg = "Unsupported request message body "
-                            + (in.getBody() == null ? null : in.getBody().getClass());
-                        throw new SalesforceException(msg, null);
-                    } else {
-                        request = new ByteArrayInputStream(body.getBytes(StringUtil.__UTF8_CHARSET));
-                    }
+                    request = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8));
                 }
             }
-
-            return request;
-
-        } catch (IOException e) {
-            String msg = "Error marshaling request: " + e.getMessage();
-            throw new SalesforceException(msg, e);
         }
+
+        return request;
     }
 
     @Override
-    protected void processResponse(Exchange exchange, InputStream responseEntity, SalesforceException ex, AsyncCallback callback) {
+    protected InputStream getRequestStream(final Message in, final Object object) throws SalesforceException {
+        final ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try {
+            objectMapper.writeValue(out, object);
+        } catch (IOException e) {
+            final String msg = "Error marshaling request: " + e.getMessage();
+            throw new SalesforceException(msg, e);
+        }
+
+        return new ByteArrayInputStream(out.toByteArray());
+    }
+
+    @Override
+    protected void processResponse(
+            Exchange exchange, InputStream responseEntity, Map<String, String> headers, SalesforceException ex,
+            AsyncCallback callback) {
 
         // process JSON response for TypeReference
         try {
-            // do we need to un-marshal a response
-            if (responseEntity != null) {
-                Object response = null;
+            final Message out = exchange.getOut();
+            final Message in = exchange.getIn();
+            out.copyFrom(in);
+            out.getHeaders().putAll(headers);
+
+            if (ex != null) {
+                // if an exception is reported we should not lose it
+                if (shouldReport(ex)) {
+                    exchange.setException(ex);
+                } else {
+                    out.setBody(null);
+                }
+            } else if (responseEntity != null) {
+                // do we need to un-marshal a response
+                final Object response;
                 Class<?> responseClass = exchange.getProperty(RESPONSE_CLASS, Class.class);
-                if (responseClass != null) {
+                if (responseClass == null && exchange.getProperty(RESPONSE_CLASS_DEFERRED, false, Boolean.class)) {
+                    responseClass = detectResponseClass(exchange, responseEntity);
+                }
+                if (!rawPayload && responseClass != null) {
                     response = objectMapper.readValue(responseEntity, responseClass);
                 } else {
                     TypeReference<?> responseType = exchange.getProperty(RESPONSE_TYPE, TypeReference.class);
-                    if (responseType != null) {
+                    if (!rawPayload && responseType != null) {
                         response = objectMapper.readValue(responseEntity, responseType);
                     } else {
-                        // return the response as a stream, for getBlobField
+                        // return the response as a stream, for getBlobField and rawPayload
                         response = responseEntity;
                     }
                 }
-                exchange.getOut().setBody(response);
-            } else {
-                exchange.setException(ex);
+                out.setBody(response);
             }
-            // copy headers and attachments
-            exchange.getOut().getHeaders().putAll(exchange.getIn().getHeaders());
-            exchange.getOut().getAttachmentObjects().putAll(exchange.getIn().getAttachmentObjects());
         } catch (IOException e) {
             String msg = "Error parsing JSON response: " + e.getMessage();
             exchange.setException(new SalesforceException(msg, e));
@@ -192,4 +237,75 @@ public class JsonRestProcessor extends AbstractRestProcessor {
 
     }
 
+    private Class<?> detectResponseClass(Exchange exchange, InputStream responseEntity) throws IOException {
+        Class<?> responseClass;
+        try (final JsonParser parser = new JsonFactory().createParser(responseEntity)) {
+            String type = null;
+            while (parser.nextToken() != JsonToken.END_OBJECT) {
+                String propName = parser.currentName();
+                if ("type".equals(propName)) {
+                    parser.nextToken();
+                    type = parser.getText();
+                    break;
+                }
+            }
+            String prefix = exchange.getProperty(RESPONSE_CLASS_PREFIX, "", String.class);
+            responseClass = getSObjectClass(prefix + type, null);
+        } catch (IOException | SalesforceException exc) {
+            throw new RuntimeException(exc);
+        } finally {
+            responseEntity.reset();
+        }
+        return responseClass;
+    }
+
+    @Override
+    protected void processStreamResultResponse(
+            Exchange exchange, InputStream responseEntity, Map<String, String> headers, SalesforceException ex,
+            AsyncCallback callback) {
+        // process JSON response for TypeReference
+        try {
+            final Message out = exchange.getOut();
+            final Message in = exchange.getIn();
+            out.copyFrom(in);
+            out.getHeaders().putAll(headers);
+
+            if (ex != null) {
+                // if an exception is reported we should not lose it
+                if (shouldReport(ex)) {
+                    exchange.setException(ex);
+                } else {
+                    out.setBody(null);
+                }
+            } else if (responseEntity != null) {
+                // do we need to un-marshal a response
+                final AbstractQueryRecordsBase<?> response;
+                Class<?> responseClass = exchange.getProperty(RESPONSE_CLASS, Class.class);
+                response = (AbstractQueryRecordsBase<?>) objectMapper.readValue(responseEntity, responseClass);
+                out.setHeader(HEADER_SALESFORCE_QUERY_RESULT_TOTAL_SIZE, response.getTotalSize());
+                QueryResultIterator<?> iterator
+                        = new QueryResultIterator(
+                                objectMapper, responseClass, restClient, determineHeaders(exchange), response);
+                out.setBody(iterator);
+            }
+        } catch (Exception e) {
+            String msg = "Error parsing JSON response: " + e.getMessage();
+            exchange.setException(new SalesforceException(msg, e));
+        } finally {
+            exchange.removeProperty(RESPONSE_CLASS);
+            exchange.removeProperty(RESPONSE_CLASS_DEFERRED);
+            exchange.removeProperty(RESPONSE_CLASS_PREFIX);
+            exchange.removeProperty(RESPONSE_TYPE);
+
+            try {
+                if (responseEntity != null) {
+                    responseEntity.close();
+                }
+            } catch (IOException ignored) {
+            }
+
+            // notify callback that exchange is done
+            callback.done(false);
+        }
+    }
 }

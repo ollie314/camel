@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,6 +19,7 @@ package org.apache.camel.dataformat.bindy.format.factories;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Locale;
+
 import org.apache.camel.dataformat.bindy.Format;
 import org.apache.camel.dataformat.bindy.FormattingOptions;
 import org.apache.camel.dataformat.bindy.format.AbstractNumberFormat;
@@ -37,7 +38,8 @@ public class BigDecimalFormatFactory extends AbstractFormatFactory {
 
     @Override
     public Format<?> build(FormattingOptions formattingOptions) {
-        return new BigDecimalFormat(formattingOptions.isImpliedDecimalSeparator(),
+        return new BigDecimalFormat(
+                formattingOptions.isImpliedDecimalSeparator(),
                 formattingOptions.getPrecision(),
                 formattingOptions.getLocale());
     }
@@ -48,16 +50,18 @@ public class BigDecimalFormatFactory extends AbstractFormatFactory {
             super(impliedDecimalPosition, precision, locale);
         }
 
+        @Override
         public String format(BigDecimal object) throws Exception {
             return !super.hasImpliedDecimalPosition()
                     ? super.getFormat().format(object)
-                    : super.getFormat().format(object.multiply(new BigDecimal(super.getMultiplier())));
+                    : super.getFormat().format(object.multiply(BigDecimal.valueOf(super.getMultiplier())));
         }
 
+        @Override
         public BigDecimal parse(String string) throws Exception {
             BigDecimal result = new BigDecimal(string.trim());
             if (super.hasImpliedDecimalPosition()) {
-                result = result.divide(new BigDecimal(super.getMultiplier()), super.getPrecision(), RoundingMode.HALF_EVEN);
+                result = result.divide(BigDecimal.valueOf(super.getMultiplier()), super.getPrecision(), RoundingMode.HALF_EVEN);
             } else {
                 if (super.getPrecision() != -1) {
                     result = result.setScale(super.getPrecision());

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,50 +18,54 @@ package org.apache.camel.component.jms.reply;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import javax.jms.Destination;
-import javax.jms.ExceptionListener;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.Session;
-import javax.jms.TemporaryQueue;
+import jakarta.jms.Destination;
+import jakarta.jms.ExceptionListener;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.Session;
+import jakarta.jms.TemporaryQueue;
 
 import org.apache.camel.AsyncCallback;
 import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
+import org.apache.camel.NonManagedService;
+import org.apache.camel.component.jms.ConsumerType;
 import org.apache.camel.component.jms.DefaultJmsMessageListenerContainer;
 import org.apache.camel.component.jms.DefaultSpringErrorHandler;
+import org.apache.camel.component.jms.SimpleJmsMessageListenerContainer;
+import org.apache.camel.component.jms.TemporaryQueueResolver;
+import org.apache.camel.support.service.ServiceHelper;
+import org.apache.camel.support.service.ServiceSupport;
 import org.springframework.jms.listener.AbstractMessageListenerContainer;
 import org.springframework.jms.listener.DefaultMessageListenerContainer;
 import org.springframework.jms.support.destination.DestinationResolver;
 
 /**
  * A {@link ReplyManager} when using temporary queues.
- *
- * @version 
  */
 public class TemporaryQueueReplyManager extends ReplyManagerSupport {
-    
-    final TemporaryReplyQueueDestinationResolver destResolver = new TemporaryReplyQueueDestinationResolver();
-    
-    public TemporaryQueueReplyManager(CamelContext camelContext) {
+
+    final TemporaryReplyQueueDestinationResolver destinationResolver;
+
+    public TemporaryQueueReplyManager(CamelContext camelContext, TemporaryQueueResolver resolver) {
         super(camelContext);
+        this.destinationResolver = new TemporaryReplyQueueDestinationResolver(resolver);
     }
 
     @Override
-    public Destination getReplyTo() {
-        try {
-            destResolver.destinationReady();
-        } catch (InterruptedException e) {
-            log.warn("Interrupted while waiting for JMSReplyTo destination refresh", e);
-        }
-        return super.getReplyTo();
+    protected void doStop() throws Exception {
+        super.doStop();
+        ServiceHelper.stopService(destinationResolver);
     }
-    
-    protected ReplyHandler createReplyHandler(ReplyManager replyManager, Exchange exchange, AsyncCallback callback,
-                                              String originalCorrelationId, String correlationId, long requestTimeout) {
+
+    @Override
+    protected ReplyHandler createReplyHandler(
+            ReplyManager replyManager, Exchange exchange, AsyncCallback callback,
+            String originalCorrelationId, String correlationId, long requestTimeout) {
         return new TemporaryQueueReplyHandler(this, exchange, callback, originalCorrelationId, correlationId, requestTimeout);
     }
 
+    @Override
     public void updateCorrelationId(String correlationId, String newCorrelationId, long requestTimeout) {
         log.trace("Updated provisional correlationId [{}] to expected correlationId [{}]", correlationId, newCorrelationId);
 
@@ -73,36 +77,50 @@ public class TemporaryQueueReplyManager extends ReplyManagerSupport {
 
     @Override
     protected void handleReplyMessage(String correlationID, Message message, Session session) {
-        ReplyHandler handler = correlation.get(correlationID);
+        ReplyHandler handler = correlation.remove(correlationID);
         if (handler == null && endpoint.isUseMessageIDAsCorrelationID()) {
             handler = waitForProvisionCorrelationToBeUpdated(correlationID, message);
         }
 
         if (handler != null) {
-            correlation.remove(correlationID);
             handler.onReply(correlationID, message, session);
         } else {
             // we could not correlate the received reply message to a matching request and therefore
             // we cannot continue routing the unknown message
-            // log a warn and then ignore the message
+            // log warn and then ignore the message
             log.warn("Reply received for unknown correlationID [{}]. The message will be ignored: {}", correlationID, message);
         }
     }
 
+    @Override
     public void setReplyToSelectorHeader(org.apache.camel.Message camelMessage, Message jmsMessage) throws JMSException {
         // noop
     }
 
     @Override
     protected AbstractMessageListenerContainer createListenerContainer() throws Exception {
+        if (endpoint.getConfiguration().getReplyToConsumerType() == ConsumerType.Default) {
+            return createDefaultListenerContainer();
+        } else if (endpoint.getConfiguration().getReplyToConsumerType() == ConsumerType.Simple) {
+            return createSimpleListenerContainer();
+        } else {
+            return getAbstractMessageListenerContainer(endpoint);
+        }
+    }
+
+    protected AbstractMessageListenerContainer createDefaultListenerContainer() throws Exception {
         // Use DefaultMessageListenerContainer as it supports reconnects (see CAMEL-3193)
-        DefaultMessageListenerContainer answer = new DefaultJmsMessageListenerContainer(endpoint, endpoint.isAllowReplyManagerQuickStop());
+        DefaultMessageListenerContainer answer
+                = new DefaultJmsMessageListenerContainer(endpoint, endpoint.isAllowReplyManagerQuickStop());
 
         answer.setDestinationName("temporary");
-        answer.setDestinationResolver(destResolver);
+        answer.setDestinationResolver(destinationResolver);
         answer.setAutoStartup(true);
         if (endpoint.getMaxMessagesPerTask() >= 0) {
             answer.setMaxMessagesPerTask(endpoint.getMaxMessagesPerTask());
+        }
+        if (endpoint.getIdleReceivesPerTaskLimit() != 0) {
+            answer.setIdleReceivesPerTaskLimit(endpoint.getIdleReceivesPerTaskLimit());
         }
         answer.setIdleConsumerLimit(endpoint.getIdleConsumerLimit());
         answer.setIdleTaskExecutionLimit(endpoint.getIdleTaskExecutionLimit());
@@ -113,34 +131,33 @@ public class TemporaryQueueReplyManager extends ReplyManagerSupport {
         if (endpoint.getReplyToMaxConcurrentConsumers() > 0) {
             answer.setMaxConcurrentConsumers(endpoint.getReplyToMaxConcurrentConsumers());
         }
-        answer.setConnectionFactory(endpoint.getConnectionFactory());
+        answer.setConnectionFactory(endpoint.getConfiguration().getOrCreateConnectionFactory());
         // we use CACHE_CONSUMER by default to cling to the consumer as long as we can, since we can only consume
         // msgs from the JMS Connection that created the temp destination in the first place
         if (endpoint.getReplyToCacheLevelName() != null) {
             if ("CACHE_NONE".equals(endpoint.getReplyToCacheLevelName())) {
-                throw new IllegalArgumentException("ReplyToCacheLevelName cannot be CACHE_NONE when using temporary reply queues. The value must be either CACHE_CONSUMER, or CACHE_SESSION");
+                throw new IllegalArgumentException(
+                        "ReplyToCacheLevelName cannot be CACHE_NONE when using temporary reply queues. The value must be either CACHE_CONSUMER, or CACHE_SESSION");
             }
             answer.setCacheLevelName(endpoint.getReplyToCacheLevelName());
         } else {
             answer.setCacheLevel(DefaultMessageListenerContainer.CACHE_CONSUMER);
         }
-        String clientId = endpoint.getClientId();
-        if (clientId != null) {
-            clientId += ".CamelReplyManager";
-            answer.setClientId(clientId);
-        }
+        setupClientId(endpoint, answer);
 
         // we cannot do request-reply over JMS with transaction
         answer.setSessionTransacted(false);
-        
+
         // other optional properties
-        answer.setExceptionListener(new TemporaryReplyQueueExceptionListener(destResolver, endpoint.getExceptionListener()));
+        answer.setExceptionListener(
+                new TemporaryReplyQueueExceptionListener(destinationResolver, endpoint.getExceptionListener()));
 
         if (endpoint.getErrorHandler() != null) {
             answer.setErrorHandler(endpoint.getErrorHandler());
         } else {
-            answer.setErrorHandler(new DefaultSpringErrorHandler(endpoint.getCamelContext(), TemporaryQueueReplyManager.class, 
-                                                                 endpoint.getErrorHandlerLoggingLevel(), endpoint.isErrorHandlerLogStackTrace()));
+            answer.setErrorHandler(new DefaultSpringErrorHandler(
+                    endpoint.getCamelContext(), TemporaryQueueReplyManager.class,
+                    endpoint.getErrorHandlerLoggingLevel(), endpoint.isErrorHandlerLogStackTrace()));
         }
         if (endpoint.getReceiveTimeout() >= 0) {
             answer.setReceiveTimeout(endpoint.getReceiveTimeout());
@@ -163,7 +180,57 @@ public class TemporaryQueueReplyManager extends ReplyManagerSupport {
         if (answer.getConcurrentConsumers() > 1) {
             // log that we are using concurrent consumers
             log.info("Using {}-{} concurrent consumers on {}",
-                    new Object[]{answer.getConcurrentConsumers(), answer.getMaxConcurrentConsumers(), name});
+                    answer.getConcurrentConsumers(), answer.getMaxConcurrentConsumers(), name);
+        }
+        return answer;
+    }
+
+    private AbstractMessageListenerContainer createSimpleListenerContainer() {
+        SimpleJmsMessageListenerContainer answer = new SimpleJmsMessageListenerContainer(endpoint);
+        answer.setDestinationName("temporary");
+        answer.setDestinationResolver(destinationResolver);
+        answer.setAutoStartup(true);
+        answer.setMessageListener(this);
+        answer.setPubSubDomain(false);
+        answer.setSubscriptionDurable(false);
+        answer.setConcurrentConsumers(endpoint.getReplyToConcurrentConsumers());
+        answer.setConnectionFactory(endpoint.getConfiguration().getOrCreateConnectionFactory());
+        String clientId = endpoint.getClientId();
+        if (clientId != null) {
+            clientId += ".CamelReplyManager";
+            answer.setClientId(clientId);
+        }
+
+        // we cannot do request-reply over JMS with transaction
+        answer.setSessionTransacted(false);
+
+        // other optional properties
+        answer.setExceptionListener(
+                new TemporaryReplyQueueExceptionListener(destinationResolver, endpoint.getExceptionListener()));
+
+        if (endpoint.getErrorHandler() != null) {
+            answer.setErrorHandler(endpoint.getErrorHandler());
+        } else {
+            answer.setErrorHandler(new DefaultSpringErrorHandler(
+                    endpoint.getCamelContext(), TemporaryQueueReplyManager.class,
+                    endpoint.getErrorHandlerLoggingLevel(), endpoint.isErrorHandlerLogStackTrace()));
+        }
+        if (endpoint.getTaskExecutor() != null) {
+            if (log.isDebugEnabled()) {
+                log.debug("Using custom TaskExecutor: {} on listener container: {}", endpoint.getTaskExecutor(), answer);
+            }
+            answer.setTaskExecutor(endpoint.getTaskExecutor());
+        }
+
+        // setup a bean name which is used by Spring JMS as the thread name
+        // use the name of the request destination
+        String name = "TemporaryQueueReplyManager[" + endpoint.getDestinationName() + "]";
+        answer.setBeanName(name);
+
+        if (endpoint.getReplyToConcurrentConsumers() > 1) {
+            // log that we are using concurrent consumers
+            log.info("Using {} concurrent consumers on {}",
+                    endpoint.getReplyToConcurrentConsumers(), name);
         }
         return answer;
     }
@@ -172,8 +239,8 @@ public class TemporaryQueueReplyManager extends ReplyManagerSupport {
         private final TemporaryReplyQueueDestinationResolver destResolver;
         private final ExceptionListener delegate;
 
-        private TemporaryReplyQueueExceptionListener(TemporaryReplyQueueDestinationResolver destResolver, 
-                ExceptionListener delegate) {
+        private TemporaryReplyQueueExceptionListener(TemporaryReplyQueueDestinationResolver destResolver,
+                                                     ExceptionListener delegate) {
             this.destResolver = destResolver;
             this.delegate = delegate;
         }
@@ -181,46 +248,85 @@ public class TemporaryQueueReplyManager extends ReplyManagerSupport {
         @Override
         public void onException(JMSException exception) {
             // capture exceptions, and schedule a refresh of the ReplyTo destination
-            log.warn("Exception inside the DMLC for Temporary ReplyTo Queue for destination " + endpoint.getDestinationName()
-                     + ", refreshing ReplyTo destination", exception);
-            destResolver.scheduleRefresh();
-            // serve as a proxy for any exception listener the user may have set explicitly
-            if (delegate != null) {
-                delegate.onException(exception);
+            String msg
+                    = "Exception inside the DMLC for Temporary ReplyTo Queue for destination " + endpoint.getDestinationName()
+                      + ", refreshing ReplyTo destination (stacktrace in DEBUG logging level).";
+            boolean stopped = camelContext.isStopped();
+            if (stopped) {
+                // if camel is stopped then an exception can happen during stopping connection to broker
+                log.debug(msg);
+            } else {
+                log.warn(msg);
+            }
+            if (log.isDebugEnabled()) {
+                log.debug(msg, exception);
+            }
+            if (!stopped) {
+                destResolver.scheduleRefresh();
+                // serve as a proxy for any exception listener the user may have set explicitly
+                if (delegate != null) {
+                    delegate.onException(exception);
+                }
             }
         }
 
     }
 
-    private final class TemporaryReplyQueueDestinationResolver implements DestinationResolver {
+    private final class TemporaryReplyQueueDestinationResolver extends ServiceSupport
+            implements DestinationResolver, NonManagedService {
         private TemporaryQueue queue;
-        private final AtomicBoolean refreshWanted = new AtomicBoolean(false);
+        private final AtomicBoolean refreshWanted = new AtomicBoolean();
+        private final TemporaryQueueResolver custom;
 
-        public Destination resolveDestinationName(Session session, String destinationName, boolean pubSubDomain) throws JMSException {
+        public TemporaryReplyQueueDestinationResolver(TemporaryQueueResolver custom) {
+            this.custom = custom;
+        }
+
+        @Override
+        public Destination resolveDestinationName(Session session, String destinationName, boolean pubSubDomain)
+                throws JMSException {
             // use a temporary queue to gather the reply message
-            synchronized (refreshWanted) {
-                if (queue == null || refreshWanted.compareAndSet(true, false)) {
-                    queue = session.createTemporaryQueue();
-                    setReplyTo(queue);
-                    if (log.isDebugEnabled()) {
-                        log.debug("Refreshed Temporary ReplyTo Queue. New queue: {}", queue.getQueueName());
+            if (queue == null || refreshWanted.get()) {
+                refreshWanted.set(false);
+                if (custom != null) {
+                    if (queue != null) {
+                        // delete previous queue
+                        try {
+                            custom.delete(queue);
+                        } catch (Exception e) {
+                            // ignore
+                        }
                     }
-                    refreshWanted.notifyAll();
+                    queue = custom.createTemporaryQueue(session);
+                } else {
+                    queue = session.createTemporaryQueue();
+                }
+                setReplyTo(queue);
+                if (log.isDebugEnabled()) {
+                    log.debug("Refreshed Temporary ReplyTo Queue. New queue: {}", queue.getQueueName());
                 }
             }
             return queue;
         }
-        
+
         public void scheduleRefresh() {
             refreshWanted.set(true);
+            replyTo = null;
         }
-        
-        public void destinationReady() throws InterruptedException {
-            if (refreshWanted.get()) {
-                synchronized (refreshWanted) {
-                    log.debug("Waiting for new Temporary ReplyTo queue to be assigned before we can continue");
-                    refreshWanted.wait();
+
+        @Override
+        protected void doStop() throws Exception {
+            if (queue != null) {
+                try {
+                    if (custom != null) {
+                        custom.delete(queue);
+                    } else {
+                        queue.delete();
+                    }
+                } catch (Exception e) {
+                    // ignore
                 }
+                queue = null;
             }
         }
     }

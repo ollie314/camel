@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,8 +17,8 @@
 package org.apache.camel.component.jdbc;
 
 /**
- * The default {@link BeanRowMapper} will map row names to lower case names,
- * but use a single upper case letter after underscores or dashes (which is skipped).
+ * The default {@link BeanRowMapper} will map row names to lower case names, but use a single upper case letter after
+ * underscores or dashes (which is skipped).
  * <p/>
  * For example <tt>CUST_ID</tt> is mapped as <tt>custId</tt>.
  */
@@ -31,7 +31,7 @@ public class DefaultBeanRowMapper implements BeanRowMapper {
     }
 
     protected String mapRowName(String row) {
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder(row.length());
         boolean toUpper = false;
         for (char ch : row.toCharArray()) {
             if (ch == '_' || ch == '-') {

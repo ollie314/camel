@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,17 +23,20 @@ import java.util.Collections;
 import java.util.List;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Assert;
-import org.junit.Test;
+import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class JsonPathCharsetTest extends CamelTestSupport {
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start").transform().jsonpath("$.store.book[*].title").to("mock:authors");
             }
         };
@@ -45,7 +48,7 @@ public class JsonPathCharsetTest extends CamelTestSupport {
 
         sendBody("direct:start", new File("src/test/resources/booksUTF16BE.json"));
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         check();
     }
@@ -56,7 +59,7 @@ public class JsonPathCharsetTest extends CamelTestSupport {
 
         sendBody("direct:start", new File("src/test/resources/booksUTF16LE.json"));
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         check();
     }
@@ -66,10 +69,10 @@ public class JsonPathCharsetTest extends CamelTestSupport {
         getMockEndpoint("mock:authors").expectedMessageCount(1);
 
         InputStream input = JsonPathCharsetTest.class.getClassLoader().getResourceAsStream("booksUTF16BE.json");
-        Assert.assertNotNull(input);
+        assertNotNull(input);
         sendBody("direct:start", input);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         check();
     }
@@ -79,7 +82,7 @@ public class JsonPathCharsetTest extends CamelTestSupport {
         getMockEndpoint("mock:authors").expectedMessageCount(1);
 
         URL url = new URL("file:src/test/resources/booksUTF16BE.json");
-        Assert.assertNotNull(url);
+        assertNotNull(url);
         sendBody("direct:start", url);
 
         check();
@@ -90,8 +93,9 @@ public class JsonPathCharsetTest extends CamelTestSupport {
         getMockEndpoint("mock:authors").expectedMessageCount(1);
 
         URL url = new URL("file:src/test/resources/germanbooks-iso-8859-1.json");
-        Assert.assertNotNull(url);
-        sendBody("direct:start", url, Collections.<String, Object> singletonMap(JsonPathConstants.HEADER_JSON_ENCODING, "ISO-8859-1"));
+        assertNotNull(url);
+        sendBody("direct:start", url,
+                Collections.<String, Object> singletonMap(JsonPathConstants.HEADER_JSON_ENCODING, "ISO-8859-1"));
 
         check("Joseph und seine Brüder", "Götzendämmerung");
     }
@@ -101,7 +105,7 @@ public class JsonPathCharsetTest extends CamelTestSupport {
     }
 
     private void check(String title1, String title2) throws InterruptedException {
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         List<?> authors = getMockEndpoint("mock:authors").getReceivedExchanges().get(0).getIn().getBody(List.class);
 

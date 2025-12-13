@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,24 +16,34 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.ConnectionFactory;
+import java.util.concurrent.ThreadLocalRandom;
 
 import org.apache.camel.CamelContext;
+import org.apache.camel.ConsumerTemplate;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.infra.core.CamelContextExtension;
+import org.apache.camel.test.infra.core.TransientCamelContextExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import static org.apache.camel.component.jms.JmsComponent.jmsComponentAutoAcknowledge;
+public abstract class JmsRouteTest extends AbstractJMSTest {
+    @Order(2)
+    @RegisterExtension
+    public static CamelContextExtension camelContextExtension = new TransientCamelContextExtension();
 
-/**
- * @version 
- */
-public class JmsRouteTest extends CamelTestSupport {
     protected MockEndpoint resultEndpoint;
     protected String componentName = "activemq";
     protected String startEndpointUri;
+    protected String endEndpointUri;
+    protected CamelContext context;
+    protected ProducerTemplate template;
+    protected ConsumerTemplate consumer;
+
+    private final int endpointNum = ThreadLocalRandom.current().nextInt(10000);
 
     @Test
     public void testSendAndReceiveMessage() throws Exception {
@@ -63,32 +73,35 @@ public class JmsRouteTest extends CamelTestSupport {
         template.sendBodyAndHeader(startEndpointUri, expectedBody, "cheese", 123);
     }
 
+    @Override
+    public String getComponentName() {
+        return componentName;
+    }
 
     @Override
-    @Before
-    public void setUp() throws Exception {
-        startEndpointUri = componentName + ":queue:test.a";
+    protected RouteBuilder createRouteBuilder() {
+        startEndpointUri = componentName + ":queue:test.a.JmsRouteTest" + endpointNum;
+        endEndpointUri = componentName + ":queue:test.b.JmsRouteTest" + endpointNum;
 
-        super.setUp();
-
-        resultEndpoint = context.getEndpoint("mock:result", MockEndpoint.class);
-    }
-
-    protected CamelContext createCamelContext() throws Exception {
-        CamelContext camelContext = super.createCamelContext();
-
-        ConnectionFactory connectionFactory = CamelJmsTestHelper.createConnectionFactory();
-        camelContext.addComponent(componentName, jmsComponentAutoAcknowledge(connectionFactory));
-
-        return camelContext;
-    }
-
-    protected RouteBuilder createRouteBuilder() throws Exception {
         return new RouteBuilder() {
-            public void configure() throws Exception {
-                from(startEndpointUri).to(componentName + ":queue:test.b");
-                from(componentName + ":queue:test.b").to("mock:result");
+            public void configure() {
+                from(startEndpointUri).to(endEndpointUri);
+                from(endEndpointUri).to("mock:result");
             }
         };
+    }
+
+    @Override
+    public CamelContextExtension getCamelContextExtension() {
+        return camelContextExtension;
+    }
+
+    @BeforeEach
+    void setUpRequirements() {
+        context = camelContextExtension.getContext();
+        template = camelContextExtension.getProducerTemplate();
+        consumer = camelContextExtension.getConsumerTemplate();
+
+        resultEndpoint = context.getEndpoint("mock:result", MockEndpoint.class);
     }
 }

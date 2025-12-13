@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,8 +17,6 @@
 package org.apache.camel.component.salesforce.api.dto;
 
 import java.util.List;
-
-import com.thoughtworks.xstream.annotations.XStreamImplicit;
 
 public class SObjectField extends AbstractDTOBase {
 
@@ -54,10 +52,8 @@ public class SObjectField extends AbstractDTOBase {
     private Boolean htmlFormatted;
     private String defaultValueFormula;
     private String calculatedFormula;
-    @XStreamImplicit
     private List<PickListValue> picklistValues;
     private Boolean dependentPicklist;
-    @XStreamImplicit
     private List<String> referenceTo;
     private String relationshipName;
     private String relationshipOrder;

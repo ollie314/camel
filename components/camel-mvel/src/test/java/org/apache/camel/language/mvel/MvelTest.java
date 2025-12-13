@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,13 +16,16 @@
  */
 package org.apache.camel.language.mvel;
 
-import org.apache.camel.test.junit4.LanguageTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.LanguageTestSupport;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class MvelTest extends LanguageTestSupport {
 
     @Test
-    public void testMvelExpressions() throws Exception {
+    public void testMvelExpressions() {
         assertExpression("exchange", exchange);
         assertExpression("exchange.getIn().body", "<hello id='m123'>world!</hello>");
         assertExpression("getRequest().body", "<hello id='m123'>world!</hello>");
@@ -33,17 +36,18 @@ public class MvelTest extends LanguageTestSupport {
     }
 
     @Test
-    public void testGetOutFalseKeepsNullOutMessage() throws Exception {
+    public void testGetOutFalseKeepsNullOutMessage() {
         assertExpression("exchange.hasOut()", false);
         assertFalse(exchange.hasOut());
     }
 
     @Test
-    public void testResponseCreatesOutMessage() throws Exception {
+    public void testResponseCreatesOutMessage() {
         assertExpression("response.body", null);
         assertTrue(exchange.hasOut());
     }
 
+    @Override
     protected String getLanguageName() {
         return "mvel";
     }

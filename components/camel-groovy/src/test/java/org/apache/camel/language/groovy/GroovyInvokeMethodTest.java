@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,12 +18,9 @@ package org.apache.camel.language.groovy;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 
-/**
- * @version 
- */
 public class GroovyInvokeMethodTest extends CamelTestSupport {
 
     @Test
@@ -36,18 +33,18 @@ public class GroovyInvokeMethodTest extends CamelTestSupport {
         Animal animal = new Animal("Tony the Tiger", 12);
         template.sendBody("direct:start", animal);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("direct:start")
-                    .setHeader("name").groovy("request.body.name")
-                    .setHeader("dangerous").groovy("request.body.isDangerous()")
-                    .to("mock:result");
+                        .setHeader("name").groovy("request.body.name")
+                        .setHeader("dangerous").groovy("request.body.isDangerous()")
+                        .to("mock:result");
             }
         };
     }

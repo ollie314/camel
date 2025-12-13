@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,42 +17,48 @@
 package org.apache.camel.component.netty.http;
 
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.methods.TraceMethod;
-import org.junit.Test;
+import org.apache.camel.test.AvailablePortFinder;
+import org.apache.hc.client5.http.classic.methods.HttpTrace;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class NettyHttpTraceDisabledTest extends BaseNettyTest {
 
-    private int portTraceOn = getNextPort();
-    private int portTraceOff = getNextPort();
+    @RegisterExtension
+    AvailablePortFinder.Port portTraceOn = AvailablePortFinder.find();
+    @RegisterExtension
+    AvailablePortFinder.Port portTraceOff = AvailablePortFinder.find();
 
     @Test
     public void testTraceDisabled() throws Exception {
-        HttpClient httpclient = new HttpClient();
-        TraceMethod trace = new TraceMethod("http://localhost:" + portTraceOff + "/myservice");
-        httpclient.executeMethod(trace);
-
-        // TRACE shouldn't be allowed by default
-        assertTrue(trace.getStatusCode() == 405);
-        trace.releaseConnection();
+        HttpTrace trace = new HttpTrace("http://localhost:" + portTraceOff + "/myservice");
+        try (CloseableHttpClient client = HttpClients.createDefault();
+             CloseableHttpResponse response = client.execute(trace)) {
+            // TRACE shouldn't be allowed by default
+            assertEquals(405, response.getCode());
+        }
     }
 
     @Test
     public void testTraceEnabled() throws Exception {
-        HttpClient httpclient = new HttpClient();
-        TraceMethod trace = new TraceMethod("http://localhost:" + portTraceOn + "/myservice");
-        httpclient.executeMethod(trace);
-
-        // TRACE is now allowed
-        assertTrue(trace.getStatusCode() == 200);
-        trace.releaseConnection();
+        HttpTrace trace = new HttpTrace("http://localhost:" + portTraceOn + "/myservice");
+        try (CloseableHttpClient client = HttpClients.createDefault();
+             CloseableHttpResponse response = client.execute(trace)) {
+            // TRACE is allowed
+            assertEquals(200, response.getCode());
+        }
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 from("netty-http:http://localhost:" + portTraceOff + "/myservice").to("log:foo");
                 from("netty-http:http://localhost:" + portTraceOn + "/myservice?traceEnabled=true").to("log:bar");
             }

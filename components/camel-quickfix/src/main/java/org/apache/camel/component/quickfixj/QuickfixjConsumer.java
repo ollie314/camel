@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,27 +20,44 @@ import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.Processor;
-import org.apache.camel.impl.DefaultConsumer;
+import org.apache.camel.support.DefaultConsumer;
 import org.quickfixj.QFJException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import quickfix.Session;
 import quickfix.SessionID;
 
 public class QuickfixjConsumer extends DefaultConsumer {
+
+    private static final Logger LOG = LoggerFactory.getLogger(QuickfixjConsumer.class);
 
     public QuickfixjConsumer(Endpoint endpoint, Processor processor) {
         super(endpoint, processor);
     }
 
     @Override
+    public QuickfixjEndpoint getEndpoint() {
+        return (QuickfixjEndpoint) super.getEndpoint();
+    }
+
+    @Override
     protected void doStart() throws Exception {
-        ((QuickfixjEndpoint)getEndpoint()).ensureInitialized();
+        getEndpoint().addConsumer(this);
+        getEndpoint().ensureInitialized();
         super.doStart();
     }
 
-    public void onExchange(Exchange exchange) throws Exception {
+    @Override
+    protected void doStop() throws Exception {
+        getEndpoint().removeConsumer(this);
+        super.doStop();
+    }
+
+    public void onExchange(Exchange exchange) {
         if (isStarted()) {
             try {
                 getProcessor().process(exchange);
+
                 if (exchange.getPattern().isOutCapable() && exchange.hasOut()) {
                     sendOutMessage(exchange);
                 }
@@ -51,12 +68,12 @@ public class QuickfixjConsumer extends DefaultConsumer {
     }
 
     private void sendOutMessage(Exchange exchange) throws QFJException {
-        Message camelMessage = exchange.getOut();
+        Message camelMessage = exchange.getMessage();
         quickfix.Message quickfixjMessage = camelMessage.getBody(quickfix.Message.class);
 
-        log.debug("Sending FIX message reply: {}", quickfixjMessage);
+        LOG.debug("Sending FIX message reply: {}", quickfixjMessage);
 
-        SessionID messageSessionID = exchange.getIn().getHeader("SessionID", SessionID.class);
+        SessionID messageSessionID = exchange.getIn().getHeader(QuickfixjEndpoint.SESSION_ID_KEY, SessionID.class);
 
         Session session = getSession(messageSessionID);
         if (session == null) {

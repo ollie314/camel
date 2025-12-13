@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,49 +18,73 @@ package org.apache.camel.component.netty;
 
 import java.math.BigInteger;
 import java.security.Principal;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
+
 import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
-import javax.security.cert.X509Certificate;
 
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.ssl.SslHandler;
 import org.apache.camel.AsyncEndpoint;
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
-import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
-import org.apache.camel.impl.DefaultEndpoint;
-import org.apache.camel.impl.SynchronousDelegateProducer;
+import org.apache.camel.spi.EndpointServiceLocation;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
+import org.apache.camel.support.DefaultEndpoint;
+import org.apache.camel.support.SynchronousDelegateProducer;
 import org.apache.camel.util.ObjectHelper;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.MessageEvent;
-import org.jboss.netty.handler.ssl.SslHandler;
-import org.jboss.netty.util.Timer;
 
 /**
- * Socket level networking using TCP or UDP with the Netty 3.x library.
+ * Socket level networking using TCP or UDP with Netty 4.x.
  */
-@UriEndpoint(scheme = "netty", title = "Netty", syntax = "netty:protocol:host:port", consumerClass = NettyConsumer.class, label = "networking,tcp,udp")
-public class NettyEndpoint extends DefaultEndpoint implements AsyncEndpoint {
+@UriEndpoint(firstVersion = "2.14.0", scheme = "netty", title = "Netty", syntax = "netty:protocol://host:port",
+             category = { Category.NETWORKING }, headersClass = NettyConstants.class)
+public class NettyEndpoint extends DefaultEndpoint implements AsyncEndpoint, EndpointServiceLocation {
     @UriParam
     private NettyConfiguration configuration;
-    @UriParam(label = "advanced", javaType = "org.apache.camel.component.netty.NettyServerBootstrapConfiguration",
-            description = "To use a custom configured NettyServerBootstrapConfiguration for configuring this endpoint.")
-    private Object bootstrapConfiguration; // to include in component docs as NettyServerBootstrapConfiguration is a @UriParams class
-    private Timer timer;
+    @UriParam(defaultValue = "false", label = "advanced",
+              description = "Sets whether synchronous processing should be strictly used")
+    private boolean synchronous;
 
     public NettyEndpoint(String endpointUri, NettyComponent component, NettyConfiguration configuration) {
         super(endpointUri, component);
         this.configuration = configuration;
     }
 
+    @Override
+    public String getServiceUrl() {
+        return configuration.getProtocol() + ":" + configuration.getHost() + ":" + configuration.getPort();
+    }
+
+    @Override
+    public String getServiceProtocol() {
+        return configuration.getProtocol();
+    }
+
+    public boolean isSynchronous() {
+        return synchronous;
+    }
+
+    /**
+     * Sets whether synchronous processing should be strictly used
+     */
+    public void setSynchronous(boolean synchronous) {
+        this.synchronous = synchronous;
+    }
+
+    @Override
     public Consumer createConsumer(Processor processor) throws Exception {
         Consumer answer = new NettyConsumer(this, processor, configuration);
         configureConsumer(answer);
         return answer;
     }
 
+    @Override
     public Producer createProducer() throws Exception {
         Producer answer = new NettyProducer(this, configuration);
         if (isSynchronous()) {
@@ -68,17 +92,6 @@ public class NettyEndpoint extends DefaultEndpoint implements AsyncEndpoint {
         } else {
             return answer;
         }
-    }
-
-    public Exchange createExchange(ChannelHandlerContext ctx, MessageEvent messageEvent) throws Exception {
-        Exchange exchange = createExchange();
-        updateMessageHeader(exchange.getIn(), ctx, messageEvent);
-        NettyPayloadHelper.setIn(exchange, messageEvent.getMessage());
-        return exchange;
-    }
-    
-    public boolean isSingleton() {
-        return true;
     }
 
     @Override
@@ -94,39 +107,26 @@ public class NettyEndpoint extends DefaultEndpoint implements AsyncEndpoint {
         this.configuration = configuration;
     }
 
-    public void setTimer(Timer timer) {
-        this.timer = timer;
-    }
-
-    public Timer getTimer() {
-        return timer;
-    }
-
     @Override
     protected String createEndpointUri() {
         ObjectHelper.notNull(configuration, "configuration");
-        return "netty:" + getConfiguration().getProtocol() + "://" + getConfiguration().getHost() + ":" + getConfiguration().getPort(); 
+        return "netty:" + getConfiguration().getProtocol() + "://" + getConfiguration().getHost() + ":"
+               + getConfiguration().getPort();
     }
 
-    @Override
-    protected void doStart() throws Exception {
-        ObjectHelper.notNull(timer, "timer");
-    }
-    
     protected SSLSession getSSLSession(ChannelHandlerContext ctx) {
-        final SslHandler sslHandler = ctx.getPipeline().get(SslHandler.class);
+        final SslHandler sslHandler = ctx.pipeline().get(SslHandler.class);
         SSLSession sslSession = null;
         if (sslHandler != null) {
-            sslSession = sslHandler.getEngine().getSession();
-        } 
+            sslSession = sslHandler.engine().getSession();
+        }
         return sslSession;
     }
 
-    protected void updateMessageHeader(Message in, ChannelHandlerContext ctx, MessageEvent messageEvent) {
+    public void updateMessageHeader(Message in, ChannelHandlerContext ctx) {
         in.setHeader(NettyConstants.NETTY_CHANNEL_HANDLER_CONTEXT, ctx);
-        in.setHeader(NettyConstants.NETTY_MESSAGE_EVENT, messageEvent);
-        in.setHeader(NettyConstants.NETTY_REMOTE_ADDRESS, messageEvent.getRemoteAddress());
-        in.setHeader(NettyConstants.NETTY_LOCAL_ADDRESS, messageEvent.getChannel().getLocalAddress());
+        in.setHeader(NettyConstants.NETTY_REMOTE_ADDRESS, ctx.channel().remoteAddress());
+        in.setHeader(NettyConstants.NETTY_LOCAL_ADDRESS, ctx.channel().localAddress());
 
         if (configuration.isSsl()) {
             // setup the SslSession header
@@ -145,22 +145,26 @@ public class NettyEndpoint extends DefaultEndpoint implements AsyncEndpoint {
      * <p/>
      * If the certificate is unverified then the headers is not enriched.
      *
-     * @param sslSession  the SSL session
-     * @param message     the message to enrich
+     * @param sslSession the SSL session
+     * @param message    the message to enrich
      */
     protected void enrichWithClientCertInformation(SSLSession sslSession, Message message) {
         try {
-            X509Certificate[] certificates = sslSession.getPeerCertificateChain();
-            if (certificates != null && certificates.length > 0) {
-                X509Certificate cert = certificates[0];
 
-                Principal subject = cert.getSubjectDN();
-                if (subject != null) {
-                    message.setHeader(NettyConstants.NETTY_SSL_CLIENT_CERT_SUBJECT_NAME, subject.getName());
+            Certificate[] certificates = sslSession.getPeerCertificates();
+            if (certificates != null && certificates.length > 0) {
+                if (!(certificates[0] instanceof X509Certificate)) {
+                    return;
                 }
-                Principal issuer = cert.getIssuerDN();
+                X509Certificate cert = (X509Certificate) certificates[0];
+
+                Principal subject = cert.getSubjectX500Principal();
+                if (subject != null) {
+                    message.setHeader(NettyConstants.NETTY_SSL_CLIENT_CERT_SUBJECT_NAME, subject.toString());
+                }
+                Principal issuer = cert.getIssuerX500Principal();
                 if (issuer != null) {
-                    message.setHeader(NettyConstants.NETTY_SSL_CLIENT_CERT_ISSUER_NAME, issuer.getName());
+                    message.setHeader(NettyConstants.NETTY_SSL_CLIENT_CERT_ISSUER_NAME, issuer.toString());
                 }
                 BigInteger serial = cert.getSerialNumber();
                 if (serial != null) {

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,18 +22,19 @@ import java.util.LinkedList;
 import java.util.List;
 
 import org.jasypt.encryption.pbe.StandardPBEStringEncryptor;
+import org.jasypt.iv.RandomIvGenerator;
+import org.jasypt.salt.RandomSaltGenerator;
 
-/**
- * @version 
- */
 public class Main {
 
     private final StandardPBEStringEncryptor encryptor = new StandardPBEStringEncryptor();
-    private final List<Option> options = new ArrayList<Option>();
+    private final List<Option> options = new ArrayList<>();
     private String command;
     private String password;
     private String input;
     private String algorithm;
+    private String randomSaltGeneratorAlgorithm;
+    private String randomIvGeneratorAlgorithm;
 
     private abstract class Option {
         private String abbreviation;
@@ -81,6 +82,7 @@ public class Main {
             this.parameterName = parameterName;
         }
 
+        @Override
         protected void doProcess(String arg, LinkedList<String> remainingArgs) {
             if (remainingArgs.isEmpty()) {
                 System.err.println("Expected fileName for ");
@@ -91,9 +93,10 @@ public class Main {
             }
         }
 
+        @Override
         public String getInformation() {
             return "  " + getAbbreviation() + " or " + getFullName()
-                    + " <" + parameterName + "> = " + getDescription();
+                   + " <" + parameterName + "> = " + getDescription();
         }
 
         protected abstract void doProcess(String arg, String parameter, LinkedList<String> remainingArgs);
@@ -135,6 +138,18 @@ public class Main {
                 algorithm = parameter;
             }
         });
+
+        addOption(new ParameterOption("rsga", "salt", "Optional random salt generator algorithm to use", "salt") {
+            protected void doProcess(String arg, String parameter, LinkedList<String> remainingArgs) {
+                randomSaltGeneratorAlgorithm = parameter;
+            }
+        });
+
+        addOption(new ParameterOption("riga", "iv", "Optional random iv generator algorithm to use", "iv") {
+            protected void doProcess(String arg, String parameter, LinkedList<String> remainingArgs) {
+                randomIvGeneratorAlgorithm = parameter;
+            }
+        });
     }
 
     private void addOption(Option option) {
@@ -152,7 +167,7 @@ public class Main {
     }
 
     private boolean parseArguments(String[] arguments) {
-        LinkedList<String> args = new LinkedList<String>(Arrays.asList(arguments));
+        LinkedList<String> args = new LinkedList<>(Arrays.asList(arguments));
 
         boolean valid = true;
         while (!args.isEmpty()) {
@@ -176,7 +191,7 @@ public class Main {
         return valid;
     }
 
-    public void run(String[] args) throws Exception {
+    public void run(String[] args) {
         if (!parseArguments(args)) {
             showOptions();
             return;
@@ -205,6 +220,12 @@ public class Main {
         if (algorithm != null) {
             encryptor.setAlgorithm(algorithm);
         }
+        if (randomSaltGeneratorAlgorithm != null) {
+            encryptor.setSaltGenerator(new RandomSaltGenerator(randomSaltGeneratorAlgorithm));
+        }
+        if (randomIvGeneratorAlgorithm != null) {
+            encryptor.setIvGenerator(new RandomIvGenerator(randomIvGeneratorAlgorithm));
+        }
         if ("encrypt".equals(command)) {
             System.out.println("Encrypted text: " + encryptor.encrypt(input));
         } else {
@@ -212,6 +233,12 @@ public class Main {
         }
     }
 
+    /**
+     * The main entrypoint is required as the Jasypt dependency can be also used as CLI.
+     *
+     * @param  args      the main arguments
+     * @throws Exception throws any processing exception
+     */
     public static void main(String[] args) throws Exception {
         Main main = new Main();
         if (args.length == 0) {

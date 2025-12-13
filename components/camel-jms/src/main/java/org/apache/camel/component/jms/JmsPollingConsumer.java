@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,45 +16,44 @@
  */
 package org.apache.camel.component.jms;
 
-import javax.jms.Message;
+import jakarta.jms.Message;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.ServicePoolAware;
-import org.apache.camel.impl.PollingConsumerSupport;
+import org.apache.camel.support.PollingConsumerSupport;
 import org.apache.camel.util.ObjectHelper;
 import org.springframework.jms.core.JmsOperations;
 import org.springframework.jms.core.JmsTemplate;
+import org.springframework.jms.support.destination.JmsDestinationAccessor;
 
 /**
- *  A JMS {@link org.apache.camel.PollingConsumer}.
+ * A JMS {@link org.apache.camel.PollingConsumer}.
  */
-public class JmsPollingConsumer extends PollingConsumerSupport implements ServicePoolAware {
-    private JmsOperations template;
-    private JmsEndpoint jmsEndpoint;
+public class JmsPollingConsumer extends PollingConsumerSupport {
+    private final JmsOperations template;
+    private final JmsEndpoint jmsEndpoint;
 
     public JmsPollingConsumer(JmsEndpoint endpoint, JmsOperations template) {
         super(endpoint);
         this.jmsEndpoint = endpoint;
         this.template = template;
     }
-    
-    public JmsPollingConsumer(JmsEndpoint endpoint) {
-        this(endpoint, endpoint.createInOnlyTemplate());
-    }
 
     @Override
     public JmsEndpoint getEndpoint() {
-        return (JmsEndpoint)super.getEndpoint();
+        return (JmsEndpoint) super.getEndpoint();
     }
 
+    @Override
     public Exchange receiveNoWait() {
-        return receive(JmsTemplate.RECEIVE_TIMEOUT_NO_WAIT);
+        return receive(JmsDestinationAccessor.RECEIVE_TIMEOUT_NO_WAIT);
     }
 
+    @Override
     public Exchange receive() {
-        return receive(JmsTemplate.RECEIVE_TIMEOUT_INDEFINITE_WAIT);
+        return receive(JmsDestinationAccessor.RECEIVE_TIMEOUT_INDEFINITE_WAIT);
     }
 
+    @Override
     public Exchange receive(long timeout) {
         setReceiveTimeout(timeout);
         Message message;
@@ -70,20 +69,22 @@ public class JmsPollingConsumer extends PollingConsumerSupport implements Servic
         return null;
     }
 
+    @Override
     protected void doStart() throws Exception {
         // noop
     }
 
+    @Override
     protected void doStop() throws Exception {
         // noop
     }
 
     protected void setReceiveTimeout(long timeout) {
-        if (template instanceof JmsTemplate) {
-            JmsTemplate jmsTemplate = (JmsTemplate)template;
+        if (template instanceof JmsTemplate jmsTemplate) {
             jmsTemplate.setReceiveTimeout(timeout);
         } else {
-            throw new IllegalArgumentException("Cannot set the receiveTimeout property on unknown JmsOperations type: " + template.getClass().getName());
+            throw new IllegalArgumentException(
+                    "Cannot set the receiveTimeout property on unknown JmsOperations type: " + template.getClass().getName());
         }
     }
 }

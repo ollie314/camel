@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -18,19 +18,14 @@ package org.apache.camel.component.sql;
 
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 
-/**
- * @version 
- */
 public class SqlPreserveHeaderTest extends CamelTestSupport {
-    
+
     private EmbeddedDatabase db;
 
     @Test
@@ -41,26 +36,29 @@ public class SqlPreserveHeaderTest extends CamelTestSupport {
 
         template.sendBody("direct:start", "");
 
-        assertMockEndpointsSatisfied();
-    }
-
-    @Before
-    public void setUp() throws Exception {
-        db = new EmbeddedDatabaseBuilder()
-            .setType(EmbeddedDatabaseType.DERBY).addScript("sql/createAndPopulateDatabase.sql").build();
-        
-        super.setUp();
-    }
-
-    @After
-    public void tearDown() throws Exception {
-        super.tearDown();
-        
-        db.shutdown();
+        MockEndpoint.assertIsSatisfied(context);
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+
+    public void doPreSetup() throws Exception {
+        db = new EmbeddedDatabaseBuilder()
+                .setName(getClass().getSimpleName())
+                .setType(EmbeddedDatabaseType.H2)
+                .addScript("sql/createAndPopulateDatabase.sql").build();
+
+    }
+
+    @Override
+    public void doPostTearDown() throws Exception {
+
+        if (db != null) {
+            db.shutdown();
+        }
+    }
+
+    @Override
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             public void configure() {
                 getContext().getComponent("sql", SqlComponent.class).setDataSource(db);
@@ -68,9 +66,9 @@ public class SqlPreserveHeaderTest extends CamelTestSupport {
                 errorHandler(noErrorHandler());
 
                 from("direct:start")
-                    .setHeader("foo", constant("bar"))
-                    .to("sql:select * from projects")
-                    .to("mock:result");
+                        .setHeader("foo", constant("bar"))
+                        .to("sql:select * from projects")
+                        .to("mock:result");
             }
         };
     }

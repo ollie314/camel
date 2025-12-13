@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,8 +17,9 @@
 package org.apache.camel.component.file.remote;
 
 import java.io.File;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.Iterator;
-import java.util.Stack;
 
 import org.apache.camel.Component;
 import org.apache.camel.util.FileUtil;
@@ -35,14 +36,22 @@ public final class FtpUtils {
     private FtpUtils() {
     }
 
+    public static String extractDirNameFromAbsolutePath(String path) {
+        // default is unix so try with '/'
+        // otherwise force File.separator
+        if (path.endsWith("/") || path.endsWith("\\")) {
+            path = path.substring(0, path.length() - 1);
+        }
+        return FileUtil.stripPath(path);
+    }
+
     /**
-     * Compacts a path by stacking it and reducing <tt>..</tt>,
-     * and uses OS specific file separators (eg {@link java.io.File#separator}).
+     * Compacts a path by stacking it and reducing <tt>..</tt>, and uses OS specific file separators (eg
+     * {@link java.io.File#separator}).
      * <p/>
-     * <b>Important: </b> This implementation works for the camel-ftp component
-     * for various FTP clients and FTP servers using different platforms and whatnot.
-     * This implementation has been working for many Camel releases, and is included here
-     * to restore patch compatibility with the Camel releases.
+     * <b>Important: </b> This implementation works for the camel-ftp component for various FTP clients and FTP servers
+     * using different platforms and whatnot. This implementation has been working for many Camel releases, and is
+     * included here to restore patch compatibility with the Camel releases.
      */
     public static String compactPath(String path) {
         if (path == null) {
@@ -60,7 +69,7 @@ public final class FtpUtils {
         // preserve starting slash if given in input path
         boolean startsWithSlash = path.startsWith("/") || path.startsWith("\\");
 
-        Stack<String> stack = new Stack<String>();
+        Deque<String> stack = new ArrayDeque<>();
 
         String separatorRegex = File.separator;
         if (FileUtil.isWindows()) {
@@ -69,30 +78,33 @@ public final class FtpUtils {
         String[] parts = path.split(separatorRegex);
         for (String part : parts) {
             if (part.equals("..") && !stack.isEmpty() && !"..".equals(stack.peek())) {
-                // only pop if there is a previous path, which is not a ".." path either
+                // only pop if there is a previous path, which is not a ".."
+                // path either
                 stack.pop();
             } else if (part.equals(".") || part.isEmpty()) {
-                // do nothing because we don't want a path like foo/./bar or foo//bar
+                // do nothing because we don't want a path like foo/./bar or
+                // foo//bar
             } else {
                 stack.push(part);
             }
         }
 
         // build path based on stack
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder(256);
 
         if (startsWithSlash) {
             sb.append(File.separator);
         }
 
-        for (Iterator<String> it = stack.iterator(); it.hasNext();) {
+        // now we build back using FIFO so need to use descending
+        for (Iterator<String> it = stack.descendingIterator(); it.hasNext();) {
             sb.append(it.next());
             if (it.hasNext()) {
                 sb.append(File.separator);
             }
         }
 
-        if (endsWithSlash && stack.size() > 0) {
+        if (endsWithSlash && !stack.isEmpty()) {
             sb.append(File.separator);
         }
 
@@ -111,23 +123,51 @@ public final class FtpUtils {
     }
 
     /**
-     * Checks whether directory used in ftp/ftps/sftp endpoint URI is relative.
-     * Absolute path will be converted to relative path and a WARN will be printed.
+     * Checks whether directory used in ftp/ftps/sftp endpoint URI is relative. Absolute path will be converted to
+     * relative path and a WARN will be printed.
+     *
      * @see <a href="http://camel.apache.org/ftp2.html">FTP/SFTP/FTPS Component</a>
-     * @param ftpComponent
-     * @param configuration
      */
     public static void ensureRelativeFtpDirectory(Component ftpComponent, RemoteFileConfiguration configuration) {
         if (FileUtil.hasLeadingSeparator(configuration.getDirectoryName())) {
             String relativePath = FileUtil.stripLeadingSeparator(configuration.getDirectoryName());
-            LOG.warn(String.format("%s doesn't support absolute paths, \"%s\" will be converted to \"%s\". "
-                    + "After Camel 2.16, absolute paths will be invalid.",
-                    ftpComponent.getClass().getSimpleName(),
-                    configuration.getDirectoryName(),
-                    relativePath));
+            LOG.warn("{} doesn't support absolute paths, \"{}\" will be converted to \"{}\". "
+                     + "After Camel 2.16, absolute paths will be invalid.",
+                    ftpComponent.getClass().getSimpleName(), configuration.getDirectoryName(), relativePath);
             configuration.setDirectory(relativePath);
             configuration.setDirectoryName(relativePath);
         }
+    }
+
+    public static String absoluteFilePath(FtpConfiguration configuration, String absolutePath, String name) {
+        boolean absolute = FileUtil.hasLeadingSeparator(absolutePath);
+        // create a pseudo absolute name
+        String dir = FileUtil.stripTrailingSeparator(absolutePath);
+        String fileName = name;
+        if (configuration.isHandleDirectoryParserAbsoluteResult()) {
+            fileName = FtpUtils.extractDirNameFromAbsolutePath(name);
+        }
+        String absoluteFileName = FileUtil.stripLeadingSeparator(dir + "/" + fileName);
+        // if absolute start with a leading separator otherwise let it be
+        // relative
+        if (absolute) {
+            absoluteFileName = "/" + absoluteFileName;
+        }
+        return absoluteFileName;
+    }
+
+    public static String absoluteFilePath(String absolutePath, String name) {
+        boolean absolute = FileUtil.hasLeadingSeparator(absolutePath);
+
+        // create a pseudo absolute name
+        String dir = FileUtil.stripTrailingSeparator(absolutePath);
+        String absoluteFileName = FileUtil.stripLeadingSeparator(dir + "/" + name);
+        // if absolute start with a leading separator otherwise let it be
+        // relative
+        if (absolute) {
+            absoluteFileName = "/" + absoluteFileName;
+        }
+        return absoluteFileName;
     }
 
 }

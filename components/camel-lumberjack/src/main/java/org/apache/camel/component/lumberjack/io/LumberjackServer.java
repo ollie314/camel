@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,6 +17,7 @@
 package org.apache.camel.component.lumberjack.io;
 
 import java.util.concurrent.ThreadFactory;
+
 import javax.net.ssl.SSLContext;
 
 import io.netty.bootstrap.ServerBootstrap;
@@ -77,11 +78,11 @@ public final class LumberjackServer {
         ChannelHandler initializer = new LumberjackChannelInitializer(sslContext, executorService, messageProcessor);
 
         // Bootstrap the netty server
-        ServerBootstrap serverBootstrap = new ServerBootstrap()  //
-                .group(bossGroup, workerGroup)               //
-                .channel(NioServerSocketChannel.class)           //
-                .option(ChannelOption.SO_BACKLOG, 100)           //
-                .childHandler(initializer);                      //
+        ServerBootstrap serverBootstrap = new ServerBootstrap()
+                .group(bossGroup, workerGroup)
+                .channel(NioServerSocketChannel.class)
+                .option(ChannelOption.SO_BACKLOG, 100)
+                .childHandler(initializer);
 
         // Connect the socket
         channel = serverBootstrap.bind(host, port).sync().channel();

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -22,29 +22,34 @@ import java.util.Map;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.test.junit4.CamelTestSupport;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.camel.test.junit5.CamelTestSupport;
+import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class ProducerTest extends CamelTestSupport {
 
     EmbeddedDatabase db;
 
-    @Before
-    public void setUp() throws Exception {
+    @Override
+
+    public void doPreSetup() throws Exception {
         db = new EmbeddedDatabaseBuilder()
-                .setType(EmbeddedDatabaseType.DERBY).addScript("sql/storedProcedureTest.sql").build();
-        super.setUp();
+                .setName(getClass().getSimpleName())
+                .setType(EmbeddedDatabaseType.DERBY)
+                .addScript("sql/storedProcedureTest.sql").build();
+
     }
 
-    @After
-    public void tearDown() throws Exception {
-        super.tearDown();
-        db.shutdown();
+    @Override
+    public void doPostTearDown() throws Exception {
+        if (db != null) {
+            db.shutdown();
+        }
     }
 
     @Test
@@ -57,7 +62,7 @@ public class ProducerTest extends CamelTestSupport {
         headers.put("num2", 2);
         template.requestBodyAndHeaders("direct:query", null, headers);
 
-        assertMockEndpointsSatisfied();
+        MockEndpoint.assertIsSatisfied(context);
 
         Exchange exchange = mock.getExchanges().get(0);
 
@@ -66,15 +71,16 @@ public class ProducerTest extends CamelTestSupport {
     }
 
     @Override
-    protected RouteBuilder createRouteBuilder() throws Exception {
+    protected RouteBuilder createRouteBuilder() {
         return new RouteBuilder() {
             @Override
-            public void configure() throws Exception {
+            public void configure() {
                 // required for the sql component
                 getContext().getComponent("sql-stored", SqlStoredComponent.class).setDataSource(db);
 
                 from("direct:query").to("sql-stored:SUBNUMBERS(INTEGER ${headers.num1},INTEGER ${headers"
-                        + ".num2},OUT INTEGER resultofsub)").to("mock:query");
+                                        + ".num2},OUT INTEGER resultofsub)")
+                        .to("mock:query");
             }
         };
     }

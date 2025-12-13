@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -17,14 +17,14 @@
 package org.apache.camel.component.salesforce.api.dto;
 
 import java.util.List;
+import java.util.Objects;
 
-import com.thoughtworks.xstream.annotations.XStreamImplicit;
-//CHECKSTYLE:OFF
+import com.fasterxml.jackson.annotation.JsonSetter;
+
 public class RestError extends AbstractDTOBase {
 
     private String errorCode;
     private String message;
-    @XStreamImplicit
     private List<String> fields;
 
     // default ctor for unmarshalling
@@ -65,5 +65,35 @@ public class RestError extends AbstractDTOBase {
         this.fields = fields;
     }
 
+    @JsonSetter("statusCode")
+    void setStatusCode(final String statusCode) {
+        errorCode = statusCode;
+    }
+
+    @Override
+    public boolean equals(final Object obj) {
+        if (obj == this) {
+            return true;
+        }
+
+        if (!(obj instanceof RestError)) {
+            return false;
+        }
+
+        final RestError other = (RestError) obj;
+
+        return Objects.equals(errorCode, other.errorCode) && Objects.equals(message, other.message)
+                && Objects.equals(fields, other.fields);
+    }
+
+    @Override
+    public int hashCode() {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + ((errorCode == null) ? 0 : errorCode.hashCode());
+        result = prime * result + ((fields == null) ? 0 : fields.hashCode());
+        result = prime * result + ((message == null) ? 0 : message.hashCode());
+        return result;
+    }
+
 }
-//CHECKSTYLE:ON

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,18 +23,15 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 import com.jayway.jsonpath.Option;
-import org.apache.camel.language.LanguageAnnotation;
+import org.apache.camel.support.language.LanguageAnnotation;
 
 /**
- * An annotation used to inject a <a href="http://commons.apache.org/jsonpath/">JSon Path</a>
- * expression into a method parameter when using
- * <a href="http://camel.apache.org/bean-integration.html">Bean Integration</a>
- *
- * @version
+ * An annotation used to inject a <a href="http://commons.apache.org/jsonpath/">JsonPath</a> expression into a method
+ * parameter when using <a href="http://camel.apache.org/bean-integration.html">Bean Integration</a>
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
-@Target({ElementType.FIELD, ElementType.METHOD, ElementType.PARAMETER })
+@Target({ ElementType.FIELD, ElementType.METHOD, ElementType.PARAMETER })
 @LanguageAnnotation(language = "jsonpath", factory = JsonPathAnnotationExpressionFactory.class)
 public @interface JsonPath {
 
@@ -46,12 +43,25 @@ public @interface JsonPath {
     boolean suppressExceptions() default false;
 
     /**
-     * Whether to allow in inlined simple exceptions in the json path expression
+     * Whether to allow in inlined simple exceptions in the JsonPath expression
      */
     boolean allowSimple() default true;
 
     /**
-     * To configure the json path options to use
+     * To configure the JsonPath options to use
      */
     Option[] options() default {};
+
+    /**
+     * The desired return type.
+     */
+    Class<?> resultType() default Object.class;
+
+    /**
+     * Source to use, instead of message body. You can prefix with variable:, header:, or property: to specify kind of
+     * source. Otherwise, the source is assumed to be a variable. Use empty or null to use default source, which is the
+     * message body.
+     */
+    String source() default "";
+
 }
